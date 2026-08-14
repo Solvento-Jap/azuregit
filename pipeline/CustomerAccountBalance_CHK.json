@@ -1,0 +1,365 @@
+{
+	"name": "CustomerAccountBalance_CHK",
+	"properties": {
+		"activities": [
+			{
+				"name": "BUSC",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT * FROM BUSC.TRY_TRADES\nWHERE ISLATEST = 1 AND CounterParty_ID = '2389282'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "BUSC_CNT",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "BUSC",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) DUP_CNT FROM (\nSELECT Trade_Id, COUNT(1) CNT FROM BUSC.TRY_TRADES\nWHERE ISLATEST = 1 \nGROUP BY Trade_Id\nHAVING COUNT(1) > 1 ) A"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "WITH",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "BUSC_CNT",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "--------------GET DELTA FROM BUSC\nWITH TEMP_BNKM_CustomerAccountBalance AS \n(\n\t-- System Reserved Amount -- SYSTEM_RESERVED_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'System Reserved Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.SYSTEM_RESERVED_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Unclear Balance Amount -- UN_CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Unclear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.UN_CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Clear Balance Amount -- CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Clear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Future Unclear Balance Amount -- FUTURE_UN_CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Future Unclear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FUTURE_UN_CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Future Clear Balance Amount -- FUTURE_CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Future Clear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FUTURE_CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Future OC TOD Balance Amount -- FUTURE_OC_TOD_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Future OC TOD Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FUTURE_OC_TOD_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\t\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Utilized Future Balance Amount -- UTIL_FUTURE_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Utilized Future Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.UTIL_FUTURE_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Future Balance Amount -- FUTURE_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Future Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FUTURE_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FFD Contribution to Operative Account -- FFD_CONTRIB_TO_ACCT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FFD Contribution to Operative Account' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FFD_CONTRIB_TO_ACCT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Used Unclear Over DACC Limit Amount -- USED_UN_CLR_OVER_DACC_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Used Unclear Over DACC Limit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.USED_UN_CLR_OVER_DACC_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Used Clean Single Transaction Limit -- USED_CLEAN_SINGLE_TRAN_LIM -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Used Clean Single Transaction Limit' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.USED_CLEAN_SINGLE_TRAN_LIM AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Used Single Transaction Limit -- USED_SINGLE_TRAN_LIM -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Used Single Transaction Limit' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.USED_SINGLE_TRAN_LIM AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Sweep In Minimum Balance -- SWEEP_IN_MIN_BAL -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Sweep In Minimum Balance' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.SWEEP_IN_MIN_BAL AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Freeze Date Balance Amount -- BAL_ON_FREZ_DATE -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Freeze Date Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.BAL_ON_FREZ_DATE AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Utilized Sanction Limit Amount -- UTILISED_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Utilized Sanction Limit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.UTILISED_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FCNR Account Total Debit Amount -- FX_CUM_DR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FCNR Account Total Debit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FX_CUM_DR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FCNR Account Total Credit Amount -- FX_CUM_CR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FCNR Account Total Credit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FX_CUM_CR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FCNR Account Purge Date Balance Amount -- FX_BAL_ON_PURGE_DATE -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FCNR Account Purge Date Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FX_BAL_ON_PURGE_DATE AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FCNR Account Transfer Clear Balance Amount -- FX_CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FCNR Account Transfer Clear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FX_CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Purge Date Balance -- BAL_ON_PURGE_DATE -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Purge Date Balance' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.BAL_ON_PURGE_DATE AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Accrued Credit Amount -- ACRD_CR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Accrued Credit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.ACRD_CR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Cumulative Credit Amount -- CUM_CR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Cumulative Credit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.CUM_CR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Cumulative Debit Amount -- CUM_DR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Cumulative Debit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.CUM_DR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n)\n\nSELECT COUNT(1) CNT  FROM TEMP_BNKM_CustomerAccountBalance;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "SRC",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "WITH",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "--------------GET DELTA FROM BUSC\nWITH TEMP_BNKM_CustomerAccountBalance AS \n(\n\t-- System Reserved Amount -- SYSTEM_RESERVED_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'System Reserved Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.SYSTEM_RESERVED_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Unclear Balance Amount -- UN_CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Unclear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.UN_CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Clear Balance Amount -- CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Clear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Future Unclear Balance Amount -- FUTURE_UN_CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Future Unclear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FUTURE_UN_CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Future Clear Balance Amount -- FUTURE_CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Future Clear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FUTURE_CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Future OC TOD Balance Amount -- FUTURE_OC_TOD_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Future OC TOD Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FUTURE_OC_TOD_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\t\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Utilized Future Balance Amount -- UTIL_FUTURE_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Utilized Future Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.UTIL_FUTURE_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Future Balance Amount -- FUTURE_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Future Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FUTURE_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FFD Contribution to Operative Account -- FFD_CONTRIB_TO_ACCT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FFD Contribution to Operative Account' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FFD_CONTRIB_TO_ACCT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Used Unclear Over DACC Limit Amount -- USED_UN_CLR_OVER_DACC_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Used Unclear Over DACC Limit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.USED_UN_CLR_OVER_DACC_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Used Clean Single Transaction Limit -- USED_CLEAN_SINGLE_TRAN_LIM -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Used Clean Single Transaction Limit' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.USED_CLEAN_SINGLE_TRAN_LIM AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Used Single Transaction Limit -- USED_SINGLE_TRAN_LIM -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Used Single Transaction Limit' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.USED_SINGLE_TRAN_LIM AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Sweep In Minimum Balance -- SWEEP_IN_MIN_BAL -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Sweep In Minimum Balance' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.SWEEP_IN_MIN_BAL AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Freeze Date Balance Amount -- BAL_ON_FREZ_DATE -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Freeze Date Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.BAL_ON_FREZ_DATE AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Utilized Sanction Limit Amount -- UTILISED_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Utilized Sanction Limit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.UTILISED_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FCNR Account Total Debit Amount -- FX_CUM_DR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FCNR Account Total Debit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FX_CUM_DR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FCNR Account Total Credit Amount -- FX_CUM_CR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FCNR Account Total Credit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FX_CUM_CR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FCNR Account Purge Date Balance Amount -- FX_BAL_ON_PURGE_DATE -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FCNR Account Purge Date Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FX_BAL_ON_PURGE_DATE AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FCNR Account Transfer Clear Balance Amount -- FX_CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FCNR Account Transfer Clear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FX_CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Purge Date Balance -- BAL_ON_PURGE_DATE -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Purge Date Balance' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.BAL_ON_PURGE_DATE AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Accrued Credit Amount -- ACRD_CR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Accrued Credit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.ACRD_CR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Cumulative Credit Amount -- CUM_CR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Cumulative Credit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.CUM_CR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Cumulative Debit Amount -- CUM_DR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Cumulative Debit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.CUM_DR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n)\n\nSELECT * INTO #TEMP_BNKM_CustomerAccountBalance FROM TEMP_BNKM_CustomerAccountBalance;\n\n-------------CHECK IF THERE IS DELTA \nWITH\nTEMP_BNKM_CustomerAccountBalance_SRC\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerAccountId)\n,convert(varchar,BalanceTypeId)\n,convert(numeric,BalanceAmount)\n,convert(varchar,IsoCurrencyCode)\n,convert(varchar,FinancialInstitutionId)\n,convert(varchar,SourceSystemCode)\n)) HASHROW, CustomerAccountId,BalanceTypeId,TimeStamp,FinancialInstitutionId,SourceSystemCode\nFROM #TEMP_BNKM_CustomerAccountBalance \n)\n\nSELECT COUNT(1) CNT FROM TEMP_BNKM_CustomerAccountBalance;\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "TGT",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "SRC",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH TEMP_BNKM_CustomerAccountBalance_TGT\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,A.CustomerAccountId)\n,convert(varchar,A.BalanceTypeId)\n,convert(numeric,A.BalanceAmount)\n,convert(varchar,A.IsoCurrencyCode)\n,convert(varchar,A.FinancialInstitutionId)\n,convert(varchar,A.SourceSystemCode)\n)) HASHROW, A.CustomerAccountId, A.BalanceTypeId,A.TimeStamp,A.FinancialInstitutionId,A.SourceSystemCode\nFROM BNKM.CustomerAccountBalance  A\n\t JOIN (SELECT CustomerAccountId, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CustomerAccountBalance GROUP BY CustomerAccountId, FinancialInstitutionId ) B\n\t\tON A.CustomerAccountId = B.CustomerAccountId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\nWHERE SourceSystemCode = 'DEP'\t\n)\n\nSELECT COUNT(1) CNT FROM TEMP_BNKM_CustomerAccountBalance_TGT"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DELTA",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "TGT",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "--------------GET DELTA FROM BUSC\nWITH TEMP_BNKM_CustomerAccountBalance AS \n(\n\t-- System Reserved Amount -- SYSTEM_RESERVED_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'System Reserved Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.SYSTEM_RESERVED_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Unclear Balance Amount -- UN_CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Unclear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.UN_CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Clear Balance Amount -- CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Clear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Future Unclear Balance Amount -- FUTURE_UN_CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Future Unclear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FUTURE_UN_CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Future Clear Balance Amount -- FUTURE_CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Future Clear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FUTURE_CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Future OC TOD Balance Amount -- FUTURE_OC_TOD_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Future OC TOD Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FUTURE_OC_TOD_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\t\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Utilized Future Balance Amount -- UTIL_FUTURE_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Utilized Future Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.UTIL_FUTURE_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Future Balance Amount -- FUTURE_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Future Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FUTURE_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FFD Contribution to Operative Account -- FFD_CONTRIB_TO_ACCT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FFD Contribution to Operative Account' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FFD_CONTRIB_TO_ACCT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Used Unclear Over DACC Limit Amount -- USED_UN_CLR_OVER_DACC_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Used Unclear Over DACC Limit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.USED_UN_CLR_OVER_DACC_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Used Clean Single Transaction Limit -- USED_CLEAN_SINGLE_TRAN_LIM -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Used Clean Single Transaction Limit' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.USED_CLEAN_SINGLE_TRAN_LIM AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Used Single Transaction Limit -- USED_SINGLE_TRAN_LIM -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Used Single Transaction Limit' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.USED_SINGLE_TRAN_LIM AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Sweep In Minimum Balance -- SWEEP_IN_MIN_BAL -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Sweep In Minimum Balance' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.SWEEP_IN_MIN_BAL AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Freeze Date Balance Amount -- BAL_ON_FREZ_DATE -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Freeze Date Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.BAL_ON_FREZ_DATE AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Utilized Sanction Limit Amount -- UTILISED_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Utilized Sanction Limit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.UTILISED_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FCNR Account Total Debit Amount -- FX_CUM_DR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FCNR Account Total Debit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FX_CUM_DR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FCNR Account Total Credit Amount -- FX_CUM_CR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FCNR Account Total Credit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FX_CUM_CR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FCNR Account Purge Date Balance Amount -- FX_BAL_ON_PURGE_DATE -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FCNR Account Purge Date Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FX_BAL_ON_PURGE_DATE AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FCNR Account Transfer Clear Balance Amount -- FX_CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FCNR Account Transfer Clear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FX_CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Purge Date Balance -- BAL_ON_PURGE_DATE -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Purge Date Balance' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.BAL_ON_PURGE_DATE AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Accrued Credit Amount -- ACRD_CR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Accrued Credit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.ACRD_CR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Cumulative Credit Amount -- CUM_CR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Cumulative Credit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.CUM_CR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Cumulative Debit Amount -- CUM_DR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Cumulative Debit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.CUM_DR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n)\n\nSELECT * INTO #TEMP_BNKM_CustomerAccountBalance FROM TEMP_BNKM_CustomerAccountBalance;\n\n-------------CHECK IF THERE IS DELTA \nWITH\nTEMP_BNKM_CustomerAccountBalance_SRC\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerAccountId)\n,convert(varchar,BalanceTypeId)\n,convert(numeric,BalanceAmount)\n,convert(varchar,IsoCurrencyCode)\n,convert(varchar,FinancialInstitutionId)\n,convert(varchar,SourceSystemCode)\n)) HASHROW, CustomerAccountId,BalanceTypeId,TimeStamp,FinancialInstitutionId,SourceSystemCode\nFROM #TEMP_BNKM_CustomerAccountBalance \n)\n,\nTEMP_BNKM_CustomerAccountBalance_TGT\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,A.CustomerAccountId)\n,convert(varchar,A.BalanceTypeId)\n,convert(numeric,A.BalanceAmount)\n,convert(varchar,A.IsoCurrencyCode)\n,convert(varchar,A.FinancialInstitutionId)\n,convert(varchar,A.SourceSystemCode)\n)) HASHROW, A.CustomerAccountId, A.BalanceTypeId,A.TimeStamp,A.FinancialInstitutionId,A.SourceSystemCode\nFROM BNKM.CustomerAccountBalance  A\n\t JOIN (SELECT CustomerAccountId, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CustomerAccountBalance GROUP BY CustomerAccountId, FinancialInstitutionId ) B\n\t\tON A.CustomerAccountId = B.CustomerAccountId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\nWHERE SourceSystemCode = 'DEP'\t\n)\n,\nTEMP_BNKM_CustomerAccountBalance_DELTA\nAS\n(\nSELECT\t\n\tSRC.HASHROW AS SRC_HR\n\t,TGT.HASHROW AS TGT_HR\n\t,ISNULL(SRC.CustomerAccountId,TGT.CustomerAccountId) AS CustomerAccountId\n\t,ISNULL(SRC.BalanceTypeId,TGT.BalanceTypeId) AS BalanceTypeId\n\t,ISNULL(SRC.TimeStamp,TGT.TimeStamp) AS TimeStamp\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\n\t,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\n\t,CASE\n\t\tWHEN TGT.HASHROW IS NULL THEN 'INSERT'  \n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'INSERT'\n\tELSE NULL END AS RECORD_STATUS\n\t\nFROM TEMP_BNKM_CustomerAccountBalance_SRC\tSRC\nLEFT JOIN TEMP_BNKM_CustomerAccountBalance_TGT\tTGT\nON\tSRC.CustomerAccountId = TGT.CustomerAccountId\nAND SRC.BalanceTypeId = TGT.BalanceTypeId\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\n)\n\nSELECT COUNT(1) CNT  FROM TEMP_BNKM_CustomerAccountBalance_DELTA;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "INSERT",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "DELTA",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH TEMP_BNKM_CustomerAccountBalance AS \n(\n\t-- System Reserved Amount -- SYSTEM_RESERVED_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'System Reserved Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.SYSTEM_RESERVED_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Unclear Balance Amount -- UN_CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Unclear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.UN_CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Clear Balance Amount -- CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Clear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Future Unclear Balance Amount -- FUTURE_UN_CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Future Unclear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FUTURE_UN_CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Future Clear Balance Amount -- FUTURE_CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Future Clear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FUTURE_CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Future OC TOD Balance Amount -- FUTURE_OC_TOD_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Future OC TOD Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FUTURE_OC_TOD_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\t\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Utilized Future Balance Amount -- UTIL_FUTURE_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Utilized Future Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.UTIL_FUTURE_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Future Balance Amount -- FUTURE_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Future Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FUTURE_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FFD Contribution to Operative Account -- FFD_CONTRIB_TO_ACCT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FFD Contribution to Operative Account' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FFD_CONTRIB_TO_ACCT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Used Unclear Over DACC Limit Amount -- USED_UN_CLR_OVER_DACC_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Used Unclear Over DACC Limit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.USED_UN_CLR_OVER_DACC_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Used Clean Single Transaction Limit -- USED_CLEAN_SINGLE_TRAN_LIM -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Used Clean Single Transaction Limit' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.USED_CLEAN_SINGLE_TRAN_LIM AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Used Single Transaction Limit -- USED_SINGLE_TRAN_LIM -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Used Single Transaction Limit' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.USED_SINGLE_TRAN_LIM AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Sweep In Minimum Balance -- SWEEP_IN_MIN_BAL -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Sweep In Minimum Balance' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.SWEEP_IN_MIN_BAL AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Freeze Date Balance Amount -- BAL_ON_FREZ_DATE -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Freeze Date Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.BAL_ON_FREZ_DATE AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Utilized Sanction Limit Amount -- UTILISED_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Utilized Sanction Limit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.UTILISED_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FCNR Account Total Debit Amount -- FX_CUM_DR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FCNR Account Total Debit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FX_CUM_DR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FCNR Account Total Credit Amount -- FX_CUM_CR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FCNR Account Total Credit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FX_CUM_CR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FCNR Account Purge Date Balance Amount -- FX_BAL_ON_PURGE_DATE -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FCNR Account Purge Date Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FX_BAL_ON_PURGE_DATE AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- FCNR Account Transfer Clear Balance Amount -- FX_CLR_BAL_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'FCNR Account Transfer Clear Balance Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.FX_CLR_BAL_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Purge Date Balance -- BAL_ON_PURGE_DATE -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Purge Date Balance' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.BAL_ON_PURGE_DATE AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Accrued Credit Amount -- ACRD_CR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Accrued Credit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.ACRD_CR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Cumulative Credit Amount -- CUM_CR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Cumulative Credit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.CUM_CR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n\n\tUNION\n\n\t-- Cumulative Debit Amount -- CUM_DR_AMT -- \n\tSELECT\n\t\tBDG.FORACID AS CustomerAccountId\n\t\t,'Cumulative Debit Amount' AS BalanceTypeId\n\t\t,BDG.LCHG_TIME AS Timestamp\n\t\t,BDG.CUM_DR_AMT AS BalanceAmount\n\t\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n\t\t,BDG.BANK_ID AS FinancialInstitutionId\n\t\t,'DEP' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDG.INSERT_DTTM AS InsertDttm\n\tFROM  BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1\n)\n\nSELECT * INTO #TEMP_BNKM_CustomerAccountBalance FROM TEMP_BNKM_CustomerAccountBalance;\n\n-------------CHECK IF THERE IS DELTA \nWITH\nTEMP_BNKM_CustomerAccountBalance_SRC\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerAccountId)\n,convert(varchar,BalanceTypeId)\n,convert(numeric,BalanceAmount)\n,convert(varchar,IsoCurrencyCode)\n,convert(varchar,FinancialInstitutionId)\n,convert(varchar,SourceSystemCode)\n)) HASHROW, CustomerAccountId,BalanceTypeId,TimeStamp,FinancialInstitutionId,SourceSystemCode\nFROM #TEMP_BNKM_CustomerAccountBalance \n)\n,\nTEMP_BNKM_CustomerAccountBalance_TGT\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,A.CustomerAccountId)\n,convert(varchar,A.BalanceTypeId)\n,convert(numeric,A.BalanceAmount)\n,convert(varchar,A.IsoCurrencyCode)\n,convert(varchar,A.FinancialInstitutionId)\n,convert(varchar,A.SourceSystemCode)\n)) HASHROW, A.CustomerAccountId, A.BalanceTypeId,A.TimeStamp,A.FinancialInstitutionId,A.SourceSystemCode\nFROM BNKM.CustomerAccountBalance  A\n\t JOIN (SELECT CustomerAccountId, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CustomerAccountBalance GROUP BY CustomerAccountId, FinancialInstitutionId ) B\n\t\tON A.CustomerAccountId = B.CustomerAccountId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\nWHERE SourceSystemCode = 'DEP'\t\n)\n,\nTEMP_BNKM_CustomerAccountBalance_DELTA\nAS\n(\nSELECT\t\n\tSRC.HASHROW AS SRC_HR\n\t,TGT.HASHROW AS TGT_HR\n\t,ISNULL(SRC.CustomerAccountId,TGT.CustomerAccountId) AS CustomerAccountId\n\t,ISNULL(SRC.BalanceTypeId,TGT.BalanceTypeId) AS BalanceTypeId\n\t,ISNULL(SRC.TimeStamp,TGT.TimeStamp) AS TimeStamp\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\n\t,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\n\t,CASE\n\t\tWHEN TGT.HASHROW IS NULL THEN 'INSERT'  \n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'INSERT'\n\tELSE NULL END AS RECORD_STATUS\n\t\nFROM TEMP_BNKM_CustomerAccountBalance_SRC\tSRC\nLEFT JOIN TEMP_BNKM_CustomerAccountBalance_TGT\tTGT\nON\tSRC.CustomerAccountId = TGT.CustomerAccountId\nAND SRC.BalanceTypeId = TGT.BalanceTypeId\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\n)\n\n\nSELECT * INTO #TEMP_BNKM_CustomerAccountBalance_DELTA FROM TEMP_BNKM_CustomerAccountBalance_DELTA;\n\nWITH TEMP_TABLE_SELECT AS (\nSELECT\n\tDistinct\n\tSRC.CustomerAccountId\n\t,SRC.BalanceTypeId\n\t,SRC.[Timestamp]\n\t,SRC.BalanceAmount\n\t,SRC.IsoCurrencyCode\n\t,SRC.FinancialInstitutionId\n\t,'DEP' AS SourceSystemCode\n\t,0 AS TaskRunId\n\t,0 AS WorkFlowId\n\t,SRC.InsertDttm\nFROM #TEMP_BNKM_CustomerAccountBalance SRC\nJOIN #TEMP_BNKM_CustomerAccountBalance_DELTA DELTA ON DELTA.CustomerAccountId = SRC.CustomerAccountId  \nAND DELTA.BalanceTypeId = SRC.BalanceTypeId \nAND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId \nAND DELTA.SourceSystemCode = SRC.SourceSystemCode \nWHERE RECORD_STATUS IN ('INSERT')\n)\n\nSELECT COUNT(1) CNT  FROM TEMP_TABLE_SELECT;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAB_BUSC",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.TRY_TRADES\nWHERE ISLATEST = 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script_1",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script_0",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT CustomerAccountId, BalanceTypeId, [Timestamp], IsoCurrencyCode, FinancialInstitutionId, SourceSystemCode, COUNT(1) CNT \nFROM BNKM.CustomerAccountBalance WHERE SourceSystemCode = 'TRY'\nGROUP BY CustomerAccountId, BalanceTypeId, [Timestamp], IsoCurrencyCode, FinancialInstitutionId, SourceSystemCode\nHAVING COUNT(1) > 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script_0",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT SOURCESYSTEMCODE, COUNT(1) DUP_CNT FROM (\nSELECT CustomerAccountId, BalanceTypeId, [Timestamp], IsoCurrencyCode, FinancialInstitutionId, SourceSystemCode, COUNT(1) CNT \nFROM BNKM.CustomerAccountBalance WHERE SourceSystemCode = 'TRY'\nGROUP BY CustomerAccountId, BalanceTypeId, [Timestamp], IsoCurrencyCode, FinancialInstitutionId, SourceSystemCode\nHAVING COUNT(1) > 1) A\nGROUP BY SOURCESYSTEMCODE\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-11-16T10:17:12Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

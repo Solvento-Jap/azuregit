@@ -1,0 +1,667 @@
+{
+	"name": "CI_SVOC_ProductHoldings_EDS",
+	"properties": {
+		"description": "Sources data from EDS tables",
+		"activities": [
+			{
+				"name": "SVOC_PHASE_2_ProductHoldings",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "SET_BANK_ID",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": {
+							"value": "@replace(\n  replace(\n    concat(variables('v_query_1'), variables('v_query_2')),\n    '${P_DATE}', variables('v_date')\n  ),\n  '${BANK_ID}', variables('v_bank_id')\n)",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "DelimitedTextSink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"formatSettings": {
+							"type": "DelimitedTextWriteSettings",
+							"quoteAllText": true,
+							"fileExtension": ".txt"
+						}
+					},
+					"enableStaging": false,
+					"translator": {
+						"type": "TabularTranslator",
+						"typeConversion": true,
+						"typeConversionSettings": {
+							"allowDataTruncation": true,
+							"treatBooleanAsNumber": false
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_EDS",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "-"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "CI_csv_gen_SVOC",
+						"type": "DatasetReference",
+						"parameters": {
+							"Table": "SVOC_ProductHoldings",
+							"Source": "SVOC",
+							"Types": "Retail"
+						}
+					}
+				]
+			},
+			{
+				"name": "START_TASK_CI",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "OM_SRC_CHECK",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_START]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@variables('v_date')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_SUCCESSFUL",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "SVOC_PHASE_2_ProductHoldings",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "SUCCESSFUL",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_FAILED",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "SVOC_PHASE_2_ProductHoldings",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "FAILED",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.date,'9999-12-31')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_date",
+								"value": {
+									"value": "@pipeline().parameters.date",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "SELECT DEPOSITS_DATE fulldate\nFROM EDS.EDS_CTL",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_date",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_GET",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Set v_error_desc_get",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@variables('v_date')",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_CI_SVOC_PHASE_2",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "SP_LOG_TASK_ERROR_DTL_GET",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": {
+						"value": "@variables('v_error_desc')",
+						"type": "Expression"
+					},
+					"errorCode": "500"
+				}
+			},
+			{
+				"name": "Set v_error_desc_get",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "SVOC_PHASE_2_ProductHoldings",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_error_desc",
+					"value": {
+						"value": "@activity('SVOC_PHASE_2_ProductHoldings').Error.message",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "SP_LOG_COPY_ACTIVITY_DTL",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "SVOC_PHASE_2_ProductHoldings",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_COPY_ACTIVITY_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@variables('v_date')",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"dataread": {
+							"value": {
+								"value": "@activity('SVOC_PHASE_2_ProductHoldings').output.dataRead",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"datawritten": {
+							"value": {
+								"value": "@activity('SVOC_PHASE_2_ProductHoldings').output.dataWritten",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"sourcepeakconnections": {
+							"value": {
+								"value": "@activity('SVOC_PHASE_2_ProductHoldings').output.sourcePeakConnections",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowsread": {
+							"value": {
+								"value": "@activity('SVOC_PHASE_2_ProductHoldings').output.rowsRead",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowscopied": {
+							"value": {
+								"value": "@activity('SVOC_PHASE_2_ProductHoldings').output.rowsCopied",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowsskipped": {
+							"value": null,
+							"type": "String"
+						},
+						"copyduration": {
+							"value": {
+								"value": "@activity('SVOC_PHASE_2_ProductHoldings').output.copyDuration",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"throughput": {
+							"value": {
+								"value": "@activity('SVOC_PHASE_2_ProductHoldings').output.throughput",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"redirectrowpath": {
+							"value": null,
+							"type": "String"
+						},
+						"logfilepath": {
+							"value": null,
+							"type": "String"
+						},
+						"filesread": {
+							"value": null,
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "OM_SRC_CHECK",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@replace(substring(variables('v_date'),0,10),'-','')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SET_BANK_ID",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "START_TASK_CI",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_bank_id",
+					"value": {
+						"value": "@pipeline().parameters.bank_id",
+						"type": "Expression"
+					}
+				}
+			}
+		],
+		"parameters": {
+			"tables": {
+				"type": "string",
+				"defaultValue": "CI_SVOC_ProductHoldings"
+			},
+			"date": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"bank_id": {
+				"type": "string",
+				"defaultValue": "CBC01"
+			}
+		},
+		"variables": {
+			"v_date": {
+				"type": "String"
+			},
+			"v_error_desc": {
+				"type": "String"
+			},
+			"v_bank_id": {
+				"type": "String"
+			},
+			"v_query_1": {
+				"type": "String",
+				"defaultValue": "WITH DEP AS ( SELECT ORGKEY AS CUSTOMER_ID ,COUNT(DISTINCT GAM_ACID) AS DEP_ACCOUNTS_CNT ,SUM(YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP) TRB ,SUM(OUTSTANDING_BALANCE_PHP) OUTSTANDING_BALANCE_PHP ,COUNT(DISTINCT CASE WHEN GAM_SCHM_TYPE IN ('CAA') THEN GAM_ACID END) AS CAA_CNT ,COUNT(DISTINCT CASE WHEN GAM_SCHM_TYPE IN ('SBA') THEN GAM_ACID END) AS SBA_CNT ,COUNT(DISTINCT CASE WHEN GAM_SCHM_TYPE IN ('TDA') THEN GAM_ACID END) AS TD_CNT ,COUNT(DISTINCT CASE WHEN GAM_SCHM_TYPE IN ( 'SBA' ,'CAA' ) THEN GAM_ACID END) AS CASA_CNT ,COUNT(DISTINCT CASE WHEN GAM_SCHM_CODE IN ( '00013' ,'01013' ) THEN GAM_ACID END) AS PAYROLL_CNT ,COUNT(DISTINCT CASE WHEN GAM_SCHM_CODE IN ('01030') THEN GAM_ACID END) AS YOUNGSAVERS_CNT ,COUNT(DISTINCT CASE WHEN GAM_SCHM_CODE IN ('01050') THEN GAM_ACID END) AS ULTRASA_CNT ,COUNT(DISTINCT CASE WHEN GAM_SCHM_CODE IN ('00050') THEN GAM_ACID END) AS ULTRACA_CNT ,SUM(CASE WHEN GAM_SCHM_CODE IN ( '01005' ,'01010' ,'01011' ,'01013' ,'01020' ,'01030' ,'01040' ,'01041' ,'01050' ,'00005' ,'00010' ,'00013' ,'00015' ,'00050' ) THEN YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP ELSE 0 END) AS PURECASA_YTD_ADB_PHP ,SUM(CASE WHEN GAM_SCHM_CODE IN ('01015') THEN YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP ELSE 0 END) AS MONEYPLUS_YTD_ADB_PHP ,SUM(CASE WHEN GAM_SCHM_CODE IN ('01016') THEN YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP ELSE 0 END) AS PREMIUMSA_YTD_ADB_PHP ,SUM(CASE WHEN GAM_SCHM_CODE IN ( '02005' ,'02010' ) THEN YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP ELSE 0 END) AS TDCTDSP_YTD_ADB_PHP ,SUM(CASE WHEN GAM_SCHM_CODE IN ( '02006' ,'02007' ) THEN YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP ELSE 0 END) AS DSARBB_YTD_ADB_PHP ,SUM(CASE WHEN GAM_SCHM_CODE IN ( '02505' ,'02510' ) THEN YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP ELSE 0 END) AS MONEYLIFT_YTD_ADB_PHP ,SUM(CASE WHEN GAM_SCHM_CODE IN ( '11005' ,'11010' ,'11016' ,'21005' ,'31005' ,'41005' ) THEN YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP ELSE 0 END) AS DOLLARSA_YTD_ADB_PHP ,SUM(CASE WHEN GAM_SCHM_CODE IN ( '12005' ,'12505' ,'22005' ,'32005' ) THEN YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP ELSE 0 END) AS DOLLARTD_YTD_ADB_PHP ,COUNT(DISTINCT CASE WHEN GAM_SCHM_CODE IN ( '01015' ,'01016' ) THEN GAM_ACID END) AS SMG_HIGHCOST_SA_CNT ,COUNT(DISTINCT CASE WHEN GAM_SCHM_CODE IN ( '02010' ,'02505' ,'02005' ,'02510' ,'02007' ,'02006' ) THEN GAM_ACID END) AS SMG_HIGHCOST_TD_CNT ,COUNT(DISTINCT CASE WHEN GAM_SCHM_CODE IN ( '00013' ,'00005' ,'00010' ,'00015' ) THEN GAM_ACID END) AS SMG_LOWCOST_CA_CNT ,COUNT(DISTINCT CASE WHEN GAM_SCHM_CODE IN ( '11016' ,'41005' ,'11005' ,'31005' ,'11010' ,'21005' ) THEN GAM_ACID END) AS SMG_LOWCOST_FCDUSA_CNT ,COUNT(DISTINCT CASE WHEN GAM_SCHM_CODE IN ( '01013' ,'01041' ,'01011' ,'01040' ,'01030' ,'01020' ,'01005' ,'01010' ) THEN GAM_ACID END) AS SMG_LOWCOST_PHPSA_CNT ,COUNT(DISTINCT CASE WHEN GAM_SCHM_CODE IN ( '32005' ,'12005' ,'22005' ,'12505' ) THEN GAM_ACID END) AS SMG_TD_FCDU_CNT ,COUNT(DISTINCT CASE WHEN GAM_SCHM_CODE IN ( '00050' ,'01050' ) THEN GAM_ACID END) AS SMG_ULTRAREWARDS_CNT FROM eds.DEPOSIT_FACT b INNER JOIN eds.DEP_ACCOUNTRELATIONSHIP AS AAS ON b.GAM_ACID = AAS.ACID AND b.GAM_BANK_ID = AAS.BANK_ID AND AAS.DEL_FLG <> 'Y' AND AAS.AS_OF_DATE = b.AS_OF_DATE LEFT JOIN [eds].[CUSTOMER_DIM] a ON a.core_cust_id = AAS.cust_id AND a.BANK_ID = b.gam_bank_id AND AAS.AS_OF_DATE BETWEEN a.SCD_Start_Date AND a.SCD_End_Date WHERE b.gam_bank_id = '${BANK_ID}' AND SUBSTRING(b.GAM_SCHM_CODE, 1, 2) <> '09' AND b.DEL_FLG = 'N' AND b.as_of_date = CAST('${P_DATE}' AS DATE) AND b.DEP_ACCOUNT_STATUS <> 'C' AND AAS.ACCT_POA_AS_REC_TYPE IN ( 'M' ,'J' ) GROUP BY ORGKEY ) ,LNS AS ( SELECT CUST.ORGKEY AS CUSTOMER_ID ,COUNT(DISTINCT AAS.ACID) AS LNS_ACCOUNTS_CNT ,COUNT(DISTINCT CASE WHEN LF.GAM_SCHM_TYPE = 'LAA' THEN LF.GAM_ACID END) AS LAA_CNT ,COUNT(DISTINCT CASE WHEN LF.GAM_SCHM_TYPE = 'CLA' THEN LF.GAM_ACID END) AS CLA_CNT ,COUNT(DISTINCT CASE WHEN GAM_SCHM_CODE LIKE 'AL%' THEN LF.GAM_ACID END) AS AUTOLOANS_CNT ,COUNT(DISTINCT CASE WHEN GAM_SCHM_CODE LIKE 'HL%' THEN LF.GAM_ACID END) AS HOMELOANS_CNT ,COUNT(DISTINCT CASE WHEN GAM_SCHM_CODE NOT LIKE 'AL%' AND GAM_SCHM_CODE NOT LIKE 'HL%' THEN LF.GAM_ACID END) AS OTHERLOANS_CNT ,SUM(RELATIONSHIP_EXPOSURE_PHP) LOAN_EXPOSURE_PHP ,COUNT(DISTINCT CASE WHEN LF.GAM_SCHM_CODE IN ( 'AL013' ,'AL016' ,'AL027' ,'AL033' ,'AL036' ,'AL047' ,'AL057' ,'AL067' ,'AL077' ) THEN LF.GAM_ACID END) AS CBG_AUTO_CNT ,COUNT(DISTINCT CASE WHEN LF.GAM_SCHM_CODE IN ( 'HL013' ,'HL021' ,'HL022' ,'HL024' ,'HL031' ,'HL033' ) THEN LF.GAM_ACID END) AS CBG_HOUSING_CNT ,COUNT(DISTINCT CASE WHEN LF.GAM_SCHM_CODE IN ( 'CT012' ,'CT013' ,'CT025' ,'CT035' ,'CT045' ) THEN LF.GAM_ACID END) AS CBG_CTSDEV_CNT ,COUNT(DISTINCT CASE WHEN LF.GAM_SCHM_CODE IN ( 'TF021' ,'TL611' ,'TL612' ,'TL613' ,'TL614' ,'TL631' ,'TL641' ,'TL643' ) THEN LF.GAM_ACID END) AS RBB_FCDULOANS_CNT ,COUNT(DISTINCT CASE WHEN LF.GAM_SCHM_CODE IN ( 'AC011' ,'AC012' ,'BD004' ,'BD014' ,'BD015' ,'DL014' ,'ML011' ,'ML012' ,'ML013' ,'ML032' ,'OA013' ,'OA014' ,'OA015' ,'OA021' ,'OA024' ,'OE012' ,'SC013' ,'SL013' ,'SL033' ,'SY023' ,'TF011' ,'TF014' ,'TF015' ,'TL013' ,'TL014' ,'TL015' ,'TL021' ,'TL023' ,'TL024' ,'UD011' ,'UD013' ) THEN LF.GAM_ACID END) AS RBB_RBULOANS_CNT ,SUM(CASE WHEN LF.GAM_SCHM_CODE IN ( 'AL013' ,'AL016' ,'AL027' ,'AL033' ,'AL036' ,'AL047' ,'AL057' ,'AL067' ,'AL077' ) THEN LF.YTD_ADB_CLR_BAL_PHP ELSE 0 END) AS CBG_AUTO_YTD_ADB_PHP ,SUM(CASE WHEN LF.GAM_SCHM_CODE IN ( 'HL013' ,'HL021' ,'HL022' ,'HL024' ,'HL031' ,'HL033' ) THEN LF.YTD_ADB_CLR_BAL_PHP ELSE 0 END) AS CBG_HOUSING_YTD_ADB_PHP ,SUM(CASE WHEN LF.GAM_SCHM_CODE IN ( 'CT012' ,'CT013' ,'CT025' ,'CT035' ,'CT045' ) THEN LF.YTD_ADB_CLR_BAL_PHP ELSE 0 END) AS CBG_CTSDEV_YTD_ADB_PHP ,SUM(CASE WHEN LF.GAM_SCHM_CODE IN ( 'TF021' ,'TL611' ,'TL612' ,'TL613' ,'TL614' ,'TL631' ,'TL641' ,'TL643' ) THEN LF.YTD_ADB_CLR_BAL_PHP ELSE 0 END) AS RBB_FCDULOANS_YTD_ADB_PHP ,SUM(CASE WHEN LF.GAM_SCHM_CODE IN ( 'AC011' ,'AC012' ,'BD004' ,'BD014' ,'BD015' ,'DL014' ,'ML011' ,'ML012' ,'ML013' ,'ML032' ,'OA013' ,'OA014' ,'OA015' ,'OA021' ,'OA024' ,'OE012' ,'SC013' ,'SL013' ,'SL033' ,'SY023' ,'TF011' ,'TF014' ,'TF015' ,'TL013' ,'TL014' ,'TL015' ,'TL021' ,'TL023' ,'TL024' ,'UD011' ,'UD013' ) THEN LF.YTD_ADB_CLR_BAL_PHP ELSE 0 END) AS RBB_RBULOANS_YTD_ADB_PHP FROM eds.LOAN_FACT LF INNER JOIN eds.LNS_ACCTAUTHSIGN AS AAS ON LF.GAM_ACID = AAS.ACID AND LF.GAM_BANK_ID = AAS.BANK_ID AND AAS.DEL_FLG <> 'Y' AND AAS.AS_OF_DATE = LF.AS_OF_DATE LEFT JOIN eds.CUSTOMER_DIM CUST ON CUST.CORE_CUST_ID = AAS.CUST_ID AND CUST.BANK_ID = AAS.BANK_ID AND AAS.AS_OF_DATE BETWEEN CUST.SCD_START_DATE AND CUST.SCD_END_DATE WHERE LF.GAM_BANK_ID = '${BANK_ID}' AND LF.AS_OF_DATE = CAST('${P_DATE}' AS DATE) AND ( (LF.ACCT_CLS_FLG <> 'Y') OR ( LF.ACCT_CLS_FLG = 'Y' AND LF.ACCT_CLS_DATE > LF.AS_OF_DATE ) ) AND AAS.ACCT_POA_AS_REC_TYPE IN ( 'M' ,'J' ) GROUP BY ORGKEY ) ,CCD AS ( SELECT CUST.CUST_CIF_NBR AS CUSTOMER_ID ,COUNT(DISTINCT ACC.CRDACCT_NBR) AS CCD_ACCOUNTS_CNT ,MIN(CAST(CAST(CRDACCT_DTE_OPEN AS CHAR(8)) AS DATE)) AS CCD_EARLIEST_OPN_DATE FROM eds.CCD_CUSTOMER CUST LEFT JOIN eds.CCD_ACCOUNTS ACC ON CUST.CUST_NBR = ACC.CRDACCT_CUST_NBR AND ACC.CRDACCT_STATUS <> 8 AND ACC.AS_OF_DATE = CAST('${P_DATE}' AS DATE) WHERE CAST('${P_DATE}' AS DATE) BETWEEN CUST.SCD_Start_Date AND CUST.SCD_End_Date GROUP BY CUST_CIF_NBR )"
+			},
+			"v_query_2": {
+				"type": "String",
+				"defaultValue": ",TRU AS ( SELECT CUST.UNIQUE_ID AS CUSTOMER_ID ,COUNT(DISTINCT PORT.PORTFOLIO_NO) AS TRU_ACCOUNTS_CNT ,MIN(CAST(PFSUB.INCEPTION_DATE AS DATE)) AS TRU_EARLIEST_OPN_DATE FROM EDS.TRU_CUST AS CUST LEFT JOIN EDS.TRU_BASELINK AS BASE ON CUST.CUST_NO = BASE.CIF_NO AND CAST('${P_DATE}' AS DATE) BETWEEN BASE.SCD_Start_Date AND BASE.SCD_End_Date LEFT JOIN EDS.TRU_PORTFOLIO AS PORT ON PORT.BASE_NO = BASE.CUST_NO AND CAST('${P_DATE}' AS DATE) BETWEEN PORT.SCD_Start_Date AND PORT.SCD_End_Date AND PORT.STATUS = 'A' LEFT JOIN EDS.TRU_PFSUBSCRIPTION PFSUB ON PORT.SUBSCRIPTION_ID = PFSUB.SUBSCRIPTION_ID AND PORT.BASE_NO = PFSUB.BASE_NO WHERE CAST('${P_DATE}' AS DATE) BETWEEN CUST.SCD_Start_Date AND CUST.SCD_End_Date GROUP BY CUST.UNIQUE_ID ) ,TRY AS ( SELECT [value] AS CUSTOMER_ID ,COUNT(DISTINCT ID) AS TRY_ACCOUNTS_CNT ,NULL AS TRY_EARLIEST_OPN_DATE FROM ( SELECT * FROM EDS.TRY_LEGALENTITY CROSS APPLY STRING_SPLIT(External_Ref, '|') WHERE CAST('${P_DATE}' AS DATE) BETWEEN SCD_Start_Date AND SCD_End_Date AND STATUS = 'ENABLED' ) A GROUP BY [value] ) ,MAIN AS ( SELECT DISTINCT CUST.ORGKEY AS CUSTOMER_ID ,CUST.CORE_CUST_ID AS CUST_ID ,DEP_ACCOUNTS_CNT ,CAA_CNT ,SBA_CNT ,TD_CNT ,CASA_CNT ,PAYROLL_CNT ,YOUNGSAVERS_CNT ,ULTRASA_CNT ,ULTRACA_CNT ,SMG_HIGHCOST_SA_CNT ,SMG_HIGHCOST_TD_CNT ,SMG_LOWCOST_CA_CNT ,SMG_LOWCOST_FCDUSA_CNT ,SMG_LOWCOST_PHPSA_CNT ,SMG_TD_FCDU_CNT ,SMG_ULTRAREWARDS_CNT ,PURECASA_YTD_ADB_PHP ,MONEYPLUS_YTD_ADB_PHP ,PREMIUMSA_YTD_ADB_PHP ,TDCTDSP_YTD_ADB_PHP ,DSARBB_YTD_ADB_PHP ,MONEYLIFT_YTD_ADB_PHP ,DOLLARSA_YTD_ADB_PHP ,DOLLARTD_YTD_ADB_PHP ,DEP.TRB ,DEP.OUTSTANDING_BALANCE_PHP ,LNS_ACCOUNTS_CNT ,LAA_CNT ,CLA_CNT ,AUTOLOANS_CNT ,HOMELOANS_CNT ,OTHERLOANS_CNT ,CBG_AUTO_CNT ,CBG_HOUSING_CNT ,CBG_CTSDEV_CNT ,RBB_FCDULOANS_CNT ,RBB_RBULOANS_CNT ,CBG_AUTO_YTD_ADB_PHP ,CBG_HOUSING_YTD_ADB_PHP ,CBG_CTSDEV_YTD_ADB_PHP ,RBB_FCDULOANS_YTD_ADB_PHP ,RBB_RBULOANS_YTD_ADB_PHP ,LOAN_EXPOSURE_PHP ,CCD_ACCOUNTS_CNT ,TRU_ACCOUNTS_CNT ,TRY_ACCOUNTS_CNT ,CASE WHEN COALESCE(DEP_ACCOUNTS_CNT, 0) > 0 THEN 1 ELSE 0 END + CASE WHEN COALESCE(AUTOLOANS_CNT, 0) > 0 THEN 1 ELSE 0 END + CASE WHEN COALESCE(HOMELOANS_CNT, 0) > 0 THEN 1 ELSE 0 END + CASE WHEN COALESCE(OTHERLOANS_CNT, 0) > 0 THEN 1 ELSE 0 END + CASE WHEN COALESCE(CCD_ACCOUNTS_CNT, 0) > 0 THEN 1 ELSE 0 END + CASE WHEN COALESCE(TRU_ACCOUNTS_CNT, 0) > 0 OR COALESCE(TRY_ACCOUNTS_CNT, 0) > 0 THEN 1 ELSE 0 END PRODUCT_CNT ,CAST('${P_DATE}' AS DATE) AS AS_OF_DATE FROM eds.CUSTOMER_DIM AS CUST LEFT JOIN DEP ON CUST.ORGKEY = DEP.CUSTOMER_ID LEFT JOIN LNS ON CUST.ORGKEY = LNS.CUSTOMER_ID LEFT JOIN CCD ON CUST.ORGKEY = CCD.CUSTOMER_ID LEFT JOIN TRU ON CUST.ORGKEY = TRU.CUSTOMER_ID LEFT JOIN TRY ON CUST.ORGKEY = TRY.CUSTOMER_ID WHERE CUST.BANK_ID = '${BANK_ID}' AND CAST('${P_DATE}' AS DATE) BETWEEN CUST.SCD_START_DATE AND CUST.SCD_END_DATE AND CUST.CUSTOMER_TYPE = 'Retail' ) SELECT CUSTOMER_ID ,CUST_ID ,DEP_ACCOUNTS_CNT ,CAA_CNT ,SBA_CNT ,TD_CNT ,CASA_CNT ,PAYROLL_CNT ,YOUNGSAVERS_CNT ,ULTRASA_CNT ,ULTRACA_CNT ,SMG_HIGHCOST_SA_CNT ,SMG_HIGHCOST_TD_CNT ,SMG_LOWCOST_CA_CNT ,SMG_LOWCOST_FCDUSA_CNT ,SMG_LOWCOST_PHPSA_CNT ,SMG_TD_FCDU_CNT ,SMG_ULTRAREWARDS_CNT ,PURECASA_YTD_ADB_PHP ,MONEYPLUS_YTD_ADB_PHP ,PREMIUMSA_YTD_ADB_PHP ,TDCTDSP_YTD_ADB_PHP ,DSARBB_YTD_ADB_PHP ,MONEYLIFT_YTD_ADB_PHP ,DOLLARSA_YTD_ADB_PHP ,DOLLARTD_YTD_ADB_PHP ,TRB ,OUTSTANDING_BALANCE_PHP ,LNS_ACCOUNTS_CNT ,LAA_CNT ,CLA_CNT ,AUTOLOANS_CNT ,HOMELOANS_CNT ,OTHERLOANS_CNT ,CBG_AUTO_CNT ,CBG_HOUSING_CNT ,CBG_CTSDEV_CNT ,RBB_FCDULOANS_CNT ,RBB_RBULOANS_CNT ,CBG_AUTO_YTD_ADB_PHP ,CBG_HOUSING_YTD_ADB_PHP ,CBG_CTSDEV_YTD_ADB_PHP ,RBB_FCDULOANS_YTD_ADB_PHP ,RBB_RBULOANS_YTD_ADB_PHP ,LOAN_EXPOSURE_PHP ,CCD_ACCOUNTS_CNT ,TRU_ACCOUNTS_CNT ,TRY_ACCOUNTS_CNT ,PRODUCT_CNT ,AS_OF_DATE FROM MAIN"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-03-06T00:35:03Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

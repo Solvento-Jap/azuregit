@@ -1,0 +1,1113 @@
+{
+	"name": "DecToStg_AML_TRU",
+	"properties": {
+		"description": "AML DecToStg pipeline for TRU; covers 1 approved manifest table(s).",
+		"activities": [
+			{
+				"name": "Require_Approved_Execution",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.ExecutionMode, 'ApprovedDateSliceReload')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Unapproved_Execution",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "ExecutionMode must be ApprovedDateSliceReload.",
+								"errorCode": "AML_EXECUTION_NOT_APPROVED"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Execution_Approved",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Require_Valid_MissingFilePolicy",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(equals(pipeline().parameters.MissingFilePolicy, 'Fail'), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Invalid_MissingFilePolicy",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "MissingFilePolicy must be Fail or Skip.",
+								"errorCode": "AML_INVALID_MISSING_FILE_POLICY"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "MissingFilePolicy_Valid",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "GetFile_TRU_TRANSACTIONS",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv_AML",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('*TRUCBC_TXN_', pipeline().parameters.DateToProcess, '*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/TRU",
+							"ColumnDelimiter": ",",
+							"FirstRowAsHeader": true,
+							"RowDelimiter": "\r\n",
+							"EncodingName": "UTF-8"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "RequireFileOrSkip_TRU_TRANSACTIONS",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "GetFile_TRU_TRANSACTIONS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(not(empty(activity('GetFile_TRU_TRANSACTIONS').output.childItems)), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_TRU_TRANSACTIONS_MissingFile",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "No source file matched @concat('*TRUCBC_TXN_', pipeline().parameters.DateToProcess, '*') under dev/decrypted/TRU, and MissingFilePolicy is Fail.",
+								"errorCode": "AML_SOURCE_FILE_MISSING"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Accept_TRU_TRANSACTIONS_FilePolicy",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "IfFile_TRU_TRANSACTIONS",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "RequireFileOrSkip_TRU_TRANSACTIONS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@not(empty(activity('GetFile_TRU_TRANSACTIONS').output.childItems))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Skip_TRU_TRANSACTIONS_NoFile",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Start_TRU_TRANSACTIONS",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_START]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_TRU_TRANSACTIONS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DateToProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Copy_TRU_TRANSACTIONS",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Start_TRU_TRANSACTIONS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										},
+										{
+											"name": "H",
+											"value": "D"
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/TRU",
+										"wildcardFileName": {
+											"value": "@concat('*TRUCBC_TXN_', pipeline().parameters.DateToProcess, '*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": {
+										"value": "@concat('DECLARE @DateToProcess varchar(8) = ''', replace(pipeline().parameters.DateToProcess, '''', ''''''), '''; IF LEN(@DateToProcess) <> 8 OR @DateToProcess LIKE ''%[^0-9]%'' OR TRY_CONVERT(date, @DateToProcess, 112) IS NULL THROW 50000, ''DateToProcess must be a valid yyyyMMdd date.'', 1; DELETE FROM [D360].[STG_TRU_TRANSACTIONS] WHERE CHARINDEX(''TRUCBC_TXN_'' + @DateToProcess, [FILE_NAME]) > 0;')",
+										"type": "Expression"
+									},
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "SOURCEID"
+											},
+											"sink": {
+												"name": "SOURCEID"
+											}
+										},
+										{
+											"source": {
+												"name": "BANK_TYPE_ID"
+											},
+											"sink": {
+												"name": "BANK_TYPE_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "APPLICATION_ID"
+											},
+											"sink": {
+												"name": "APPLICATION_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCOUNT_NUMBER"
+											},
+											"sink": {
+												"name": "ACCOUNT_NUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "DEPOSIT_NUMBER"
+											},
+											"sink": {
+												"name": "DEPOSIT_NUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "PRODUCT_TYPE"
+											},
+											"sink": {
+												"name": "PRODUCT_TYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTION_REF_NBR"
+											},
+											"sink": {
+												"name": "TRANSACTION_REF_NBR"
+											}
+										},
+										{
+											"source": {
+												"name": "DEAL_NUMBER"
+											},
+											"sink": {
+												"name": "DEAL_NUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "POSTING_BOOKING_UNIT_ID"
+											},
+											"sink": {
+												"name": "POSTING_BOOKING_UNIT_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "POSTING_BRANCH_ID"
+											},
+											"sink": {
+												"name": "POSTING_BRANCH_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTION_DATE"
+											},
+											"sink": {
+												"name": "TRANSACTION_DATE"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTION_TIME"
+											},
+											"sink": {
+												"name": "TRANSACTION_TIME"
+											}
+										},
+										{
+											"source": {
+												"name": "POSTING_DATE"
+											},
+											"sink": {
+												"name": "POSTING_DATE"
+											}
+										},
+										{
+											"source": {
+												"name": "TELLER_NUMBER"
+											},
+											"sink": {
+												"name": "TELLER_NUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "TERMINAL_NUMBER"
+											},
+											"sink": {
+												"name": "TERMINAL_NUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTION_CODE"
+											},
+											"sink": {
+												"name": "TRANSACTION_CODE"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTION_CHANNEL"
+											},
+											"sink": {
+												"name": "TRANSACTION_CHANNEL"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTION_MNEMONIC"
+											},
+											"sink": {
+												"name": "TRANSACTION_MNEMONIC"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTION_TYPE"
+											},
+											"sink": {
+												"name": "TRANSACTION_TYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTION_MODE"
+											},
+											"sink": {
+												"name": "TRANSACTION_MODE"
+											}
+										},
+										{
+											"source": {
+												"name": "DEBIT_CREDIT_INDICATOR"
+											},
+											"sink": {
+												"name": "DEBIT_CREDIT_INDICATOR"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTION_CURR_ID"
+											},
+											"sink": {
+												"name": "TRANSACTION_CURR_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTION_AMOUNT"
+											},
+											"sink": {
+												"name": "TRANSACTION_AMOUNT"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTION_AMOUNT_PH"
+											},
+											"sink": {
+												"name": "TRANSACTION_AMOUNT_PH"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTION_DESCRIPTION1"
+											},
+											"sink": {
+												"name": "TRANSACTION_DESCRIPTION1"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTION_DESCRIPTION2"
+											},
+											"sink": {
+												"name": "TRANSACTION_DESCRIPTION2"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTION_DESCRIPTION3"
+											},
+											"sink": {
+												"name": "TRANSACTION_DESCRIPTION3"
+											}
+										},
+										{
+											"source": {
+												"name": "REMARKS"
+											},
+											"sink": {
+												"name": "REMARKS"
+											}
+										},
+										{
+											"source": {
+												"name": "SOURCE_OF_FUNDS"
+											},
+											"sink": {
+												"name": "SOURCE_OF_FUNDS"
+											}
+										},
+										{
+											"source": {
+												"name": "MATURITY_DATE"
+											},
+											"sink": {
+												"name": "MATURITY_DATE"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTER_PARTY_ACCOUNT"
+											},
+											"sink": {
+												"name": "COUNTER_PARTY_ACCOUNT"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTER_PARTY_BRANCH"
+											},
+											"sink": {
+												"name": "COUNTER_PARTY_BRANCH"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTER_PARTY_LASTNAME"
+											},
+											"sink": {
+												"name": "COUNTER_PARTY_LASTNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTER_PARTY_FIRSTNAME"
+											},
+											"sink": {
+												"name": "COUNTER_PARTY_FIRSTNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTER_PARTY_MIDDLENAME"
+											},
+											"sink": {
+												"name": "COUNTER_PARTY_MIDDLENAME"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTER_PARTY_INSTITUTION"
+											},
+											"sink": {
+												"name": "COUNTER_PARTY_INSTITUTION"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTER_PARTY_COUNTRY"
+											},
+											"sink": {
+												"name": "COUNTER_PARTY_COUNTRY"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTER_PARTY_ADDRESS1"
+											},
+											"sink": {
+												"name": "COUNTER_PARTY_ADDRESS1"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTER_PARTY_ADDRESS2"
+											},
+											"sink": {
+												"name": "COUNTER_PARTY_ADDRESS2"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTER_PARTY_ADDRESS3"
+											},
+											"sink": {
+												"name": "COUNTER_PARTY_ADDRESS3"
+											}
+										},
+										{
+											"source": {
+												"name": "CORRESPONDENT_BANK_ADDRESS1"
+											},
+											"sink": {
+												"name": "CORRESPONDENT_BANK_ADDRESS1"
+											}
+										},
+										{
+											"source": {
+												"name": "CORRESPONDENT_BANK_ADDRESS2"
+											},
+											"sink": {
+												"name": "CORRESPONDENT_BANK_ADDRESS2"
+											}
+										},
+										{
+											"source": {
+												"name": "CORRESPONDENT_BANK_ADDRESS3"
+											},
+											"sink": {
+												"name": "CORRESPONDENT_BANK_ADDRESS3"
+											}
+										},
+										{
+											"source": {
+												"name": "INTERMED_INST"
+											},
+											"sink": {
+												"name": "INTERMED_INST"
+											}
+										},
+										{
+											"source": {
+												"name": "INTERMED_INST_COUNTRY"
+											},
+											"sink": {
+												"name": "INTERMED_INST_COUNTRY"
+											}
+										},
+										{
+											"source": {
+												"name": "INTERMED_INST_ADDRESS1"
+											},
+											"sink": {
+												"name": "INTERMED_INST_ADDRESS1"
+											}
+										},
+										{
+											"source": {
+												"name": "INTERMED_INST_ADDRESS2"
+											},
+											"sink": {
+												"name": "INTERMED_INST_ADDRESS2"
+											}
+										},
+										{
+											"source": {
+												"name": "INTERMED_INST_ADDRESS3"
+											},
+											"sink": {
+												"name": "INTERMED_INST_ADDRESS3"
+											}
+										},
+										{
+											"source": {
+												"name": "PRODUCT_OWNER_LASTNAME"
+											},
+											"sink": {
+												"name": "PRODUCT_OWNER_LASTNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "PRODUCT_OWNER_FIRSTNAME"
+											},
+											"sink": {
+												"name": "PRODUCT_OWNER_FIRSTNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "PRODUCT_OWNER_MIDDLENAME"
+											},
+											"sink": {
+												"name": "PRODUCT_OWNER_MIDDLENAME"
+											}
+										},
+										{
+											"source": {
+												"name": "PRODUCT_OWNER_ADDRESS1"
+											},
+											"sink": {
+												"name": "PRODUCT_OWNER_ADDRESS1"
+											}
+										},
+										{
+											"source": {
+												"name": "PRODUCT_OWNER_ADDRESS2"
+											},
+											"sink": {
+												"name": "PRODUCT_OWNER_ADDRESS2"
+											}
+										},
+										{
+											"source": {
+												"name": "PRODUCT_OWNER_ADDRESS3"
+											},
+											"sink": {
+												"name": "PRODUCT_OWNER_ADDRESS3"
+											}
+										},
+										{
+											"source": {
+												"name": "BENEFICIARY_LASTNAME"
+											},
+											"sink": {
+												"name": "BENEFICIARY_LASTNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "BENEFICIARY_MIDDLENAME"
+											},
+											"sink": {
+												"name": "BENEFICIARY_MIDDLENAME"
+											}
+										},
+										{
+											"source": {
+												"name": "BENEFICIARY_FIRSTNAME"
+											},
+											"sink": {
+												"name": "BENEFICIARY_FIRSTNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "BENEFICIARY_ADDRESS1"
+											},
+											"sink": {
+												"name": "BENEFICIARY_ADDRESS1"
+											}
+										},
+										{
+											"source": {
+												"name": "BENEFICIARY_ADDRESS2"
+											},
+											"sink": {
+												"name": "BENEFICIARY_ADDRESS2"
+											}
+										},
+										{
+											"source": {
+												"name": "BENEFICIARY_ADDRESS3"
+											},
+											"sink": {
+												"name": "BENEFICIARY_ADDRESS3"
+											}
+										},
+										{
+											"source": {
+												"name": "BENEFICIARY_COUNTRY"
+											},
+											"sink": {
+												"name": "BENEFICIARY_COUNTRY"
+											}
+										},
+										{
+											"source": {
+												"name": "CERTIFIED_DOCUMENT"
+											},
+											"sink": {
+												"name": "CERTIFIED_DOCUMENT"
+											}
+										},
+										{
+											"source": {
+												"name": "REGULAR_DOCUMENT"
+											},
+											"sink": {
+												"name": "REGULAR_DOCUMENT"
+											}
+										},
+										{
+											"source": {
+												"name": "FOREX_ID"
+											},
+											"sink": {
+												"name": "FOREX_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "ASSET_LOT_NUMBER"
+											},
+											"sink": {
+												"name": "ASSET_LOT_NUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "LOT_SHARES"
+											},
+											"sink": {
+												"name": "LOT_SHARES"
+											}
+										},
+										{
+											"source": {
+												"name": "LOT_AMOUNT"
+											},
+											"sink": {
+												"name": "LOT_AMOUNT"
+											}
+										},
+										{
+											"source": {
+												"name": "LOT_ACQUISITION_DATE"
+											},
+											"sink": {
+												"name": "LOT_ACQUISITION_DATE"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTION_BATCH"
+											},
+											"sink": {
+												"name": "TRANSACTION_BATCH"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTION_STATUS"
+											},
+											"sink": {
+												"name": "TRANSACTION_STATUS"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTION_REVERSAL_REF_NBR"
+											},
+											"sink": {
+												"name": "TRANSACTION_REVERSAL_REF_NBR"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTION_FLAG"
+											},
+											"sink": {
+												"name": "TRANSACTION_FLAG"
+											}
+										},
+										{
+											"source": {
+												"name": "AMLA_TRAN_CODE"
+											},
+											"sink": {
+												"name": "AMLA_TRAN_CODE"
+											}
+										},
+										{
+											"source": {
+												"name": "PARTY_TYPE_FLAG"
+											},
+											"sink": {
+												"name": "PARTY_TYPE_FLAG"
+											}
+										},
+										{
+											"source": {
+												"name": "CUSTOMER_REFERENCE_NUMBER"
+											},
+											"sink": {
+												"name": "CUSTOMER_REFERENCE_NUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME"
+											},
+											"sink": {
+												"name": "FILE_NAME"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm"
+											},
+											"sink": {
+												"name": "insert_dttm"
+											}
+										},
+										{
+											"source": {
+												"name": "H"
+											},
+											"sink": {
+												"name": "H"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv_AML",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": "dev/decrypted/TRU",
+										"ColumnDelimiter": ",",
+										"FirstRowAsHeader": true,
+										"RowDelimiter": "\r\n",
+										"EncodingName": "UTF-8"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_TRU_TRANSACTIONS"
+									}
+								}
+							]
+						},
+						{
+							"name": "End_TRU_TRANSACTIONS_Success",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_TRU_TRANSACTIONS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_TRU_TRANSACTIONS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "SUCCESSFUL",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_TRU_TRANSACTIONS",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "End_TRU_TRANSACTIONS_Failed",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_TRU_TRANSACTIONS",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_TRU_TRANSACTIONS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "FAILED",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_TRU_TRANSACTIONS",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Fail_TRU_TRANSACTIONS_Copy",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "End_TRU_TRANSACTIONS_Failed",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "Copy into D360.STG_TRU_TRANSACTIONS failed. Review the Copy activity and OM task evidence.",
+								"errorCode": "AML_COPY_FAILED"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"DateToProcess": {
+				"type": "String"
+			},
+			"ExecutionMode": {
+				"type": "String",
+				"defaultValue": "PlanOnly"
+			},
+			"MissingFilePolicy": {
+				"type": "String",
+				"defaultValue": "Fail"
+			}
+		},
+		"folder": {
+			"name": "AML_ETL/DecToStg"
+		},
+		"annotations": [
+			"AML",
+			"TRU",
+			"DecToStg",
+			"LIVE_PREFLIGHT_REQUIRED",
+			"MISSING_FILE_POLICY_CONFIGURABLE"
+		],
+		"lastPublishTime": "2026-07-31T05:46:28Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

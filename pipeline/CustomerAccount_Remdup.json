@@ -1,0 +1,327 @@
+{
+	"name": "CustomerAccount_Remdup",
+	"properties": {
+		"activities": [
+			{
+				"name": "Dupe Records",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT\n    CustomerAccountId, FinancialInstitutionId, SourceSystemCode, COUNT(1) CNT\nFROM\n    BNKM.CustomerAccount\nGROUP BY\n    CustomerAccountId, FinancialInstitutionId, SourceSystemCode\nHAVING\n    COUNT(1) > 1;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "BU Creation",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Dupe Records",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT\n    ROW_NUMBER() OVER(PARTITION BY [CustomerAccountId], [CustomerAccountName], [CustomerAccountOpenedDate], [CustomerAccountClosedDate], [GlobalServiceRelationshipNumber], [CustomerId], [ResponsibilityCenterId], [SubaccountOfCustomerAccountId], [LedgerId], [LedgerAccountNumber], [IsoCurrencyCode], [CustomerAccountTypeId], [CustomerAccountApplicationNumber], [BranchId], [CustomerAccountShortName], [CustomerAccountNote], [Last6AccountNumber], [LastSixAccountNumber], [Remarks], [DeleteIndicator], [BaseAccountId], [InternalAccountId], [FinancialInstitutionId], [CustomerAccountNotes], [SourceSystemCode], [TaskRunId], [WorkFlowId], [InsertDttm] ORDER BY CustomerAccountId DESC, INSERTDTTM DESC) RN, *\nINTO\n    BNKM.CustomerAccount_WITH_DUP_20240401\nFROM\n    BNKM.CustomerAccount;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "BU Count",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "BU Creation",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT\r\n    COUNT(1) CNT\r\nFROM\r\n    BNKM.CustomerAccount_WITH_DUP_20240401;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CA Count",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "BU Count",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT\r\n    COUNT(1) CNT\r\nFROM\r\n    BNKM.CustomerAccount;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Truncate CA",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CA Count",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "TRUNCATE TABLE BNKM.CustomerAccount;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Insert Unique Records to CA",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Truncate CA",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "INSERT INTO BNKM.CustomerAccount\r\n(\r\n    [CustomerAccountId]\r\n    ,[CustomerAccountName]\r\n    ,[CustomerAccountOpenedDate]\r\n    ,[CustomerAccountClosedDate]\r\n    ,[GlobalServiceRelationshipNumber]\r\n    ,[CustomerId]\r\n    ,[ResponsibilityCenterId]\r\n    ,[SubaccountOfCustomerAccountId]\r\n    ,[LedgerId]\r\n    ,[LedgerAccountNumber]\r\n    ,[IsoCurrencyCode]\r\n    ,[CustomerAccountTypeId]\r\n    ,[CustomerAccountApplicationNumber]\r\n    ,[BranchId]\r\n    ,[CustomerAccountShortName]\r\n    ,[CustomerAccountNote]\r\n    ,[Last6AccountNumber]\r\n    ,[LastSixAccountNumber]\r\n    ,[Remarks]\r\n    ,[DeleteIndicator]\r\n    ,[BaseAccountId]\r\n    ,[InternalAccountId]\r\n    ,[FinancialInstitutionId]\r\n    ,[CustomerAccountNotes]\r\n    ,[SourceSystemCode]\r\n    ,[TaskRunId]\r\n    ,[WorkFlowId]\r\n    ,[InsertDttm]\r\n)\r\nSELECT  \r\n    [CustomerAccountId]\r\n    ,[CustomerAccountName]\r\n    ,[CustomerAccountOpenedDate]\r\n    ,[CustomerAccountClosedDate]\r\n    ,[GlobalServiceRelationshipNumber]\r\n    ,[CustomerId]\r\n    ,[ResponsibilityCenterId]\r\n    ,[SubaccountOfCustomerAccountId]\r\n    ,[LedgerId]\r\n    ,[LedgerAccountNumber]\r\n    ,[IsoCurrencyCode]\r\n    ,[CustomerAccountTypeId]\r\n    ,[CustomerAccountApplicationNumber]\r\n    ,[BranchId]\r\n    ,[CustomerAccountShortName]\r\n    ,[CustomerAccountNote]\r\n    ,[Last6AccountNumber]\r\n    ,[LastSixAccountNumber]\r\n    ,[Remarks]\r\n    ,[DeleteIndicator]\r\n    ,[BaseAccountId]\r\n    ,[InternalAccountId]\r\n    ,[FinancialInstitutionId]\r\n    ,[CustomerAccountNotes]\r\n    ,[SourceSystemCode]\r\n    ,[TaskRunId]\r\n    ,[WorkFlowId]\r\n    ,[InsertDttm]\r\nFROM BNKM.CustomerAccount_WITH_DUP_20240401 -- Name of backup table to store duplicate records\r\nWHERE RN = 1;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Dupe Check",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Insert Unique Records to CA",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT\n    CustomerAccountId, FinancialInstitutionId, SourceSystemCode, COUNT(1) CNT\nFROM\n    BNKM.CustomerAccount\nGROUP BY\n    CustomerAccountId, FinancialInstitutionId, SourceSystemCode\nHAVING\n    COUNT(1) > 1;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "BU Count2",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Dupe Check",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT\r\n    COUNT(1) CNT\r\nFROM\r\n    BNKM.CustomerAccount_WITH_DUP_20240401;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CA Count2",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "BU Count2",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BNKM.CustomerAccount;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-04-01T10:34:08Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

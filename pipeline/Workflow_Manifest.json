@@ -1,0 +1,974 @@
+{
+	"name": "Workflow_Manifest",
+	"properties": {
+		"activities": [
+			{
+				"name": "ManifestFile",
+				"type": "Until",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(\n    equals(variables('HasPipelineSucceed'), true),\n    greater(formatDateTime(addHours(utcnow(), 8), 'HH:mm'), pipeline().parameters.EndTime)\n    )",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "Get Manifest CBC01",
+							"type": "GetMetadata",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "SFTP_OnPrem",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filepath": {
+											"value": "@concat('data360/uat/CBC01/',replace(pipeline().parameters.src_sys,'RIB','EBK'),'/encrypt')",
+											"type": "Expression"
+										},
+										"Filename": {
+											"value": "@concat('CBC01_',pipeline().parameters.src_sys,'_MANIFEST_001_', replace(pipeline().parameters.DatetoProcessed, '-', ''),'.csv.gpg')",
+											"type": "Expression"
+										}
+									}
+								},
+								"fieldList": [
+									"exists"
+								],
+								"storeSettings": {
+									"type": "SftpReadSettings",
+									"recursive": true,
+									"enablePartitionDiscovery": false,
+									"disableChunking": false
+								},
+								"formatSettings": {
+									"type": "BinaryReadSettings"
+								}
+							}
+						},
+						{
+							"name": "If Condition1",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get Manifest CBC01",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@activity('Get Manifest CBC01').output.exists",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "Wait",
+										"type": "Wait",
+										"dependsOn": [
+											{
+												"activity": "Fail1",
+												"dependencyConditions": [
+													"Skipped"
+												]
+											}
+										],
+										"userProperties": [],
+										"typeProperties": {
+											"waitTimeInSeconds": {
+												"value": "@pipeline().parameters.RetryInterval",
+												"type": "Expression"
+											}
+										}
+									},
+									{
+										"name": "Fail1",
+										"type": "Fail",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"message": "Manifest File not found",
+											"errorCode": "404"
+										}
+									}
+								],
+								"ifTrueActivities": [
+									{
+										"name": "Set variable",
+										"type": "SetVariable",
+										"dependsOn": [],
+										"policy": {
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"variableName": "HasPipelineSucceed",
+											"value": true
+										}
+									}
+								]
+							}
+						}
+					],
+					"timeout": "0.12:00:00"
+				}
+			},
+			{
+				"name": "Load_manifest_to_STG_CBC01",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "If Manifest File Exists",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "DelimitedTextSource",
+						"additionalColumns": [
+							{
+								"name": "TABLENAME",
+								"value": {
+									"value": "@replace(pipeline().parameters.tables,'''','')",
+									"type": "Expression"
+								}
+							},
+							{
+								"name": "INSERT_DTTM",
+								"value": {
+									"value": "@pipeline().TriggerTime",
+									"type": "Expression"
+								}
+							}
+						],
+						"storeSettings": {
+							"type": "AzureBlobFSReadSettings",
+							"recursive": true,
+							"wildcardFolderPath": {
+								"value": "@concat('dev/decrypted/',pipeline().parameters.src_sys)",
+								"type": "Expression"
+							},
+							"wildcardFileName": {
+								"value": "@concat('CBC01_',pipeline().parameters.src_sys,'_MANIFEST', '*', replace(pipeline().parameters.DatetoProcessed, '-', ''),'*')",
+								"type": "Expression"
+							},
+							"enablePartitionDiscovery": false
+						},
+						"formatSettings": {
+							"type": "DelimitedTextReadSettings"
+						}
+					},
+					"sink": {
+						"type": "SqlDWSink",
+						"preCopyScript": {
+							"value": "@concat('DELETE FROM D360.MANIFEST_FILE WHERE SUBSTRING(FILENAME,1,9) = ''CBC01_',pipeline().parameters.src_sys,''' AND TABLENAME in (''',replace(pipeline().parameters.tables,'''',''),''')')",
+							"type": "Expression"
+						},
+						"allowCopyCommand": true,
+						"disableMetricsCollection": false
+					},
+					"enableStaging": true,
+					"stagingSettings": {
+						"linkedServiceName": {
+							"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+							"type": "LinkedServiceReference"
+						},
+						"path": "data360/dev/stg_synapse"
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": " ",
+							"SourceCode": " "
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "MANIFEST_FILE"
+						}
+					}
+				]
+			},
+			{
+				"name": "Source File",
+				"type": "Until",
+				"dependsOn": [
+					{
+						"activity": "Load_manifest_to_STG_CBC01",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(\n    equals(variables('HasPipelineSucceed'), true),\n    greater(formatDateTime(addHours(utcnow(), 8), 'HH:mm'), pipeline().parameters.EndTime)\n)",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "Wait1",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "Manifest_sub1",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": {
+									"value": "@pipeline().parameters.RetryInterval",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "Set Variable Source Available",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "Manifest_sub1",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "HasPipelineSucceed",
+								"value": true
+							}
+						},
+						{
+							"name": "Manifest_sub1",
+							"type": "ExecutePipeline",
+							"dependsOn": [],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Manifest_Compare",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									},
+									"tables": {
+										"value": "@pipeline().parameters.tables",
+										"type": "Expression"
+									}
+								}
+							}
+						}
+					],
+					"timeout": "0.12:00:00"
+				}
+			},
+			{
+				"name": "Fail",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "Source File",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": {
+						"value": "@concat('SOURCE IS NOT YET AVAILABLE FOR ',pipeline().parameters.tables)",
+						"type": "Expression"
+					},
+					"errorCode": "404"
+				}
+			},
+			{
+				"name": "SOURCE AVAILABLE",
+				"type": "Wait",
+				"dependsOn": [
+					{
+						"activity": "Source File",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"waitTimeInSeconds": 1
+				}
+			},
+			{
+				"name": "Get Manifest CBC01 decrypted",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "ManifestFile",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('CBC01_',pipeline().parameters.src_sys,'_MANIFEST', '_001_', replace(pipeline().parameters.DatetoProcessed, '-', ''),'.csv')",
+								"type": "Expression"
+							},
+							"SourceCode": {
+								"value": "@concat('dev/decrypted/',pipeline().parameters.src_sys)",
+								"type": "Expression"
+							}
+						}
+					},
+					"fieldList": [
+						"exists"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "If Manifest File Exists",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Get Manifest CBC01 decrypted",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@activity('Get Manifest CBC01 decrypted').output.exists",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Onprem",
+							"type": "ExecutePipeline",
+							"dependsOn": [],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "OnPremToADLS_MANIFEST",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"DatetoProcessed": {
+										"value": "@replace(substring(pipeline().parameters.DatetoProcessed,0,10),'-','')\n\n\n",
+										"type": "Expression"
+									},
+									"tables": {
+										"value": "@pipeline().parameters.tables",
+										"type": "Expression"
+									},
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "PGP Decrypt Manifest",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Onprem",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "PGPDecrypt_Manifest",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"DatetoProcessed": {
+										"value": "@replace(substring(pipeline().parameters.DatetoProcessed,0,10),'-','')\n",
+										"type": "Expression"
+									},
+									"tables": {
+										"value": "@pipeline().parameters.tables",
+										"type": "Expression"
+									},
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "Set v_error_desc_onprem",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "Onprem",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "@activity('Onprem').Error.message",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "Set v_error_desc_decrypt",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "PGP Decrypt Manifest",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "@activity('PGP Decrypt Manifest').Error.message",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_NOT_LISTED",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Set v_error_desc_notlisted",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_STG_EDS_',replace(pipeline().parameters.tables,'''',''))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_STG",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@pipeline().parameters.DatetoProcessed",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Set v_error_desc",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "ManifestFile",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_error_desc",
+					"value": {
+						"value": "@activity('Fail1').Error.message",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Set v_error_desc_get",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Get Manifest CBC01 decrypted",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_error_desc",
+					"value": {
+						"value": "@activity('Get Manifest CBC01 decrypted').Error.message",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Set v_error_desc_load",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Load_manifest_to_STG_CBC01",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_error_desc",
+					"value": {
+						"value": "@activity('Load_manifest_to_STG_CBC01').Error.message",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Set v_error_desc_notlisted",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Fail",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_error_desc",
+					"value": {
+						"value": "@activity('Manifest_sub1').Error.message",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_UNTIL_copy1",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Set v_error_desc",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_STG_EDS_',replace(pipeline().parameters.tables,'''',''))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_STG",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@pipeline().parameters.DatetoProcessed",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_GET",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Set v_error_desc_get",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_STG_EDS_',replace(pipeline().parameters.tables,'''',''))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_STG",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@pipeline().parameters.DatetoProcessed",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_LOAD",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Set v_error_desc_load",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_STG_EDS_',replace(pipeline().parameters.tables,'''',''))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_STG",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@pipeline().parameters.DatetoProcessed",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_IF_EXISTS",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "If Manifest File Exists",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_STG_EDS_',replace(pipeline().parameters.tables,'''',''))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_STG",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@pipeline().parameters.DatetoProcessed",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			}
+		],
+		"parameters": {
+			"MaxPipelineCalls": {
+				"type": "int"
+			},
+			"RetryInterval": {
+				"type": "int"
+			},
+			"DatetoProcessed": {
+				"type": "string"
+			},
+			"tables": {
+				"type": "string"
+			},
+			"EndTime": {
+				"type": "string"
+			},
+			"src_sys": {
+				"type": "string"
+			}
+		},
+		"variables": {
+			"HasPipelineSucceed": {
+				"type": "Boolean",
+				"defaultValue": false
+			},
+			"RetryTracker": {
+				"type": "Array"
+			},
+			"v_datetoprocessed": {
+				"type": "String"
+			},
+			"v_tables": {
+				"type": "String"
+			},
+			"CurrentTimestamp": {
+				"type": "String"
+			},
+			"v_error_desc": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-09-01T04:23:59Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

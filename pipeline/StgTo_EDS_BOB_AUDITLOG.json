@@ -1,0 +1,111 @@
+{
+	"name": "StgTo_EDS_BOB_AUDITLOG",
+	"properties": {
+		"activities": [
+			{
+				"name": "BOB_AUDITLOG_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": {
+							"value": "@concat('SELECT COUNT(1) CNT FROM D360.STG_EDS_',pipeline().parameters.tables,' WHERE H = ''D''')",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": {
+								"value": "@concat('STG_EDS_',pipeline().parameters.tables)",
+								"type": "Expression"
+							}
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "BOB_AUDITLOG_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('BOB_AUDITLOG_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "BOB_AUDITLOG",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"type": "NonQuery",
+										"text": "DELETE FROM EDS.BOB_AUDITLOG WHERE AS_OF_DATE = (SELECT TOP 1 CONVERT(DATE,LEFT(RIGHT(FILE_NAME, 12), 8)) FROM D360.STG_EDS_BOB_AUDITLOG);\n\nINSERT INTO EDS.BOB_AUDITLOG\n(\n    AS_OF_DATE\n    ,ACTION\n    ,AMT\n    ,AUDIT_DETAIL\n    ,CORP_ID\n    ,CURR_CD\n    ,ID\n    ,IS_FO\n    ,LOCAL_REF_NO\n    ,LOG_DT\n    ,LOG_TYPE\n    ,OVERRIDE_USER\n    ,PARENT_AUDIT_ID\n    ,REASON\n    ,STATUS\n    ,TERMINAL_ID\n    ,TRAN_CD\n    ,TRAN_DESC\n    ,TRAN_GRP_ID\n    ,USER_CD\n    ,isActive\n    ,isLatest\n    ,BNK_CODE\n    ,SOURCE_CODE\n    ,FILE_NAME\n    ,insert_dttm\n)\n\nSELECT \nCONVERT(DATE,LEFT(RIGHT(FILE_NAME, 12), 8)) AS AS_OF_DATE\n    ,ACTION\n    ,AMT\n    ,AUDIT_DETAIL\n    ,CORP_ID\n    ,CURR_CD\n    ,ID\n    ,IS_FO\n    ,LOCAL_REF_NO\n    ,LOG_DT\n    ,LOG_TYPE\n    ,OVERRIDE_USER\n    ,PARENT_AUDIT_ID\n    ,REASON\n    ,STATUS\n    ,TERMINAL_ID\n    ,TRAN_CD\n    ,TRAN_DESC\n    ,TRAN_GRP_ID\n    ,USER_CD\n    ,1 as isActive\n    ,1 as isLatest\n    ,left(FILE_NAME, 5) as BNK_CODE\n    ,substring(FILE_NAME,7,3) as SOURCE_CODE\n    ,FILE_NAME\n    ,convert(datetime2,insert_dttm) as insert_dttm\nFROM D360.STG_EDS_BOB_AUDITLOG\nWHERE H = 'D'\n\n"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"tables": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-06-05T08:40:32Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

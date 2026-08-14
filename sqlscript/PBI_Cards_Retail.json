@@ -1,0 +1,20 @@
+{
+	"name": "PBI_Cards_Retail",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "ALTER PROC [DW].[SP_PBI_Cards_Retail]\nAS\nBEGIN\n\nDROP TABLE DW.PBI_Cards_Retail;\n\nWITH DIMCUSTOMERACCOUNT AS\n(\n    SELECT AccountID,CustomerSK,BANKSK,BRANCHSK,ACCOUNTSK,CustomerID,SourceSystemCode,ValidStartDate \n    FROM DW.DIMCUSTOMERACCOUNT \n    WHERE SourceSystemCode = 'CCD' AND CurrentIndicator = 1\n\n\n)\n\nSELECT \n    DCA.AccountId AS AccountID\n    ,DCA.CustomerID AS CustomerID\n    ,CASE WHEN DDC.GlobalCIF IS NOT NULL THEN REPLACE(DDC.GlobalCIF,'Global_CIF_','Entity_CIF_')\n      ELSE CONCAT('Entity_CIF_', DDC.SourceSystemCode, '_', DDC.CustomerID) END AS EntityCIF\n    ,DDB.BankID AS BankCode\n    ,DDBR.BranchID AS BranchCode\n    ,DDBR.BranchName AS BranchName\n    ,DDBR.Area AS Area\n    ,DDBR.Region AS Region\n    ,DCA.SourceSystemCode AS Source\n    ,DDP.ProductGroup AS ProductGrouping\n    ,DDP.Productname AS ProductType\n    ,CONCAT(DDP.ProductGroup,'-',DDP.ProductName) AS ProductDetails\n    ,DDA.AccountOpenedDate AS OpenedDate\n    ,DFC.BusinessDateSK AS BusinessDate\n    ,DCA.ValidStartDate AS LastUpdatedDate\n    ,CONCAT(DCA.AccountId,DCA.CustomerID,DDB.BankID,DCA.SourceSystemCode,DDP.ProductName) as AccountKey\n    ,DFC.RelationshipExposure * .85 as RelationshipExposure\n    ,DFL.StatementBalance * .85 as StatementBalance\n    ,DFLC.CurrentCreditLimit * .85 as CreditLimit\nINTO DW.PBI_Cards_Retail\nFROM DIMCUSTOMERACCOUNT DCA\n    JOIN (SELECT CustomerSK ,GlobalCIF,SourceSystemCode,CustomerID FROM DW.DimCustomer WHERE CustomerType = 'Retail') DDC ON DCA.CustomerSK = DDC.CustomerSK\n    LEFT JOIN (SELECT BANKSK,BankID FROM DW.DIMBANK) DDB ON DCA.BANKSK = DDB.BANKSK\n    LEFT JOIN (SELECT BranchID,BranchName,Area,Region,BRANCHSK FROM DW.DIMBRANCH) DDBR ON DCA.BRANCHSK = DDBR.BRANCHSK\n    LEFT JOIN (SELECT ACCOUNTSK,PRODUCTSK FROM DW.DIMACCOUNTPRODUCT) DAP ON DCA.ACCOUNTSK = DAP.ACCOUNTSK\n    LEFT JOIN (SELECT ProductGroup,ProductName,PRODUCTSK FROM DW.DIMPRODUCT) DDP ON DAP.PRODUCTSK = DDP.PRODUCTSK \n    LEFT JOIN (SELECT AccountOpenedDate,ACCOUNTSK FROM DW.DIMACCOUNT) DDA ON DCA.ACCOUNTSK = DDA.ACCOUNTSK\n    LEFT JOIN (SELECT RelationshipExposure,BusinessDateSK,ACCOUNTSK FROM DW.FACTCARDSRELATIONSHIPEXPOSURE) DFC ON DCA.ACCOUNTSK = DFC.ACCOUNTSK\n    LEFT JOIN (SELECT ACCOUNTSK,StatementBalance FROM DW.FactCardsOutstandingBalance) DFL ON DCA.ACCOUNTSK = DFL.ACCOUNTSK\n    LEFT JOIN (SELECT ACCOUNTSK,CurrentCreditLimit FROM DW.FactCardsCreditLimit) DFLC ON DCA.ACCOUNTSK = DFLC.ACCOUNTSK\nGROUP BY\nDCA.AccountId\n,DCA.CustomerId\n,DDC.CustomerID\n,DDC.GlobalCIF\n,DDC.SourceSystemCode\n,DDB.BankId\n,DDBR.BranchID\n,DDBR.BranchName\n,DDBR.Area\n,DDBR.Region\n,DCA.SourceSystemCode\n,DDP.ProductGroup\n,DDP.ProductName\n,DDA.AccountOpenedDate\n,DFC.BusinessDateSK\n,DCA.ValidStartDate\n,RelationshipExposure\n,DFC.BusinessDateSK\n,DFL.StatementBalance\n,DFLC.CurrentCreditLimit\nEND\n\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

@@ -1,0 +1,20 @@
+{
+	"name": "bnkm_CustomerOnlineBankingUserLoginAccess_rib",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "CREATE PROCEDURE BNKM.SP_CUSTOMERONLINEBANKINGUSERLOGINACCESS_RIB\nAS\nBEGIN\n--GET DELTA FROM BUSC\nWITH TEMP_BNKM_CustomerOnlineBankingUserLoginAccess\nAS(\nSELECT\n     BRC.CORP_USER AS CustomerOnlineBankingUserId\n    ,BRC.R_MOD_TIME AS [Timestamp]\n    ,BRC.LOGIN_ALLOWED AS LoginAllowedIndicator\n    ,BRC.INSERT_DTTM AS InsertDttm\n    ,BRC.BANK_ID AS FinancialInstitutionId\n    ,BRCD.RECORD_STATUS\nFROM BUSC.RIB_CORPORATEUSER_DELTA BRCD\nLEFT JOIN BUSC.RIB_CORPORATEUSER BRC ON BRC.CORP_USER = BRCD.CORP_USER AND BRC.BANK_ID = BRCD.BANK_ID AND BRC.ISLATEST = '1'\n)\n\nSELECT * INTO #TEMP_BNKM_CustomerOnlineBankingUserLoginAccess FROM TEMP_BNKM_CustomerOnlineBankingUserLoginAccess;\n\n\n--CHECK IF THERE IS DELTA\nWITH TEMP_BNKM_CustomerOnlineBankingUserLoginAccess_SRC\nAS(\nSELECT\nHASHBYTES('MD5', CONCAT(\n CustomerOnlineBankingUserId\n,LoginAllowedIndicator\n)) HASHROW, CustomerOnlineBankingUserId, FinancialInstitutionId, RECORD_STATUS\nFROM #TEMP_BNKM_CustomerOnlineBankingUserLoginAccess WHERE RECORD_STATUS = 'UPDATE'\n),\n\nTEMP_BNKM_CustomerOnlineBankingUserLoginAccess_TGT\nAS(\nSELECT\nHASHBYTES('MD5', CONCAT(\n CustomerOnlineBankingUserId\n,LoginAllowedIndicator\n)) HASHROW, CustomerOnlineBankingUserId, FinancialInstitutionId\nFROM BNKM.CustomerOnlineBankingUserLoginAccess\n),\n\nTEMP_BNKM_CustomerOnlineBankingUserLoginAccess_DELTA\nAS(\nSELECT\n    SRC.HASHROW AS SRC_HR\n    ,TGT.HASHROW AS TGT_HR\n    ,ISNULL(SRC.CustomerOnlineBankingUserId, TGT.CustomerOnlineBankingUserId) AS CustomerOnlineBankingUserId\n    ,ISNULL(SRC.FinancialInstitutionId, TGT.FinancialInstitutionId) AS FinancialInstitutionId\n    ,CASE\n        WHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n        ELSE NULL END AS RECORD_STATUS\nFROM TEMP_BNKM_CustomerOnlineBankingUserLoginAccess_SRC SRC\nFULL OUTER JOIN TEMP_BNKM_CustomerOnlineBankingUserLoginAccess_TGT TGT\nON SRC.CustomerOnlineBankingUserId = TGT.CustomerOnlineBankingUserId\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\nWHERE SRC.HASHROW <> TGT.HASHROW\n)\n\nSELECT * INTO #TEMP_BNKM_CustomerOnlineBankingUserLoginAccess_DELTA FROM TEMP_BNKM_CustomerOnlineBankingUserLoginAccess_DELTA;\n\n\nINSERT INTO BNKM.CustomerOnlineBankingUserLoginAccess\n(\nCustomerOnlineBankingUserId\n,[Timestamp]\n,LoginAllowedIndicator\n,FinancialInstitutionId\n,WorkFlowId\n,TaskRunId\n,InsertDttm\n)\n\nSELECT\n SRC.CustomerOnlineBankingUserId AS CustomerOnlineBankingUserId\n,[Timestamp] AS [Timestamp]\n,LoginAllowedIndicator AS LoginAllowedIndicator\n,SRC.FinancialInstitutionId AS FinancialInstitutionId\n,0 AS WorkFlowId\n,0 AS TaskRunId\n,InsertDttm AS InsertDttm\nFROM #TEMP_BNKM_CustomerOnlineBankingUserLoginAccess SRC\nJOIN #TEMP_BNKM_CustomerOnlineBankingUserLoginAccess_DELTA DELTA ON DELTA.CustomerOnlineBankingUserId = SRC.CustomerOnlineBankingUserId AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId AND DELTA.RECORD_STATUS = 'UPDATE'\n\n\n\nINSERT INTO BNKM.CustomerOnlineBankingUserLoginAccess\n(\nCustomerOnlineBankingUserId\n,[Timestamp]\n,LoginAllowedIndicator\n,FinancialInstitutionId\n,WorkFlowId\n,TaskRunId\n,InsertDttm\n)\n\nSELECT\n CustomerOnlineBankingUserId AS CustomerOnlineBankingUserId\n,[Timestamp] AS [Timestamp]\n,LoginAllowedIndicator AS LoginAllowedIndicator\n,FinancialInstitutionId AS FinancialInstitutionId\n,0 AS WorkFlowId\n,0 AS TaskRunId\n,InsertDttm AS InsertDttm\nFROM #TEMP_BNKM_CustomerOnlineBankingUserLoginAccess\nWHERE RECORD_STATUS = 'INSERT'\n\nDROP TABLE #TEMP_BNKM_CustomerOnlineBankingUserLoginAccess\nDROP TABLE #TEMP_BNKM_CustomerOnlineBankingUserLoginAccess_DELTA;\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

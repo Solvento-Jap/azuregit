@@ -1,0 +1,225 @@
+{
+	"name": "StgToBuscDelta_TRY_Trades",
+	"properties": {
+		"activities": [
+			{
+				"name": "FULL",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlPoolSource",
+						"sqlReaderQuery": "select * from BUSC.DELTA_REF_TBL where TABLENAME = 'TRY_Trades'",
+						"queryTimeout": "02:00:00"
+					},
+					"dataset": {
+						"referenceName": "SqlPool_TableList",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "ForEach1",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "FULL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Full').output.value",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "LU_VALIDATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT COUNT(1) CNT FROM d360.STG_',item().tablename, ' WHERE H = ''D''')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": " "
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "If Condition1",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "LU_VALIDATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('LU_VALIDATE').output.firstRow.CNT,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "False",
+										"type": "Wait",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"waitTimeInSeconds": 1
+										}
+									}
+								],
+								"ifTrueActivities": [
+									{
+										"name": "delta_check_full",
+										"type": "Script",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"parameters": [
+														{
+															"name": "tablename",
+															"type": "String",
+															"value": {
+																"value": "@item().tablename",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														}
+													],
+													"type": "NonQuery",
+													"text": "DECLARE @SQL_QUERY NVARCHAR(max)\r\nselect  @SQL_QUERY = DELTA_SCRIPT from BUSC.DELTA_REF_TBL where tablename = @tablename\r\nEXECUTE sp_executesql @SQL_QUERY\r\n\r\n"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									},
+									{
+										"name": "update_prev_day_full",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "delta_check_full",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"parameters": [
+														{
+															"name": "tablename",
+															"type": "String",
+															"value": {
+																"value": "@item().tablename",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														},
+														{
+															"name": "targetname",
+															"type": "String",
+															"value": {
+																"value": "@item().targetname",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														},
+														{
+															"name": "joinid",
+															"type": "String",
+															"value": {
+																"value": "@item().join_id",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														}
+													],
+													"type": "NonQuery",
+													"text": "\nDECLARE @SQL1 NVARCHAR(MAX)\n\nSELECT @SQL1 = \n'Update BUSC.'+@tablename+' set isActive = 0, isLatest = 0 where  concat('+@joinid+','''') in (select concat('+@joinid+','''')  from BUSC.'+@targetname+' where record_status = ''DELETE'') and isLatest = 1;\nUpdate BUSC.'+@tablename+' set isLatest = 0 where  concat('+@joinid+','''') in (select concat('+@joinid+','''')  from BUSC.'+@targetname+' where record_status = ''UPDATE'') and isLatest = 1;'\nEXECUTE sp_executesql @SQL1\n\n\n"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-03-29T15:10:53Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

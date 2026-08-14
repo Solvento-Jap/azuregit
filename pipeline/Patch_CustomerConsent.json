@@ -1,0 +1,90 @@
+{
+	"name": "Patch_CustomerConsent",
+	"properties": {
+		"activities": [
+			{
+				"name": "ALTER SP_CUSTOMERCONSENT_CRM",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CUSTOMERCONSENT_CRM] AS\r\nBEGIN\r\n---------------GET DELTA FROM BUSC\r\nWITH TEMP_BNKM_CustomerConsent AS (\r\n\tSELECT \r\n\t\t BCM.ORGKEY AS [CustomerId]\r\n\t\t,BCM.STRTEXT13 AS [ConsentId]\r\n\t\t,BCM.DTDATE2 AS [PeriodStartDate]\r\n\t\t,'9999-12-31' AS [PeriodEndDate]\r\n\t\t,NULL AS [ProofOfConsentDocumentId]\r\n\t\t,NULL AS [CustomerConsentNote]\r\n\t\t,BCM.STRTEXT11 AS [NoticeTypeId]\r\n\t\t,BCM.STRTEXT12 AS [NoticeSharingModeId]\r\n\t\t,'CRM' AS [SourceCode]\r\n\t\t,BCM.BANK_ID AS [FinancialInstitutionId]\r\n\t\t,0 AS [WorkFlowId]\r\n\t\t,0 AS [TaskRunId]\r\n\t\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS [InsertDttm]\r\n\tFROM BUSC.CRM_MISCELLANEOUSINFO BCM\r\n\tWHERE BCM.TYPE = 'PRIVACY_NOTICE'\r\n\tAND BCM.isLatest = '1'\r\n\r\n)\r\n\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerConsent FROM TEMP_BNKM_CustomerConsent;\r\n\r\n\r\n-------------CHECK IF THERE IS DELTA\r\nWITH TEMP_BNKM_CustomerConsent_SRC AS (\r\n\tSELECT\t\r\n\t\tHASHBYTES('MD5',CONCAT(\r\n\t\t\tconvert(varchar,CustomerId), \r\n\t\t\tconvert(varchar,ConsentId), \r\n\t\t\tconvert(varchar, NoticeTypeId),\r\n\t\t\t convert(varchar, NoticeSharingModeId)))\r\n\t\t\t   AS HASHROW,CustomerId, ConsentId, FinancialInstitutionId, SourceCode\r\n\tFROM #TEMP_BNKM_CustomerConsent\r\n)\r\n\r\n\r\n,\r\nTEMP_BNKM_CustomerConsent_TGT AS (\r\n\tSELECT\t\r\n\t\tHASHBYTES('MD5',CONCAT(\r\n\t\t\tconvert(varchar,CustomerId), \r\n\t\t\tconvert(varchar,ConsentId), \r\n\t\t\tconvert(varchar, NoticeTypeId),\r\n\t\t\t convert(varchar, NoticeSharingModeId)))\r\n\t\t\t   AS HASHROW,CustomerId, ConsentId, FinancialInstitutionId, SourceCode\r\n    FROM BNKM.CustomerConsent\r\n\tWHERE SourceCode = 'CRM' AND (PeriodEndDate IS NULL OR PeriodEndDate = '9999-12-31')\r\n)\r\n\r\n\r\n,\r\nTEMP_BNKM_CustomerConsent_DELTA AS (\r\n\tSELECT\r\n\t\tSRC.HASHROW AS SRC_HR\r\n\t\t,TGT.HASHROW AS TGT_HR\r\n\t\t,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\r\n\t\t,ISNULL(SRC.ConsentId,TGT.ConsentId) AS ConsentId\r\n\t\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n\t\t,ISNULL(SRC.SourceCode,TGT.SourceCode) AS SourceCode\r\n\t\t,CASE\r\n\t\t\tWHEN TGT.HASHROW IS NULL THEN 'INSERT' \r\n\t\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\t\tELSE NULL END AS RECORD_STATUS\r\n\tFROM TEMP_BNKM_CustomerConsent_SRC\tSRC\r\n\tLEFT JOIN TEMP_BNKM_CustomerConsent_TGT\tTGT\r\n\tON\tSRC.CustomerId = TGT.CustomerId\r\n\tAND\tSRC.ConsentId = TGT.ConsentId\r\n\tAND\tSRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\n\tAND\tSRC.SourceCode = TGT.SourceCode\r\n\tWHERE SRC.HASHROW <> TGT.HASHROW  OR TGT.HASHROW IS NULL\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerConsent_DELTA FROM TEMP_BNKM_CustomerConsent_DELTA;\r\n\r\n\r\n----UPDATE RECORDS to BNKM\r\nUPDATE TGT \r\nSET\r\nPeriodEndDate =  CONVERT(DATE,DATEADD(day,-1,CONVERT(VARCHAR,SRC.PeriodStartDate)))\r\nFROM BNKM.CustomerConsent TGT\r\nJOIN #TEMP_BNKM_CustomerConsent_DELTA DELTA \r\nON DELTA.CustomerId = TGT.CustomerId  \r\nAND DELTA.ConsentId = TGT.ConsentId  \r\nAND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId  \r\nAND DELTA.SourceCode = TGT.SourceCode  \r\nAND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CustomerConsent SRC \r\nON SRC.CustomerId = TGT.CustomerId \r\nAND SRC.ConsentId = TGT.ConsentId \r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId \r\nAND SRC.SourceCode = TGT.SourceCode \r\nWHERE TGT.PeriodEndDate IS NULL OR TGT.PeriodEndDate = '9999-12-31'\r\n\r\n\r\n\r\n-------------INSERT RECORDS TO BNKM\r\nINSERT INTO BNKM.CustomerConsent (\r\n\t[CustomerId]\r\n\t,[ConsentId]\r\n\t,[PeriodStartDate]\r\n\t,[PeriodEndDate]\r\n\t,[ProofOfConsentDocumentId]\r\n\t,[CustomerConsentNote]\r\n\t,[NoticeTypeId]\r\n\t,[NoticeSharingModeId]\r\n\t,[SourceCode]\r\n\t,[FinancialInstitutionId]\r\n\t,[WorkFlowId]\r\n\t,[TaskRunId]\r\n\t,[InsertDttm])\r\n\r\nSELECT     \r\n\tSRC.CustomerId AS CustomerId\r\n\t,SRC.ConsentId AS ConsentId\r\n\t,CONVERT(DATE,CONVERT(VARCHAR,SRC.PeriodStartDate)) AS PeriodStartDate\r\n\t,SRC.PeriodEndDate AS PeriodEndDate\r\n\t,NULL AS ProofOfConsentDocumentId\r\n\t,NULL AS CustomerConsentNote\r\n\t,SRC.NoticeTypeId AS NoticeTypeId\r\n\t,SRC.NoticeSharingModeId AS NoticeSharingModeId\r\n\t,'CRM' AS SourceCode\r\n\t,SRC.FinancialInstitutionId AS FinancialInstitutionId\r\n\t,0 AS WorkFlowId\r\n\t,0 AS TaskRunId\r\n\t,SRC.InsertDttm AS InsertDttm\r\nFROM #TEMP_BNKM_CustomerConsent SRC\r\nJOIN #TEMP_BNKM_CustomerConsent_DELTA DELTA \r\n ON DELTA.CustomerId = SRC.CustomerId\r\n AND DELTA.ConsentId = SRC.ConsentId\r\n   AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\r\n    AND DELTA.SourceCode = SRC.SourceCode\r\n WHERE RECORD_STATUS IN ('UPDATE','INSERT');\r\n\t\r\n\r\nDROP TABLE #TEMP_BNKM_CustomerConsent;\r\nDROP TABLE #TEMP_BNKM_CustomerConsent_DELTA;\t\r\n\t\r\n\t\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Execute Patch",
+				"type": "ExecutePipeline",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Patch",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"table": "BNKM.CustomerConsent",
+						"col": "PeriodEndDate"
+					}
+				}
+			},
+			{
+				"name": "CRM_PATCH",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "ALTER SP_CUSTOMERCONSENT_CRM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Patch_SRC",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"table": "BNKM.CustomerConsent",
+						"field": "PeriodEndDate",
+						"src_field": "SourceCode",
+						"src": "CRM"
+					}
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-02-19T02:34:55Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

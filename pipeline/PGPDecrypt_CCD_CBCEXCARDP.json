@@ -1,0 +1,248 @@
+{
+	"name": "PGPDecrypt_CCD_CBCEXCARDP",
+	"properties": {
+		"activities": [
+			{
+				"name": "List All Encrypted Files",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "adls_src_encrypt_sourcecode",
+						"type": "DatasetReference",
+						"parameters": {
+							"sourcecode": "*CCD*"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "Decrypt Multiple CCD CBCEXCARDP",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Get CCD CBCEXCARDP Only",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Get CCD CBCEXCARDP Only').output.value",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "PGP Decrypt CCD CBCEXCARDP",
+							"type": "AzureFunctionActivity",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "7.00:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"functionName": "PGPDecrypt",
+								"body": {
+									"value": "{\nfilePath: \"data360/dev/encrypt/@{item().name}\",\noutputPath: \"data360/dev/decrypted/CCD/@{replace(item().name,'.gpg','')}\",\nkvsecpass: \"cbcpassp\",\nkvsecpriv: \"cbcprivkey\"\n}",
+									"type": "Expression"
+								},
+								"method": "POST"
+							},
+							"linkedServiceName": {
+								"referenceName": "PGPFunction",
+								"type": "LinkedServiceReference"
+							}
+						},
+						{
+							"name": "SP_LOG_TASK_ERROR_DTL_DECRYPT",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Set v_error_desc_decrypt",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "TSK_STG_EDS_CCD_CBCEXCARDPFULL",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS_STG",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@split(split(item().name,'_')[4],'.')[0]",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"error_desc": {
+										"value": {
+											"value": "@variables('v_error_desc')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Set v_error_desc_decrypt",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "PGP Decrypt CCD CBCEXCARDP",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "@activity('PGP Decrypt CCD CBCEXCARDP').Error.message",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SUCCESS PIPELINE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "PGP Decrypt CCD CBCEXCARDP",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Get CCD CBCEXCARDP Only",
+				"type": "Filter",
+				"dependsOn": [
+					{
+						"activity": "List All Encrypted Files",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('List All Encrypted Files').output.childItems",
+						"type": "Expression"
+					},
+					"condition": {
+						"value": "@contains(item().name,'CCD_CBCEXCARDPFULL')",
+						"type": "Expression"
+					}
+				}
+			}
+		],
+		"variables": {
+			"filepath": {
+				"type": "String"
+			},
+			"v_error_desc": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-12-18T03:04:47Z",
+		"lastUpdateUtc": "2023-01-19T03:21:20Z",
+		"createTimeUtc": "2022-09-09T04:25:01Z",
+		"sqlPools": [
+			{
+				"Name": "cbcd360devsyndpsg",
+				"Properties": {
+					"maxSizeBytes": 0,
+					"lastUpdateUtc": "2022-05-17T08:11:18Z",
+					"createTimeUtc": "2022-05-17T08:11:18Z"
+				},
+				"ETag": "a301584b-0000-1800-0000-628358a60000"
+			}
+		],
+		"managedVirtualNetworks": [
+			{
+				"Name": "default",
+				"Properties": {
+					"vNetId": "5c7c2ffe-e050-4f1e-be39-a1f58dbbeaa8",
+					"preventDataExfiltration": false,
+					"alias": "cbcd360devsynpssg",
+					"lastUpdateUtc": "2022-12-15T19:04:34Z",
+					"createTimeUtc": "2022-05-05T02:44:30Z"
+				},
+				"ETag": "450020bc-0000-1800-0000-639b6fc20000"
+			}
+		]
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

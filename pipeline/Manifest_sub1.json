@@ -1,0 +1,378 @@
+{
+	"name": "Manifest_sub1",
+	"properties": {
+		"activities": [
+			{
+				"name": "Get FileName",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": {
+							"value": "@concat('SELECT FILENAME FROM D360.MANIFEST_FILE WHERE H = ''D'' AND SUBSTRING(FILENAME,1,9) = ''CBC01_',pipeline().parameters.src_sys,''' AND TABLENAME=''',pipeline().parameters.tables,''' AND  FILENAME LIKE ''%',pipeline().parameters.tables,'%''')",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "MANIFEST_FILE"
+						}
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "ForEach1",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Get FileName",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Get FileName').output.value",
+						"type": "Expression"
+					},
+					"isSequential": false,
+					"activities": [
+						{
+							"name": "Get Manifest CBC01",
+							"type": "GetMetadata",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "SFTP_OnPrem",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filepath": {
+											"value": "@concat('data360/uat/CBC01/',pipeline().parameters.src_sys,'/encrypt')",
+											"type": "Expression"
+										},
+										"Filename": {
+											"value": "@item().filename",
+											"type": "Expression"
+										}
+									}
+								},
+								"fieldList": [
+									"exists"
+								],
+								"storeSettings": {
+									"type": "SftpReadSettings",
+									"recursive": true,
+									"enablePartitionDiscovery": false,
+									"disableChunking": false
+								},
+								"formatSettings": {
+									"type": "BinaryReadSettings"
+								}
+							}
+						},
+						{
+							"name": "If Condition1",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get Manifest CBC01",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@activity('Get Manifest CBC01').output.exists",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "Fail1",
+										"type": "Fail",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"message": {
+												"value": "@concat('File not found: ',item().filename)",
+												"type": "Expression"
+											},
+											"errorCode": "404"
+										}
+									}
+								],
+								"ifTrueActivities": [
+									{
+										"name": "Wait2",
+										"type": "Wait",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"waitTimeInSeconds": 1
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "ForEach2",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "ForEach1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Get FileName').output.value",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "CBC01",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "7.00:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "BinarySource",
+									"storeSettings": {
+										"type": "SftpReadSettings",
+										"recursive": false,
+										"deleteFilesAfterCompletion": false,
+										"disableChunking": false
+									},
+									"formatSettings": {
+										"type": "BinaryReadSettings"
+									}
+								},
+								"sink": {
+									"type": "BinarySink",
+									"storeSettings": {
+										"type": "AzureBlobFSWriteSettings"
+									}
+								},
+								"enableStaging": false
+							},
+							"inputs": [
+								{
+									"referenceName": "SFTP_OnPrem",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filepath": {
+											"value": "@concat('data360/uat/CBC01/',pipeline().parameters.src_sys,'/encrypt')",
+											"type": "Expression"
+										},
+										"Filename": {
+											"value": "@item().filename",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SFTP_ADLS",
+									"type": "DatasetReference"
+								}
+							]
+						},
+						{
+							"name": "ErrorExecutionLog",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "CBC01",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 60,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@pipeline().TriggerTime",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "@concat('FAILED - ',activity('CBC01').error.message)",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "SuccessExecutionLog",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "CBC01",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 60,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@addHours(pipeline().TriggerTime,+8)",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "SUCCESS",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"src_sys": {
+				"type": "string"
+			},
+			"tables": {
+				"type": "string"
+			}
+		},
+		"variables": {
+			"CurrentTimestamp": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-05-02T06:01:31Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

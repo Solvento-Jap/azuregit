@@ -1,0 +1,103 @@
+{
+	"name": "PGPDecrypt_GLD",
+	"properties": {
+		"activities": [
+			{
+				"name": "List All GLD Encrypted Files",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "adls_src_encrypt_sourcecode",
+						"type": "DatasetReference",
+						"parameters": {
+							"sourcecode": {
+								"value": "@concat('*',pipeline().parameters.tables,'_*')\n",
+								"type": "Expression"
+							}
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "Decrypt Multiple Files",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "List All GLD Encrypted Files",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('List All GLD Encrypted Files').output.childItems",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "PGP Decrypt GLD",
+							"type": "AzureFunctionActivity",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "7.00:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"functionName": "PGPDecrypt",
+								"body": {
+									"value": "{\nfilePath: \"data360/dev/encrypt/@{item().name}\",\noutputPath: \"data360/dev/decrypted/GLD/@{replace(item().name,'.gpg','')}\",\nkvsecpass: \"cbcpassp\",\nkvsecpriv: \"cbcprivkey\"\n}",
+									"type": "Expression"
+								},
+								"method": "POST"
+							},
+							"linkedServiceName": {
+								"referenceName": "PGPFunction",
+								"type": "LinkedServiceReference"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"tables": {
+				"type": "string"
+			}
+		},
+		"variables": {
+			"ApppendDays": {
+				"type": "Array"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-07-22T07:50:13Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

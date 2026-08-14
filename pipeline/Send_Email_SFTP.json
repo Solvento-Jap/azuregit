@@ -1,0 +1,346 @@
+{
+	"name": "Send_Email_SFTP",
+	"properties": {
+		"activities": [
+			{
+				"name": "List All Files",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "CreateTempTable",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "SFTP_OnPrem",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filepath": {
+								"value": "data360/@{if(equals(toUpper(pipeline().parameters.env),'DEV'),'uat',if(equals(toUpper(pipeline().parameters.env),'PRD'),'prod',''))}/@{pipeline().parameters.bank_id}/@{replace(pipeline().parameters.source_code,'RIB','EBK')}/encrypt",
+								"type": "Expression"
+							},
+							"Filename": {
+								"value": "*@{pipeline().parameters.bank_id}*@{if(equals(pipeline().parameters.mode,'SOURCE'),pipeline().parameters.source_code, if(equals(pipeline().parameters.mode,'FILE'),pipeline().parameters.table_name,'' ))}*_@{replace(pipeline().parameters.file_date,'-','')}.csv*",
+								"type": "Expression"
+							}
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "SftpReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false,
+						"disableChunking": false
+					},
+					"formatSettings": {
+						"type": "BinaryReadSettings"
+					}
+				}
+			},
+			{
+				"name": "ForEachFile",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "List All Files",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('List All Files').output.childItems",
+						"type": "Expression"
+					},
+					"isSequential": false,
+					"batchCount": 5,
+					"activities": [
+						{
+							"name": "IfChildIsFile",
+							"type": "IfCondition",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@equals(item().type,'File')",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "GetEachFileMetaData",
+										"type": "GetMetadata",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"dataset": {
+												"referenceName": "SFTP_OnPrem",
+												"type": "DatasetReference",
+												"parameters": {
+													"Filepath": {
+														"value": "data360/@{if(equals(toUpper(pipeline().parameters.env),'DEV'),'uat',if(equals(toUpper(pipeline().parameters.env),'PRD'),'prod',''))}/@{pipeline().parameters.bank_id}/@{replace(pipeline().parameters.source_code,'RIB','EBK')}/encrypt",
+														"type": "Expression"
+													},
+													"Filename": {
+														"value": "@item().name",
+														"type": "Expression"
+													}
+												}
+											},
+											"fieldList": [
+												"itemName",
+												"size",
+												"lastModified"
+											],
+											"storeSettings": {
+												"type": "SftpReadSettings",
+												"recursive": true,
+												"enablePartitionDiscovery": false,
+												"disableChunking": false
+											},
+											"formatSettings": {
+												"type": "BinaryReadSettings"
+											}
+										}
+									},
+									{
+										"name": "InsertFileMetadata",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "GetEachFileMetaData",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testSQLpool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"parameters": [
+														{
+															"name": "Name",
+															"type": "String",
+															"value": {
+																"value": "@activity('GetEachFileMetaData').output.itemName",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														},
+														{
+															"name": "Size",
+															"type": "String",
+															"value": {
+																"value": "@activity('GetEachFileMetaData').output.size",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														},
+														{
+															"name": "Mod",
+															"type": "Datetime",
+															"value": {
+																"value": "@activity('GetEachFileMetaData').output.lastModified",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														}
+													],
+													"type": "Query",
+													"text": "INSERT INTO D360.SFTP_FILE_CHECK_EML (\r\n    [NAME],\r\n    [SIZE],\r\n    [LAST_MODIFIED_DATETIME]\r\n)\r\nSELECT @NAME, @SIZE, @MOD"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CreateTempTable",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "IF OBJECT_ID('D360.SFTP_FILE_CHECK_EML') IS NOT NULL\r\n    DROP TABLE D360.SFTP_FILE_CHECK_EML\r\n\r\nCREATE TABLE D360.SFTP_FILE_CHECK_EML\r\n(\r\n    [NAME] [NVARCHAR](200) NULL,\r\n    [SIZE] [NVARCHAR](50) NULL,\r\n    [LAST_MODIFIED_DATETIME] DATETIME2 NULL\r\n)\r\n\r\nWITH (\r\n    DISTRIBUTION = ROUND_ROBIN,\r\n    HEAP\r\n);"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CreateEmailTable",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ForEachFile",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "DECLARE @HEADER NVARCHAR(MAX);\r\nDECLARE @STYLE  NVARCHAR(MAX);\r\nDECLARE @HTML   NVARCHAR(MAX);\r\n\r\nSELECT @HEADER = '<p><b>SFTP File Check Summary:</b></p>';\r\n\r\nSELECT @STYLE = '\r\n<style>\r\n    table {\r\n        border-collapse: collapse;\r\n        font-family: Aptos;\r\n        font-size: 11pt;\r\n    }\r\n    th, td {\r\n        text-align: left;\r\n        padding: 10px;\r\n        border: 1px solid #BFBFBF;\r\n    }\r\n    tr:nth-child(even) {\r\n        background-color: #D6EEEE;\r\n    }\r\n</style>';\r\n\r\nSELECT @HTML =\r\n    '<table>' +\r\n    '<tr>\r\n        <th>NAME</th>\r\n        <th>SIZE</th>\r\n        <th>LAST MODIFIED DATE</th>\r\n    </tr>' +\r\n\r\n    (\r\n        SELECT STRING_AGG(\r\n            CAST(\r\n                '<tr>' +\r\n                    '<td>' + ISNULL(NAME, '') + '</td>' +\r\n                    '<td>' + ISNULL(FORMAT(CAST([SIZE] AS BIGINT), '#,##0'), '') + '</td>' +\r\n                    '<td>' + ISNULL(FORMAT(LAST_MODIFIED_DATETIME, 'yyyy-MM-dd HH:mm:ss'), '') + '</td>' +\r\n                '</tr>'\r\n            AS NVARCHAR(MAX)),\r\n            ''\r\n        )\r\n        FROM (SELECT TOP 1000 * FROM D360.SFTP_FILE_CHECK_EML ORDER BY NAME) TEMP\r\n    )\r\n\r\n    + '</table>';\r\n\r\nSELECT CONCAT(@HEADER, @STYLE, @HTML) AS body;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Logic_App_Email",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "CreateEmailTable",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"method": "POST",
+					"url": {
+						"value": "https://prod-23.southeastasia.logic.azure.com:443/workflows/ef3f59e71d3c4e77b4fd9e5a6cc07b31/triggers/When_a_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_a_HTTP_request_is_received%2Frun&sv=1.0&sig=-Ltp4UouW338vPcAhcJyAFdEOQaUaf1LLVZf1YlgQOs",
+						"type": "Expression"
+					},
+					"connectVia": {
+						"referenceName": "AutoResolveIntegrationRuntime",
+						"type": "IntegrationRuntimeReference"
+					},
+					"body": {
+						"value": "{\n    \"Eml_Sender\" : \"@{pipeline().parameters.eml_sender}\",\n    \"Eml_Recipient\" : \"@{pipeline().parameters.eml_recipient}\",\n    \"Eml_Subject\" : \"[MONTIRONG-@{pipeline().parameters.env}] - @{pipeline().parameters.eml_subject} @{if(equals(pipeline().parameters.mode, 'SOURCE'),pipeline().parameters.source_code,if(equals(pipeline().parameters.mode, 'FILE'),pipeline().parameters.table_name,''))}\",\n    \"MessageStatus\" : \"@{activity('CreateEmailTable').output.resultsets[0].rows[0].body}\"\n}",
+						"type": "Expression"
+					}
+				}
+			}
+		],
+		"parameters": {
+			"mode": {
+				"type": "string",
+				"defaultValue": "SOURCE"
+			},
+			"file_date": {
+				"type": "string",
+				"defaultValue": "*"
+			},
+			"env": {
+				"type": "string",
+				"defaultValue": "DEV"
+			},
+			"bank_id": {
+				"type": "string",
+				"defaultValue": "CBC01"
+			},
+			"source_code": {
+				"type": "string",
+				"defaultValue": "CRM"
+			},
+			"table_name": {
+				"type": "string",
+				"defaultValue": "CRM_ACCOUNT"
+			},
+			"eml_subject": {
+				"type": "string",
+				"defaultValue": "SFTP File List for"
+			},
+			"eml_sender": {
+				"type": "string",
+				"defaultValue": "donotreply@advisory.chinabank.ph"
+			},
+			"eml_recipient": {
+				"type": "string",
+				"defaultValue": "jayar.gavina@solventoph.com, arland.bindoy@solventoph.com, japeth.hernandez@solventoph.com, jolenizo@chinabank.ph"
+			}
+		},
+		"variables": {
+			"check": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-05-13T00:27:30Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

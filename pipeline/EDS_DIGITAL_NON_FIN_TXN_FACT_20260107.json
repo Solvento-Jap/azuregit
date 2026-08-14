@@ -1,0 +1,102 @@
+{
+	"name": "EDS_DIGITAL_NON_FIN_TXN_FACT_20260107",
+	"properties": {
+		"activities": [
+			{
+				"name": "LOAD DIGITAL_NON_FIN_TXN_FACT",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DELETE DIGITAL_NON_FIN_TXN_FACT",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "Datetoprocess",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.Datetoprocess",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "NonQuery",
+							"text": "\nWITH TMP_PDATE AS\n(\n\tSELECT CAST(@Datetoprocess AS DATE) PROCESS_DATE \n)\n\nINSERT INTO EDS.DIGITAL_NON_FIN_TXN_FACT\n(\n\t [BANK_ID]\n\t,[EOM_DATE]\n\t,[TXN_DATE]\n\t,[CIF_ID]\n\t,[USER_NAME]\n\t,[TXN_COUNT]\n\t,[TXN_STATUS]\n\t,[TXN_TYPE]\n\t,[DEVICE_NAME]\n\t,[SOURCE_CODE]\n\t,[GROSS_TXN_FEE]\n\t,[NET_TXN_FEE]\n\t,[GROSS_FEE_INCOME]\n\t,[NET_FEE_INCOME]\n\t,[IP_ADDRESS]\n\t,[INSERT_DTTM]\n)\n\nSELECT \n\t [BANK_ID]\n\t,[EOM_DATE]\n\t,[TXN_DATE]\n\t,[CIF_ID]\n\t,[USER_NAME]\n\t,[TXN_COUNT]\n\t,[TXN_STATUS]\n\t,[TXN_TYPE]\n\t,[DEVICE_NAME]\n\t,[SOURCE_CODE]\n\t,[GROSS_TXN_FEE]\n\t,[NET_TXN_FEE]\n\t,[GROSS_FEE_INCOME]\n\t,[NET_FEE_INCOME]\n\t,[IP_ADDRESS]\n\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS INSERT_DTTM\n\t\nFROM \n\n(\n\n\tSELECT \n\t\tA.BANK_ID,\n\t\t--CURRENT_MONTH_END AS TXN_DATE, \n\t\tEOMONTH(CAST(LOGIN_TIME AS DATE)) AS EOM_DATE,\n\t\t(CAST(LOGIN_TIME AS DATE)) AS TXN_DATE,\n\t\tB.CUST_ID AS CIF_ID,\n\t\tA.ACTUAL_USER_ID AS USER_NAME,\n\t\tCOUNT(A.SESSION_ID) AS TXN_COUNT, \n\t\t[STATUS] AS TXN_STATUS, \n\t\t'LOGIN' AS TXN_TYPE, \n\t\tNULL AS DEVICE_NAME,\n\t\tA.SOURCE_CODE AS SOURCE_CODE,\n\t\tNULL AS GROSS_TXN_FEE,\n\t\tNULL AS NET_TXN_FEE,\n\t\tNULL AS GROSS_FEE_INCOME,\n\t\tNULL AS NET_FEE_INCOME,\n\t\tIPADDRESS AS IP_ADDRESS\n\t\t\t\t\t\t \n\tFROM \n\t  eds.RIB_MONITORINGLOGINHISTORYTABLE A \n\t  INNER JOIN (\n\t\tselect \n\t\t  ROW_NUMBER() over(\n\t\t\tPARTITION by TRIM(CORP_USER), \n\t\t\tBNK_CODE \n\t\t\tORDER BY \n\t\t\t  SCD_START_DATE\n\t\t  ) RN, \n\t\t  * \n\t\tFROM \n\t\t  eds.RIB_CORPORATEUSER\n\t  ) B ON B.BNK_CODE = A.BNK_CODE \n\t  AND B.CORP_USER = LEFT(\n\t\tA.ACTUAL_USER_ID, \n\t\tCHARINDEX('.', A.ACTUAL_USER_ID)-1\n\t  ) \n\t  AND CAST(LOGIN_TIME AS DATE) BETWEEN CASE WHEN B.RN = 1 THEN CAST(B.R_CRE_TIME AS DATE) ELSE B.SCD_START_DATE END \n\t  AND B.SCD_END_DATE \n\t  INNER JOIN TMP_PDATE TP\n\t\tON (CAST(LOGIN_TIME AS DATE)) = TP.PROCESS_DATE\n\tWHERE \n\t  A.BANK_ID = 'CBC01' \n\t  AND LEFT(B.CUST_ID, 1) = 'R' \n\t  AND B.DEL_FLG = 'N' \n\t\t\n\tGROUP BY \n\t\tA.BANK_ID,\n\t\t--CURRENT_MONTH_END, \n\t\tEOMONTH(CAST(LOGIN_TIME AS DATE)),\n\t\t(CAST(LOGIN_TIME AS DATE)),\n\t\tB.CUST_ID,\n\t\tA.ACTUAL_USER_ID,\n\t\t[STATUS], \n\t\tA.SOURCE_CODE,\n\t\tIPADDRESS\n\t   \n\tUNION ALL \n\n\n\tSELECT \n\t\tBANK_ID,\n\t\tEOM_DATE,\n\t\tTXN_DATE,\n\t\tCIF_ID,\n\t\tUSER_NAME,\n\t\tTXN_COUNT, \n\t\tTXN_STATUS, \n\t\tTXN_TYPE, \n\t\tDEVICE_NAME,\n\t\tSOURCE_CODE,\n\t\tGROSS_TXN_FEE,\n\t\tNET_TXN_FEE,\n\t\tSUM(TXN_COUNT * GROSS_TXN_FEE) AS GROSS_FEE_INCOME,\n\t\tSUM(TXN_COUNT * NET_TXN_FEE) AS NET_FEE_INCOME,\n\t\tNULL AS IP_ADDRESS\n\t\t\t\t\t\t \n\tFROM \n\t(\n\tSELECT \n\t\tREQ.BANK_ID,\n\t\t--CURRENT_MONTH_END AS TXN_DATE, \n\t\tEOMONTH(CAST(AS_OF_DATE AS DATE)) AS EOM_DATE,\n\t\t(CAST(AS_OF_DATE AS DATE)) AS TXN_DATE,\n\t\tCORP.CUST_ID AS CIF_ID,\n\t\tREQ.CORP_USER AS USER_NAME,\n\t\tCOUNT(REQ.FTXN_ID) AS TXN_COUNT, \n\t\tREQ.FORM_REQ_STATE AS TXN_STATUS, \n\t\tREQ.RQST_ID AS TXN_TYPE, \n\t\tNULL AS DEVICE_NAME,\n\t\tREQ.SOURCE_CODE AS SOURCE_CODE,\n\t\tDBD1.GROSS_TXN_FEE AS GROSS_TXN_FEE,\n\t\tDBD1.NET_TXN_FEE AS NET_TXN_FEE\n\tFROM \n\t  eds.RIB_REQUESTDETAILS REQ \n\t  INNER JOIN (\n\t\tselect \n\t\t  ROW_NUMBER() over(\n\t\t\tPARTITION by TRIM(CORP_USER), \n\t\t\tBNK_CODE \n\t\t\tORDER BY \n\t\t\t  SCD_START_DATE\n\t\t  ) RN, \n\t\t  * \n\t\tFROM \n\t\t  eds.RIB_CORPORATEUSER\n\t  ) CORP ON CORP.BANK_ID = REQ.BANK_ID \n\t  AND CORP.CORP_USER = REQ.CORP_USER \n\t  AND REQ.AS_OF_DATE BETWEEN CASE WHEN CORP.RN = 1 THEN CAST(CORP.R_CRE_TIME AS DATE) ELSE CORP.SCD_START_DATE END \n\t  AND CORP.SCD_END_DATE \n\t  INNER JOIN TMP_PDATE TP\n\t\tON (CAST(REQ.AS_OF_DATE AS DATE)) = TP.PROCESS_DATE\n\t  LEFT JOIN EDS.DIGITAL_BILLERS_DIM DBD1\n\t\t\tON REQ.RQST_ID = DBD1.TXN_TYPE\n\tWHERE \n\t  REQ.BANK_ID = 'CBC01' \n\t  AND REQ.DEL_FLG = 'N' \n\t  AND CORP.DEL_FLG = 'N' \n\n\tGROUP BY \n\t\tREQ.BANK_ID,\n\t\t--CURRENT_MONTH_END AS TXN_DATE, \n\t\tEOMONTH(CAST(AS_OF_DATE AS DATE)),\n\t\t(CAST(AS_OF_DATE AS DATE)),\n\t\tCORP.CUST_ID,\n\t\tREQ.CORP_USER,\n\t\tREQ.FORM_REQ_STATE, \n\t\tREQ.RQST_ID, \n\t\tREQ.SOURCE_CODE,\n\t\tDBD1.GROSS_TXN_FEE,\n\t\tDBD1.NET_TXN_FEE\n\t) A\n\tGROUP BY\n\t\tBANK_ID,\n\t\tEOM_DATE,\n\t\tTXN_DATE,\n\t\tCIF_ID,\n\t\tUSER_NAME,\n\t\tTXN_COUNT, \n\t\tTXN_STATUS, \n\t\tTXN_TYPE, \n\t\tDEVICE_NAME,\n\t\tSOURCE_CODE,\n\t\tGROSS_TXN_FEE,\n\t\tNET_TXN_FEE\n \nUNION ALL\n \n\tSELECT \n\t\tB.BNK_CODE AS BANK_ID,\n\t\tEOMONTH(CAST(B.audit_date AS DATE)) AS EOM_DATE,\n\t\t(CAST(B.audit_date AS DATE)) AS TXN_DATE,\n\t\tB.CIF_NO AS CIF_ID,\n\t\tB.[USERNAME] AS USER_NAME,\n\t\tCOUNT(B.APP_ID) AS TXN_COUNT,\n\t\tB.STATUS AS TXN_STATUS,\n\t\tB.AUDIT_ACTION AS TXN_TYPE,\n\t\tB.PHONE_MODEL AS DEVICE_NAME,\n\t\tB.SOURCE_CODE AS SOURCE_CODE,\n\t\tNULL AS GROSS_TXN_FEE,\n\t\tNULL AS NET_TXN_FEE,\n\t\tNULL AS GROSS_FEE_INCOME,\n\t\tNULL AS NET_FEE_INCOME,\n\t\tIP AS IP_ADDRESS\n\t\t\t\t\t\t\t\t\n\tFROM \n\t  (\n\t\tSELECT \n\t\t  username, \n\t\t  cif_no, \n\t\t  audit_date, \n\t\t  app_id, \n\t\t  audit_action, \n\t\t  [status], \n\t\t  primaryfield, \n\t\t  phone_model,\n\t\t  mbk.bnk_code,\n\t\t  mbk.source_code,\n\t\t  mbk.ip\t  \t\t\t\t   \n\t\tFROM \n\t\t  (\n\t\t\tSELECT \n\t\t\t  Trim(user_id) USERNAME, \n\t\t\t  cif_no \n\t\t\tFROM \n\t\t\t  eds.mbk_rtbkcustomermtb \n\t\t\tWHERE \n\t\t\t  bnk_code = 'CBC01'\n\t\t\tGROUP BY\n\t\t\t  Trim(user_id), \n\t\t\t  cif_no \n\t\t  ) CUST \n\t\t  JOIN (\n\t\t\tSELECT \n\t\t\t\t  APP_ID, \n\t\t\t\t  AUDIT_DATE, \n\t\t\t\t  PHONE_NO, \n\t\t\t\t  ACCESS_TYPE, \n\t\t\t\t  AUDIT_ACTION, \n\t\t\t\t  SERVICE_INPUT, \n\t\t\t\t  MERCHANT_ID, \n\t\t\t\t  IP, \n\t\t\t\t  AUDIT_FIELD1, \n\t\t\t\t  AUDIT_FIELD2, \n\t\t\t\t  AUDIT_FIELD3, \n\t\t\t\t  AUDIT_FIELD4, \n\t\t\t\t  AUDIT_FIELD5, \n\t\t\t\t  AUDIT_FIELD6, \n\t\t\t\t  AUDIT_FIELD7, \n\t\t\t\t  AUDIT_FIELD8, \n\t\t\t\t  AUDIT_FIELD9, \n\t\t\t\t  AUDIT_FIELD10, \n\t\t\t\t  ACCESS_CHANNEL, \n\t\t\t\t  TRIM(PRIMARYFIELD) PRIMARYFIELD, \n\t\t\t\t  SECONDARYFIELD, \n\t\t\t\t  HEADERDUMP, \n\t\t\t\t  GPRSPHONENO, \n\t\t\t\t  ARCHIVAL_STATUS, \n\t\t\t\t  STATUS, \n\t\t\t\t  PHONE_MODEL,\n\t\t\t\t  SOURCE_CODE,\n\t\t\t\t  BNK_CODE\n\t\t\tFROM \n\t\t\t  eds.mbk_auditmtb \n\t\t\tINNER JOIN TMP_PDATE TP\n\t\t\t  ON (CAST(audit_date AS DATE)) = TP.PROCESS_DATE\n\t\t\tWHERE \n\t\t\t  bnk_code = 'CBC01' \n\n\t\t  ) MBK ON CUST.username = MBK.primaryfield \n\t  ) B \n\t\t  \n\t\t\t\t\t\t\t\t\t\t\t\t\n\tGROUP BY \n\t\tB.BNK_CODE,\n\t\tEOMONTH(CAST(B.audit_date AS DATE)),\n\t\tCAST(B.audit_date AS DATE),\n\t\tB.CIF_NO,\n\t\tB.[USERNAME],\n\t\tB.STATUS,\n\t\tB.AUDIT_ACTION,\n\t\tB.PHONE_MODEL,\n\t\tB.SOURCE_CODE,\n\t\tB.IP\n \nUNION ALL\n \n\tSELECT \n\t\t'CBC01' AS BANK_ID,\n\t\tEOMONTH(CASE WHEN ISDATE(A.[Transaction Date])=1 THEN CAST(A.[Transaction Date] AS DATE) END)  AS EOM_DATE,  \n\t\t(CASE WHEN ISDATE(A.[Transaction Date])=1 THEN CAST(A.[Transaction Date] AS DATE) END)  AS TXN_DATE,  \n\t\tB.CIF_ID AS CIF_ID, \n\t\tB.[USERNAME] AS USER_NAME, \n\t\tCOUNT(*) AS TXN_COUNT, \n\t\tA.[Status] AS TXN_STATUS,\n\t\tA.[Transaction Type] AS TXN_TYPE, \n\t\tB.[DEVICE] AS DEVICE_NAME,\n\t\t'D30' AS SOURCE_CODE,\n\t\tNULL AS GROSS_TXN_FEE,\n\t\tNULL AS NET_TXN_FEE,\n\t\tNULL AS GROSS_FEE_INCOME,\n\t\tNULL AS NET_FEE_INCOME,\n\t\tA.[IPADDRESS] AS IP_ADDRESS\n\t\t\t\t\t\t\t\t\t \n\tFROM \n\t\teds.d30_TransactionReport A \n\tINNER JOIN eds.d30_Customer B \n\t\tON B.USERNAME = A.UserName \n\tINNER JOIN TMP_PDATE TP\n\t\t  ON (CASE WHEN ISDATE(A.[Transaction Date])=1 THEN CAST(A.[Transaction Date] AS DATE) END) = TP.PROCESS_DATE\n\tWHERE \n\t\t[Transaction Category] = 'Non-Financial' \n\t\t\t\t\t\t\t\t\t\t\n\t\tAND ISDATE(A.[Transaction Date])=1\n\n\tGROUP BY \n\t\tEOMONTH(CASE WHEN ISDATE(A.[Transaction Date])=1 THEN CAST(A.[Transaction Date] AS DATE) END), \n\t\t(CASE WHEN ISDATE(A.[Transaction Date])=1 THEN CAST(A.[Transaction Date] AS DATE) END), \n\t\tB.CIF_ID, \n\t\tB.[USERNAME], \n\t\tA.[Status],\n\t\tA.[Transaction Type], \n\t\tB.DEVICE,\n\t\tA.[IPADDRESS]\n\t\t\n) SRC_NON_FIN"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DELETE DIGITAL_NON_FIN_TXN_FACT",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "Datetoprocess",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.Datetoprocess",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "NonQuery",
+							"text": "DELETE FROM EDS.DIGITAL_NON_FIN_TXN_FACT WHERE TXN_DATE = CAST(@Datetoprocess AS DATE);"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"parameters": {
+			"Datetoprocess": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-01-07T05:12:52Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

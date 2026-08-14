@@ -1,0 +1,372 @@
+{
+	"name": "MovToArchive_SED",
+	"properties": {
+		"activities": [
+			{
+				"name": "Get SED Filename",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "adls_src_encrypt_archive",
+						"type": "DatasetReference",
+						"parameters": {
+							"folderpath": "dev/encrypt/",
+							"filename": "*SED_*"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "Archive Encrypt",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Get SED Filename",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Get SED Filename').output.childItems",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "SED Filename",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "DelimitedTextSink",
+									"storeSettings": {
+										"type": "AzureBlobFSWriteSettings"
+									},
+									"formatSettings": {
+										"type": "DelimitedTextWriteSettings",
+										"quoteAllText": true,
+										"fileExtension": ".txt"
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"typeConversion": true,
+									"typeConversionSettings": {
+										"allowDataTruncation": true,
+										"treatBooleanAsNumber": false
+									}
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "adls_src_encrypt_archive",
+									"type": "DatasetReference",
+									"parameters": {
+										"folderpath": {
+											"value": "dev/encrypt",
+											"type": "Expression"
+										},
+										"filename": {
+											"value": "@item().name",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "adls_src_archive_daily",
+									"type": "DatasetReference",
+									"parameters": {
+										"archivepath": {
+											"value": "@concat('dev/archive/SED/',substring(replace(replace(replace(addHours(utcnow(),+8),'-',''),'T','_'),':',''),0,8))",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "Delete SED File from Encrypt Folder",
+							"type": "Delete",
+							"dependsOn": [
+								{
+									"activity": "SuccessExecutionLog",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "adls_src_encrypt_archive",
+									"type": "DatasetReference",
+									"parameters": {
+										"folderpath": "dev/encrypt/",
+										"filename": "@item().name"
+									}
+								},
+								"logStorageSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									},
+									"path": "data360/dev/Delete_Logs"
+								},
+								"enableLogging": true,
+								"storeSettings": {
+									"type": "AzureBlobFSReadSettings",
+									"recursive": true,
+									"enablePartitionDiscovery": false
+								}
+							}
+						},
+						{
+							"name": "ErrorExecutionLog",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "SED Filename",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 60,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@addHours(pipeline().TriggerTime,+8)",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FileName": {
+										"value": {
+											"value": "@item().name",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "@concat('FAILED -',activity('SED Filename').error.message)",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "SuccessExecutionLog",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "SED Filename",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 60,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@addHours(pipeline().TriggerTime,+8)",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FileName": {
+										"value": {
+											"value": "@item().name",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "SUCCESS",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Delete SED File from Decrypt Folder",
+							"type": "Delete",
+							"dependsOn": [
+								{
+									"activity": "Delete SED File from Encrypt Folder",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "adls_src_decrypted",
+									"type": "DatasetReference",
+									"parameters": {
+										"folderpath": "dev/decrypted/SED",
+										"filename": {
+											"value": "@replace(item().name,'.gpg','')",
+											"type": "Expression"
+										}
+									}
+								},
+								"logStorageSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									},
+									"path": "data360/dev/Delete_Logs"
+								},
+								"enableLogging": true,
+								"storeSettings": {
+									"type": "AzureBlobFSReadSettings",
+									"recursive": true,
+									"enablePartitionDiscovery": false
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-10-19T02:55:33Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

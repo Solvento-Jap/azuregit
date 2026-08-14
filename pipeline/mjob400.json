@@ -1,0 +1,646 @@
+{
+	"name": "mjob400",
+	"properties": {
+		"activities": [
+			{
+				"name": "GenerateSQL",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Set variable_NaturalKeys_JOIN",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Set variable_NaturalKeys_STR",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Set variable_HashColumns_TGT",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Set variable_HashColumns_SRC",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "SQL",
+					"value": {
+						"value": "@concat('BEGIN TRY\n              \n              UPDATE ', pipeline().parameters.TargetSchema, '.', pipeline().parameters.TargetTable, '\n              SET ', pipeline().parameters.IsCurrentColumn, ' = 0,\n                  ', pipeline().parameters.ExpiryDateColumn, ' = (SELECT PREVIOUS_BUSINESS_DAY FROM EDS.DATE_DIM \nINNER JOIN (SELECT TOP 1 CAST(LEFT(RIGHT(FILE_NAME, 12), 8) AS INTEGER) MX_DT FROM ', pipeline().parameters.SourceSchema, '.', pipeline().parameters.SourceTable, ') MX_DT_TBL\nON DATESK = MX_DT)\n            FROM ', pipeline().parameters.TargetSchema, '.', pipeline().parameters.TargetTable, ' tgt\n                        JOIN ', pipeline().parameters.SourceSchema, '.', pipeline().parameters.SourceTable, ' src\n                            ON ', variables('V_NaturalKeyColoumns_JOIN') , '\n                            AND CAST(LEFT(RIGHT(src.FILE_NAME, 12), 8) AS DATE) >= CAST(STUFF(STUFF(STUFF(src.RCRE_TIME, 13, 0, '':''), 11, 0, '':''), 9, 0, '' '') AS DATE)\n                            and  src.[H] = ''D''\n              WHERE tgt.', pipeline().parameters.IsCurrentColumn, ' = 1 \n                AND tgt.[BANK_ID] = ''',pipeline().parameters.BankId,'''\n                AND HASHBYTES(''SHA2_256'', CONCAT_WS(N''|'', ',variables('V_HashColumns_SRC_STR'), ')) <> HASHBYTES(''SHA2_256'', CONCAT_WS(N''|'', ',variables('V_HashColumns_TGT_STR'), '));\n\n                 INSERT INTO ', pipeline().parameters.TargetSchema, '.', pipeline().parameters.TargetTable, ' (', variables('V_NaturalKeyColumns_STR'), ' ,', join(pipeline().parameters.HashColumns,','), ', ', pipeline().parameters.StartDateColumn, ', ', pipeline().parameters.ExpiryDateColumn, ', ISACTIVE, ', pipeline().parameters.IsCurrentColumn, ' ,BNK_CODE ,SOURCE_CODE ,FILE_NAME  ,INSERT_DTTM)\n              SELECT DISTINCT', variables('V_NaturalKeyColumns_STR'), ' ,',replace(replace(join(pipeline().parameters.HashColumns,','),'[RCRE_TIME]','CAST(STUFF(STUFF(STUFF([RCRE_TIME], 13, 0, '':''), 11, 0, '':''), 9, 0, '' '') AS DATETIME) AS [RCRE_TIME]'),'[LCHG_TIME]','CAST(STUFF(STUFF(STUFF([LCHG_TIME], 13, 0, '':''), 11, 0, '':''), 9, 0, '' '') AS DATETIME) AS [LCHG_TIME]'), ', CAST(LEFT(RIGHT(FILE_NAME , 12), 8) AS DATE), CAST(', pipeline().parameters.ActiveDateValue, ' AS DATE), 1,1,LEFT(FILE_NAME,5) ,''', pipeline().parameters.SourceCode, ''' ,FILE_NAME ,CURRENT_TIMESTAMP\n              FROM ', pipeline().parameters.SourceSchema, '.', pipeline().parameters.SourceTable, ' src\n              WHERE src.[H] = ''D'' \n              AND CAST(LEFT(RIGHT(src.FILE_NAME, 12), 8) AS DATE) >= CAST(STUFF(STUFF(STUFF(src.RCRE_TIME, 13, 0, '':''), 11, 0, '':''), 9, 0, '' '') AS DATE)\n              and NOT EXISTS (\n                SELECT 1 FROM ', pipeline().parameters.TargetSchema, '.', pipeline().parameters.TargetTable, ' tgt\n                WHERE ',  variables('V_NaturalKeyColoumns_JOIN')  , '\n                  AND HASHBYTES(''SHA2_256'', CONCAT_WS(N''|'', ',variables('V_HashColumns_TGT_STR'), ')) = HASHBYTES(''SHA2_256'', CONCAT_WS(N''|'', ',variables('V_HashColumns_SRC_STR'), '))\n                  AND tgt.', pipeline().parameters.IsCurrentColumn, ' = 1\n              );\n     END TRY\n     BEGIN CATCH\n\t\t    DECLARE msg NVARCHAR(2048) = ERROR_MESSAGE();\n\t\t    THROW 51000, msg, 1;\n     END CATCH\n      ')",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "ExecuteSQL",
+				"type": "SqlServerStoredProcedure",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "GenerateSQL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "sp_executesql",
+					"storedProcedureParameters": {
+						"stmt": {
+							"value": {
+								"value": "@variables('SQL')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				}
+			},
+			{
+				"name": "ForEach_NaturalKeys",
+				"type": "ForEach",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@pipeline().parameters.NaturalKeyColumns",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append variable1",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_NaturalKeyColumns",
+								"value": {
+									"value": "@concat('src.',item(),'=','tgt.',item())",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Set variable_NaturalKeys_JOIN",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "ForEach_NaturalKeys",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "V_NaturalKeyColoumns_JOIN",
+					"value": {
+						"value": "@join(variables('V_NaturalKeyColumns'), ' and ')",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Set variable_NaturalKeys_STR",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "ForEach_NaturalKeys",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "V_NaturalKeyColumns_STR",
+					"value": {
+						"value": "@join(pipeline().parameters.NaturalKeyColumns,',')",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Set variable_HashColumns_SRC",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "ForEach_HashColumns_SRC",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "V_HashColumns_SRC_STR",
+					"value": {
+						"value": "@join(variables('V_HashColumns_SRC'),',')",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Set variable_HashColumns_TGT",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "ForEach_HashColumns_TGT",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "V_HashColumns_TGT_STR",
+					"value": {
+						"value": "@join(variables('V_HashColumns_TGT'),',')",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "ForEach_HashColumns_SRC",
+				"type": "ForEach",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@pipeline().parameters.HashColumns",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "If Condition1",
+							"type": "IfCondition",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@contains(item(),'TIME')",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "Append variable_HashColumns_SRC_copy1",
+										"type": "AppendVariable",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"variableName": "V_HashColumns_SRC",
+											"value": {
+												"value": "@concat('format(CAST(STUFF( STUFF( STUFF(src.',item(),', 13, 0, '':''), 11, 0, '':''), 9, 0, '' '') AS DATETIME), ''yyyy-MM-dd HH:mm:ss'')')",
+												"type": "Expression"
+											}
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "If Condition1_copy2",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "If Condition1",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@contains(item(),'DATE')",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "Append variable_HashColumns_SRC_copy1_copy2",
+										"type": "AppendVariable",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"variableName": "V_HashColumns_SRC",
+											"value": {
+												"value": "@concat('format(src.',item(),', ''yyyy-MM-dd HH:mm:ss'')')",
+												"type": "Expression"
+											}
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "If Condition1_copy2_copy1",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "If Condition1_copy2",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@not(or(contains(item(),'TIME'),contains(item(),'DATE')))",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "Append variable_HashColumns_SRC_copy1_copy2_copy1",
+										"type": "AppendVariable",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"variableName": "V_HashColumns_SRC",
+											"value": {
+												"value": "@concat('src.',item())",
+												"type": "Expression"
+											}
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "ForEach_HashColumns_TGT",
+				"type": "ForEach",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@pipeline().parameters.HashColumns",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "If Condition1_copy3",
+							"type": "IfCondition",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@contains(item(),'TIME')",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "Append variable_HashColumns_SRC_copy1_copy3",
+										"type": "AppendVariable",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"variableName": "V_HashColumns_TGT",
+											"value": {
+												"value": "@concat('format(CAST(STUFF( STUFF( STUFF(tgt.',item(),', 13, 0, '':''), 11, 0, '':''), 9, 0, '' '') AS DATETIME), ''yyyy-MM-dd HH:mm:ss'')')",
+												"type": "Expression"
+											}
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "If Condition1_copy2_copy2",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "If Condition1_copy3",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@contains(item(),'DATE')",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "Append variable_HashColumns_SRC_copy1_copy2_copy2",
+										"type": "AppendVariable",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"variableName": "V_HashColumns_TGT",
+											"value": {
+												"value": "@concat('format(tgt.',item(),', ''yyyy-MM-dd HH:mm:ss'')')",
+												"type": "Expression"
+											}
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "If Condition1_copy2_copy1_copy1",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "If Condition1_copy2_copy2",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@not(or(contains(item(),'TIME'),contains(item(),'DATE')))",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "Append variable_HashColumns_SRC_copy1_copy2_copy1_copy1",
+										"type": "AppendVariable",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"variableName": "V_HashColumns_TGT",
+											"value": {
+												"value": "@concat('tgt.',item())",
+												"type": "Expression"
+											}
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"SourceSchema": {
+				"type": "String",
+				"defaultValue": "D360"
+			},
+			"SourceTable": {
+				"type": "String",
+				"defaultValue": "STG_EDS_CBC01_DEP_TDMASTER"
+			},
+			"TargetSchema": {
+				"type": "String",
+				"defaultValue": "EDS"
+			},
+			"TargetTable": {
+				"type": "String",
+				"defaultValue": "DEP_TDMASTER"
+			},
+			"NaturalKeyColumns": {
+				"type": "array",
+				"defaultValue": [
+					"[ACID]",
+					"[BANK_ID]"
+				]
+			},
+			"HashColumns": {
+				"type": "array",
+				"defaultValue": [
+					"[DEPOSIT_PERIOD_MTHS]",
+					"[DEPOSIT_PERIOD_DAYS]",
+					"[OPEN_EFFECTIVE_DATE]",
+					"[MATURITY_DATE]",
+					"[DEPOSIT_AMOUNT]",
+					"[MATURITY_AMOUNT]",
+					"[ADJUSTED_COMM_AMT]",
+					"[DEPOSIT_STATUS]",
+					"[ACCT_SEGMENT]",
+					"[SAFE_CUSTODY_FLG]",
+					"[NOMINEE_PRINT_FLG]",
+					"[PRINTING_FLG]",
+					"[SPL_CATG_IND]",
+					"[XFER_IN_IND]",
+					"[LAST_INT_PROVISION_DATE]",
+					"[LAST_REPAYMENT_DATE]",
+					"[CUMULATIVE_PRINCIPAL]",
+					"[CUMULATIVE_INSTL_PAID]",
+					"[CUMULATIVE_REPAYMENT_PAID]",
+					"[CUMULATIVE_INT_PAID]",
+					"[CUMULATIVE_INT_CREDITED]",
+					"[INT_ACCRUAL_FLG]",
+					"[RELATED_ACID]",
+					"[PENAL_PCNT]",
+					"[REPAYMENT_ACID]",
+					"[LOAN_ACID]",
+					"[PENALTY_AMOUNT]",
+					"[PENALTY_RECOVERED]",
+					"[PENALTY_WAIVED]",
+					"[AGENT_EMP_IND]",
+					"[AGENT_CODE]",
+					"[MATURITY_NOTICE_DATE]",
+					"[LCHG_USER_ID]",
+					"[LCHG_TIME]",
+					"[RCRE_USER_ID]",
+					"[RCRE_TIME]",
+					"[TDS_AMT]",
+					"[INT_CR_RATE_CODE]",
+					"[NOSTRO_VALUE_DATE]",
+					"[OVERDUE_INT_AMT]",
+					"[CLS_VALUE_DATE]",
+					"[AUTO_RENEWAL_FLG]",
+					"[PERD_MTHS_FOR_AUTO_RENEW]",
+					"[PERD_DAYS_FOR_AUTO_RENEW]",
+					"[MAX_AUTO_RENEWAL_ALLOWED]",
+					"[AUTO_RENEWED_COUNTER]",
+					"[CLOSE_ON_MATURITY_FLG]",
+					"[AUTO_RENEWAL_SCHM_CODE]",
+					"[AUTO_RENEWAL_INT_TBL_CODE]",
+					"[AUTO_RENWL_GL_SUBHEAD_CODE]",
+					"[RENEWAL_CRNCY]",
+					"[RENEWAL_RATE_CODE]",
+					"[RENEWAL_RATE]",
+					"[TS_CNT]",
+					"[SOL_ID]",
+					"[ORIGINAL_DEPOSIT_AMOUNT]",
+					"[NOTICE_PERIOD_MNTHS]",
+					"[NOTICE_PERIOD_DAYS]",
+					"[NOTICE_DATE]",
+					"[ACCT_CLOSE_INTEREST_RATE]",
+					"[TRAN_ID]",
+					"[TXOD_REGL_OVERDRAFT]",
+					"[ORIGINAL_MATURITY_AMOUNT]",
+					"[REN_SRL_NUM]",
+					"[DEPOSIT_TYPE]",
+					"[LINK_OPER_ACCOUNT]",
+					"[OUTFLOW_MULTIPLE_AMT]",
+					"[AVAIL_DEPOSIT_AMT]",
+					"[CUST_INST_TYPE]",
+					"[TDS_TOTAL_FROM_SELF_ACCT]",
+					"[INT_FLOW_FREQ_MTHS]",
+					"[INT_FLOW_FREQ_DAYS]",
+					"[TAM_CRNCY_CODE]",
+					"[MASTER_B2K_ID]",
+					"[ACCT_STATUS]",
+					"[ACCT_STATUS_DATE]",
+					"[FIXED_INSTALLMENT_AMT]",
+					"[NRML_INSTALLMENT_PCNT]",
+					"[INSTALLMENT_BASIS]",
+					"[MAX_MISS_CONTRIB_ALLOW]",
+					"[AUTO_CLOSURE_OF_IRREGULAR_ACCT]",
+					"[TOTAL_NO_OF_MISS_CONTRIB]",
+					"[ACCT_IRREGULAR_STATUS]",
+					"[ACCT_IRREGULAR_STATUS_DATE]",
+					"[CUMULATIVE_NRML_INSTL_PAID]",
+					"[CUMULATIVE_INITIAL_DEP_PAID]",
+					"[CUMULATIVE_TOP_UP_PAID]",
+					"[AUTO_CLOSURE_OF_ZERO_BAL_MNTHS]",
+					"[AUTO_CLOSURE_OF_ZERO_BAL_DAYS]",
+					"[PENALTY_CHARGE_EVENT_ID]",
+					"[NUM_OF_GRACE_DAYS_UTIL]",
+					"[ABSOLUTE_PENAL_INT_AMT]",
+					"[LAST_BONUS_RUN_DATE]",
+					"[LAST_CALC_BONUS_AMOUNT]",
+					"[BONUS_UPTO_DATE]",
+					"[NEXT_BONUS_RUN_DATE]",
+					"[NRML_INT_PAID_TIL_LST_BONUS]",
+					"[BONUS_CYCLE]",
+					"[LAST_CALC_BONUS_PCNT]",
+					"[ACCT_CLS_REASON_CODE]",
+					"[LAST_LOCAL_CAL_UPDATE]",
+					"[LOC_DEPOSIT_PERIOD_MTHS]",
+					"[LOC_DEPOSIT_PERIOD_DAYS]",
+					"[ACCT_CLOSE_FWC_NUM]",
+					"[ACCT_CLOSE_FWC_SOL_ID]",
+					"[LAST_NON_FIN_TRAN_DATE]",
+					"[COMMITMENT_AMT]",
+					"[DEPOSIT_WINDOW_END_DATE]",
+					"[INT_RATE_BASED_ON]",
+					"[CUMULATIVE_PART_CLOSE_AMT]",
+					"[CUMULATIVE_INT_WITHDRAWN]",
+					"[LOSS_OF_INT]",
+					"[LAST_RENEWAL_INST_MOD_DATE]",
+					"[LAST_RENEWAL_INST_MOD_INT_VER]",
+					"[FLOW_CODE]",
+					"[FLOW_FREQ_MTHS]",
+					"[FLOW_FREQ_DAYS]",
+					"[CUMULATIVE_BONUS_PAID]",
+					"[FIRST_INT_FLOW_DATE]",
+					"[OUTFLOW_TDS_AMOUNT]",
+					"[ORIG_OPEN_EFFECTIVE_DATE]",
+					"[TRAN_REASON_CODE_DR1]",
+					"[TRAN_REASON_CODE_DR2]",
+					"[FLOW_CODE_DR]",
+					"[TRAN_REASON_CODE_CR]",
+					"[FLOW_CODE_CR]",
+					"[CURR_YR_CONTRI]",
+					"[PREV_YR_CONTRI]",
+					"[NO_OF_BUMP_UP_UTLZD]",
+					"[ORIGINAL_MATURITY_DATE]"
+				]
+			},
+			"IsCurrentColumn": {
+				"type": "String",
+				"defaultValue": "[ISLATEST]"
+			},
+			"ExpiryDateColumn": {
+				"type": "String",
+				"defaultValue": "[SCD_END_DATE]"
+			},
+			"StartDateColumn": {
+				"type": "string",
+				"defaultValue": "[SCD_START_DATE]"
+			},
+			"ActiveDateValue": {
+				"type": "string",
+				"defaultValue": "'9999-12-31'"
+			},
+			"SourceCode": {
+				"type": "string",
+				"defaultValue": "DEP"
+			},
+			"BankId": {
+				"type": "string",
+				"defaultValue": "CBC01"
+			}
+		},
+		"variables": {
+			"SQL": {
+				"type": "String"
+			},
+			"V_NaturalKeyColumns": {
+				"type": "Array"
+			},
+			"V_NaturalKeyColumns_STR": {
+				"type": "String"
+			},
+			"V_NaturalKeyColoumns_JOIN": {
+				"type": "String"
+			},
+			"V_HashColumns_SRC": {
+				"type": "Array"
+			},
+			"V_HashColumns_TGT": {
+				"type": "Array"
+			},
+			"V_HashColumns_SRC_STR": {
+				"type": "String"
+			},
+			"V_HashColumns_TGT_STR": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-09-24T01:02:50Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

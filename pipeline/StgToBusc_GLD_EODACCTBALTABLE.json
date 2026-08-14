@@ -1,0 +1,332 @@
+{
+	"name": "StgToBusc_GLD_EODACCTBALTABLE",
+	"properties": {
+		"activities": [
+			{
+				"name": "GLD_EODACCTBALTABLE_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT COUNT(1) CNT FROM D360.STG_GLD_EODACCTBALTABLE WHERE H = 'D'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_GLD_EODACCTBALTABLE"
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition2",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "GLD_EODACCTBALTABLE_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('GLD_EODACCTBALTABLE_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE_copy1",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GLD_EODACCTBALTABLE",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": "SELECT\n    STG.[ACID]\n    ,STG.[EOD_DATE]\n    ,STG.[BANK_ID]\n    ,[TRAN_DATE_BAL]\n    ,[TRAN_DATE_TOT_TRAN]\n    ,[VALUE_DATE_BAL]\n    ,[VALUE_DATE_TOT_TRAN]\n    ,STG.[END_EOD_DATE]\n    ,[LCHG_USER_ID]\n    ,convert(datetime2, stuff(stuff(stuff(LCHG_TIME, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) as LCHG_TIME\n    ,[RCRE_USER_ID]\n    ,convert(datetime2, stuff(stuff(stuff(RCRE_TIME, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) as RCRE_TIME\n    ,convert(numeric(5,0),ISNULL(NULLIF(REPLACE([TS_CNT],' ',''),''),0)) as TS_CNT\n    ,[EAB_CRNCY_CODE]\n    ,1 as isActive\n    ,CASE WHEN STG.[END_EOD_DATE] = 20991231 THEN 1 ELSE 0 END  as isLatest\n    ,left(FILE_NAME, 5) as [BNK_CODE]\n    ,substring(FILE_NAME,7,3) as [SOURCE_CODE]\n    ,[FILE_NAME]\n    ,convert(date,[insert_dttm]) as insert_dttm\nFROM [BUSC].[GLD_EODACCTBALTABLE_DELTA] DELTA\nLEFT JOIN [d360].[STG_GLD_EODACCTBALTABLE] STG \n    ON DELTA.ACID = STG.ACID \n    AND DELTA.BANK_ID = STG.BANK_ID\n    AND DELTA.EOD_DATE = STG.EOD_DATE\n    AND DELTA.END_EOD_DATE = STG.END_EOD_DATE\nWhere H = 'D' AND DELTA.RECORD_STATUS = 'INSERT'",
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									},
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									}
+								},
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "ACID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "EOD_DATE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "EOD_DATE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BANK_ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BANK_ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "TRAN_DATE_BAL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "TRAN_DATE_BAL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "TRAN_DATE_TOT_TRAN",
+												"type": "String"
+											},
+											"sink": {
+												"name": "TRAN_DATE_TOT_TRAN",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "VALUE_DATE_BAL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "VALUE_DATE_BAL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "VALUE_DATE_TOT_TRAN",
+												"type": "String"
+											},
+											"sink": {
+												"name": "VALUE_DATE_TOT_TRAN",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "END_EOD_DATE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "END_EOD_DATE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "LCHG_USER_ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "LCHG_USER_ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "LCHG_TIME",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "LCHG_TIME",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "RCRE_USER_ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "RCRE_USER_ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "RCRE_TIME",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "RCRE_TIME",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "TS_CNT",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "TS_CNT",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "EAB_CRNCY_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "EAB_CRNCY_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "isActive",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "isActive",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "isLatest",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "isLatest",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "BNK_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BNK_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SOURCE_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SOURCE_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FILE_NAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_GLD_EODACCTBALTABLE"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_TGT",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "GLD_EODACCTBALTABLE"
+									}
+								}
+							]
+						}
+					]
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-05-10T02:17:00Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

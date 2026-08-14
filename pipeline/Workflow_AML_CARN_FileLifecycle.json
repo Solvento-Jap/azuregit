@@ -1,0 +1,365 @@
+{
+	"name": "Workflow_AML_CARN_FileLifecycle",
+	"properties": {
+		"description": "AML CARN lifecycle wrapper: exact decrypt, requested-date output verification, existing staging, exact encrypted-original archive verification, and decrypted working-file cleanup.",
+		"activities": [
+			{
+				"name": "Require_Approved_Execution",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.ExecutionMode, 'ApprovedDateSliceReload')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Unapproved_Execution",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "ExecutionMode must be ApprovedDateSliceReload.",
+								"errorCode": "AML_EXECUTION_NOT_APPROVED"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Execution_Approved",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Require_Valid_MissingFilePolicy",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(equals(pipeline().parameters.MissingFilePolicy, 'Fail'), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Invalid_MissingFilePolicy",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "MissingFilePolicy must be Fail or Skip.",
+								"errorCode": "AML_INVALID_MISSING_FILE_POLICY"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "MissingFilePolicy_Valid",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Require_Complete_KeyPair",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(and(equals(pipeline().parameters.kvsecpass, 'cbcpassp'), equals(pipeline().parameters.kvsecpriv, 'cbcprivkeyaml')), and(not(equals(pipeline().parameters.kvsecpass, '')), not(equals(pipeline().parameters.kvsecpriv, '')), not(equals(pipeline().parameters.kvsecpass, 'cbcpassp')), not(equals(pipeline().parameters.kvsecpriv, 'cbcprivkeyaml'))))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Incomplete_KeyPair",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "kvsecpass and kvsecpriv must be supplied together or both omitted for the defaults.",
+								"errorCode": "AML_KEY_PAIR_INCOMPLETE"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "KeyPair_Valid",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Execute_PGPDecrypt_AML_CARN",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Complete_KeyPair",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PGPDecrypt_AML_CARN",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						},
+						"kvsecpass": {
+							"value": "@pipeline().parameters.kvsecpass",
+							"type": "Expression"
+						},
+						"kvsecpriv": {
+							"value": "@pipeline().parameters.kvsecpriv",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Fail_Decryption_Phase",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "Execute_PGPDecrypt_AML_CARN",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": "PGPDecrypt_AML_CARN failed; staging, archive, and cleanup are blocked.",
+					"errorCode": "AML_DECRYPTION_PHASE_FAILED"
+				}
+			},
+			{
+				"name": "Execute_DecToStg_AML_CARN",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_PGPDecrypt_AML_CARN",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "DecToStg_AML_CARN",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Fail_Staging_Phase",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "Execute_DecToStg_AML_CARN",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": "DecToStg_AML_CARN failed; archive and cleanup are blocked.",
+					"errorCode": "AML_STAGING_PHASE_FAILED"
+				}
+			},
+			{
+				"name": "Execute_Archive_AML_ExactFile",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_DecToStg_AML_CARN",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Archive_AML_ExactFile",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"SourceCode": "CARN",
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"EncryptedSelector": {
+							"value": "@concat('*SRC_CARN_', pipeline().parameters.DateToProcess, '*.gpg')",
+							"type": "Expression"
+						},
+						"ExpectedFileCount": 1,
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Fail_Archive_Phase",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "Execute_Archive_AML_ExactFile",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": "Archive_AML_ExactFile failed; no encrypted landing file is deleted.",
+					"errorCode": "AML_ARCHIVE_PHASE_FAILED"
+				}
+			},
+			{
+				"name": "Lifecycle_Complete",
+				"type": "Wait",
+				"dependsOn": [
+					{
+						"activity": "Execute_Archive_AML_ExactFile",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"waitTimeInSeconds": 1
+				}
+			}
+		],
+		"parameters": {
+			"DateToProcess": {
+				"type": "String"
+			},
+			"ExecutionMode": {
+				"type": "String",
+				"defaultValue": "PlanOnly"
+			},
+			"MissingFilePolicy": {
+				"type": "String",
+				"defaultValue": "Skip"
+			},
+			"kvsecpass": {
+				"type": "String",
+				"defaultValue": "cbcpassp"
+			},
+			"kvsecpriv": {
+				"type": "String",
+				"defaultValue": "cbcprivkeyaml"
+			}
+		},
+		"folder": {
+			"name": "AML_ETL/Lifecycle"
+		},
+		"annotations": [
+			"AML",
+			"CARN",
+			"FileLifecycle",
+			"PGPDecryptExact",
+			"DecToStgPreserved",
+			"ArchiveVerifiedBeforeCleanup"
+		],
+		"lastPublishTime": "2026-08-04T08:25:00Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

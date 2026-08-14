@@ -1,0 +1,1030 @@
+{
+	"name": "PGPDecrypt_AML_FCBS_MCGCDETAILS",
+	"properties": {
+		"description": "AML exact source/date decryptor for CUSTOM.C_CSALMCGC -> STG_EDS_DEP_MCGCDETAILS (CBC-RDP-AML-003 Phase 1); uses the existing PGPDecrypt Function App without modifying PGPDecrypt_EDS.",
+		"activities": [
+			{
+				"name": "Require_Approved_Execution",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.ExecutionMode, 'ApprovedDateSliceReload')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Unapproved_Execution",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "ExecutionMode must be ApprovedDateSliceReload.",
+								"errorCode": "AML_EXECUTION_NOT_APPROVED"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Execution_Approved",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Require_Valid_MissingFilePolicy",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(equals(pipeline().parameters.MissingFilePolicy, 'Fail'), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Invalid_MissingFilePolicy",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "MissingFilePolicy must be Fail or Skip.",
+								"errorCode": "AML_INVALID_MISSING_FILE_POLICY"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "MissingFilePolicy_Valid",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Require_Complete_KeyPair",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(and(equals(pipeline().parameters.kvsecpass, 'cbcpassp'), equals(pipeline().parameters.kvsecpriv, 'cbcprivkeyaml')), and(not(equals(pipeline().parameters.kvsecpass, '')), not(equals(pipeline().parameters.kvsecpriv, '')), not(equals(pipeline().parameters.kvsecpass, 'cbcpassp')), not(equals(pipeline().parameters.kvsecpriv, 'cbcprivkeyaml'))))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Incomplete_KeyPair",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "kvsecpass and kvsecpriv must be supplied together or both omitted for the defaults.",
+								"errorCode": "AML_KEY_PAIR_INCOMPLETE"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "KeyPair_Valid",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Require_Valid_DateToProcess",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Require_Complete_KeyPair",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(length(pipeline().parameters.DateToProcess), 8), not(equals(pipeline().parameters.DateToProcess, '')), not(contains(pipeline().parameters.DateToProcess, '''')), not(contains(pipeline().parameters.DateToProcess, '/')))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Invalid_DateToProcess",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "DateToProcess must be a non-empty yyyyMMdd value.",
+								"errorCode": "AML_INVALID_DATE_TO_PROCESS"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "DateToProcess_Valid",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "List_Requested_Date_Encrypted_Files",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "Require_Valid_DateToProcess",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "adls_aml_encrypted_file",
+						"type": "DatasetReference",
+						"parameters": {
+							"FolderPath": "dev/encrypt",
+							"FileName": {
+								"value": "@concat('*CBC-AML-FCBS-CUSTOM.C_CSALMCGC-', pipeline().parameters.DateToProcess, '*.gpg')",
+								"type": "Expression"
+							}
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "Require_Complete_Encrypted_Set",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "List_Requested_Date_Encrypted_Files",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(and(equals(length(activity('List_Requested_Date_Encrypted_Files').output.childItems), 0), equals(pipeline().parameters.MissingFilePolicy, 'Skip')), equals(length(activity('List_Requested_Date_Encrypted_Files').output.childItems), 1))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Incomplete_Encrypted_Set",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "The FCBS requested-date encrypted file set must contain exactly 1 files or be empty with MissingFilePolicy=Skip.",
+								"errorCode": "AML_ENCRYPTED_FILE_SET_INCOMPLETE"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Encrypted_File_Set_Valid",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Decrypt_Requested_Date_Files",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Require_Complete_Encrypted_Set",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('List_Requested_Date_Encrypted_Files').output.childItems",
+						"type": "Expression"
+					},
+					"isSequential": false,
+					"batchCount": 5,
+					"activities": [
+						{
+							"name": "PGP Decrypt Exact File",
+							"type": "AzureFunctionActivity",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "7.00:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 300,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"functionName": "PGPDecrypt",
+								"body": {
+									"value": "{\nfilePath: \"data360/dev/encrypt/@{item().name}\",\noutputPath: \"data360/dev/decrypted/FCBS/@{replace(item().name,'.gpg','')}\",\nkvsecpass: \"@{pipeline().parameters.kvsecpass}\",\nkvsecpriv: \"@{pipeline().parameters.kvsecpriv}\"\n}",
+									"type": "Expression"
+								},
+								"method": "POST"
+							},
+							"linkedServiceName": {
+								"referenceName": "PGPFunction",
+								"type": "LinkedServiceReference"
+							},
+							"body": {
+								"type": "Expression",
+								"value": "{\nfilePath: \"data360/dev/encrypt/@{item().name}\",\noutputPath: \"data360/dev/decrypted/FCBS/@{replace(item().name,'.gpg','')}\",\nkvsecpass: \"@{pipeline().parameters.kvsecpass}\",\nkvsecpriv: \"@{pipeline().parameters.kvsecpriv}\"\n}"
+							},
+							"functionName": "PGPDecrypt",
+							"method": "POST"
+						},
+						{
+							"name": "Log_Decryption_Success",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "PGP Decrypt Exact File",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"FailedRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FileName": {
+										"value": {
+											"value": "@item().name",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@addHours(pipeline().TriggerTime,+8)",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "SUCCESS",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"SuccessRowCount": {
+										"value": null,
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Decryption_File_Succeeded",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "Log_Decryption_Success",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "Fail_Decryption_Success_Log",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "Log_Decryption_Success",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "Decryption succeeded but its success log failed.",
+								"errorCode": "AML_DECRYPTION_LOG_FAILED"
+							}
+						},
+						{
+							"name": "Log_Decryption_Failure",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "PGP Decrypt Exact File",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"FailedRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FileName": {
+										"value": {
+											"value": "@item().name",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@addHours(pipeline().TriggerTime,+8)",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "@concat('FAILED -',activity('PGP Decrypt Exact File').error.message)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"SuccessRowCount": {
+										"value": null,
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Fail_Decryption_After_Log",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "Log_Decryption_Failure",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "PGP decryption failed after the failure log was written.",
+								"errorCode": "AML_DECRYPTION_FAILED"
+							}
+						},
+						{
+							"name": "Fail_Decryption_Log",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "Log_Decryption_Failure",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "PGP decryption failed and its failure log also failed.",
+								"errorCode": "AML_DECRYPTION_LOG_FAILED"
+							}
+						}
+					]
+				},
+				"items": {
+					"value": "@activity('List_Requested_Date_Encrypted_Files').output.childItems",
+					"type": "Expression"
+				},
+				"isSequential": false,
+				"activities": [
+					{
+						"name": "PGP Decrypt Exact File",
+						"dependsOn": [],
+						"userProperties": [],
+						"linkedServiceName": {
+							"referenceName": "PGPFunction",
+							"type": "LinkedServiceReference"
+						},
+						"method": "POST",
+						"functionName": "PGPDecrypt",
+						"body": {
+							"type": "Expression",
+							"value": "{\nfilePath: \"data360/dev/encrypt/@{item().name}\",\noutputPath: \"data360/dev/decrypted/FCBS/@{replace(item().name,'.gpg','')}\",\nkvsecpass: \"@{pipeline().parameters.kvsecpass}\",\nkvsecpriv: \"@{pipeline().parameters.kvsecpriv}\"\n}"
+						},
+						"policy": {
+							"retry": 3,
+							"retryIntervalInSeconds": 300,
+							"secureInput": false,
+							"secureOutput": false,
+							"timeout": "7.00:00:00"
+						}
+					},
+					{
+						"name": "Log_Decryption_Success",
+						"dependsOn": [
+							{
+								"activity": "PGP Decrypt Exact File",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"sqlPool": {
+							"referenceName": "testSQLpool",
+							"type": "SqlPoolReference"
+						},
+						"typeProperties": {
+							"storedProcedureName": "[d360].[StatusExecutionLog]",
+							"storedProcedureParameters": {
+								"FailedRowCount": {
+									"type": "String",
+									"value": null
+								},
+								"FileName": {
+									"type": "String",
+									"value": {
+										"value": "@item().name",
+										"type": "Expression"
+									}
+								},
+								"PipelineName": {
+									"type": "String",
+									"value": {
+										"value": "@pipeline().Pipeline",
+										"type": "Expression"
+									}
+								},
+								"RunDate": {
+									"type": "Datetime",
+									"value": {
+										"value": "@addHours(pipeline().TriggerTime,+8)",
+										"type": "Expression"
+									}
+								},
+								"RunId": {
+									"type": "String",
+									"value": {
+										"value": "@pipeline().RunId",
+										"type": "Expression"
+									}
+								},
+								"StatusDescription": {
+									"type": "String",
+									"value": {
+										"value": "SUCCESS",
+										"type": "Expression"
+									}
+								},
+								"SuccessRowCount": {
+									"type": "String",
+									"value": null
+								}
+							}
+						}
+					},
+					{
+						"name": "Decryption_File_Succeeded",
+						"dependsOn": [
+							{
+								"activity": "Log_Decryption_Success",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"waitTimeInSeconds": 1
+						}
+					},
+					{
+						"name": "Fail_Decryption_Success_Log",
+						"dependsOn": [
+							{
+								"activity": "Log_Decryption_Success",
+								"dependencyConditions": [
+									"Failed"
+								]
+							}
+						],
+						"typeProperties": {
+							"message": "Decryption succeeded but its success log failed.",
+							"errorCode": "AML_DECRYPTION_LOG_FAILED"
+						}
+					},
+					{
+						"name": "Log_Decryption_Failure",
+						"dependsOn": [
+							{
+								"activity": "PGP Decrypt Exact File",
+								"dependencyConditions": [
+									"Failed"
+								]
+							}
+						],
+						"userProperties": [],
+						"sqlPool": {
+							"referenceName": "testSQLpool",
+							"type": "SqlPoolReference"
+						},
+						"typeProperties": {
+							"storedProcedureName": "[d360].[StatusExecutionLog]",
+							"storedProcedureParameters": {
+								"FailedRowCount": {
+									"type": "String",
+									"value": null
+								},
+								"FileName": {
+									"type": "String",
+									"value": {
+										"value": "@item().name",
+										"type": "Expression"
+									}
+								},
+								"PipelineName": {
+									"type": "String",
+									"value": {
+										"value": "@pipeline().Pipeline",
+										"type": "Expression"
+									}
+								},
+								"RunDate": {
+									"type": "Datetime",
+									"value": {
+										"value": "@addHours(pipeline().TriggerTime,+8)",
+										"type": "Expression"
+									}
+								},
+								"RunId": {
+									"type": "String",
+									"value": {
+										"value": "@pipeline().RunId",
+										"type": "Expression"
+									}
+								},
+								"StatusDescription": {
+									"type": "String",
+									"value": {
+										"value": "@concat('FAILED -',activity('PGP Decrypt Exact File').error.message)",
+										"type": "Expression"
+									}
+								},
+								"SuccessRowCount": {
+									"type": "String",
+									"value": null
+								}
+							}
+						}
+					},
+					{
+						"name": "Fail_Decryption_After_Log",
+						"dependsOn": [
+							{
+								"activity": "Log_Decryption_Failure",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"typeProperties": {
+							"message": "PGP decryption failed after the failure log was written.",
+							"errorCode": "AML_DECRYPTION_FAILED"
+						}
+					},
+					{
+						"name": "Fail_Decryption_Log",
+						"dependsOn": [
+							{
+								"activity": "Log_Decryption_Failure",
+								"dependencyConditions": [
+									"Failed"
+								]
+							}
+						],
+						"typeProperties": {
+							"message": "PGP decryption failed and its failure log also failed.",
+							"errorCode": "AML_DECRYPTION_LOG_FAILED"
+						}
+					}
+				],
+				"batchCount": 5
+			},
+			{
+				"name": "Verify_Exact_Decrypted_Outputs",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Decrypt_Requested_Date_Files",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('List_Requested_Date_Encrypted_Files').output.childItems",
+						"type": "Expression"
+					},
+					"isSequential": false,
+					"batchCount": 5,
+					"activities": [
+						{
+							"name": "Check Exact Decrypted File",
+							"type": "GetMetadata",
+							"dependsOn": [],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "adls_aml_decrypted_file",
+									"type": "DatasetReference",
+									"parameters": {
+										"FolderPath": "dev/decrypted/FCBS",
+										"FileName": {
+											"value": "@replace(item().name,'.gpg','')",
+											"type": "Expression"
+										}
+									}
+								},
+								"fieldList": [
+									"exists",
+									"size",
+									"lastModified"
+								],
+								"storeSettings": {
+									"type": "AzureBlobFSReadSettings",
+									"recursive": false,
+									"enablePartitionDiscovery": false
+								},
+								"formatSettings": {
+									"type": "DelimitedTextReadSettings"
+								}
+							}
+						},
+						{
+							"name": "Require_Exact_Decrypted_Output",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Check Exact Decrypted File",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@equals(activity('Check Exact Decrypted File').output.exists, true)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "Fail_Missing_Decrypted_Output",
+										"type": "Fail",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"message": "The FCBS decrypted output for the requested encrypted file is missing.",
+											"errorCode": "AML_DECRYPTED_OUTPUT_MISSING"
+										}
+									}
+								],
+								"ifTrueActivities": [
+									{
+										"name": "Exact_Decrypted_Output_Present",
+										"type": "Wait",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"waitTimeInSeconds": 1
+										}
+									}
+								]
+							}
+						}
+					]
+				},
+				"items": {
+					"value": "@activity('List_Requested_Date_Encrypted_Files').output.childItems",
+					"type": "Expression"
+				},
+				"isSequential": false,
+				"activities": [
+					{
+						"name": "Check Exact Decrypted File",
+						"dependsOn": [],
+						"userProperties": [],
+						"typeProperties": {
+							"dataset": {
+								"referenceName": "adls_aml_decrypted_file",
+								"type": "DatasetReference",
+								"parameters": {
+									"FolderPath": "dev/decrypted/FCBS",
+									"FileName": {
+										"value": "@replace(item().name,'.gpg','')",
+										"type": "Expression"
+									}
+								}
+							},
+							"fieldList": [
+								"exists",
+								"size",
+								"lastModified"
+							],
+							"storeSettings": {
+								"recursive": false,
+								"enablePartitionDiscovery": false
+							}
+						}
+					},
+					{
+						"name": "Require_Exact_Decrypted_Output",
+						"dependsOn": [
+							{
+								"activity": "Check Exact Decrypted File",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"expression": {
+								"value": "@equals(activity('Check Exact Decrypted File').output.exists, true)",
+								"type": "Expression"
+							},
+							"ifTrueActivities": [
+								{
+									"name": "Exact_Decrypted_Output_Present",
+									"dependsOn": [],
+									"userProperties": [],
+									"typeProperties": {
+										"waitTimeInSeconds": 1
+									}
+								}
+							],
+							"ifFalseActivities": [
+								{
+									"name": "Fail_Missing_Decrypted_Output",
+									"dependsOn": [],
+									"typeProperties": {
+										"message": "The FCBS decrypted output for the requested encrypted file is missing.",
+										"errorCode": "AML_DECRYPTED_OUTPUT_MISSING"
+									}
+								}
+							]
+						}
+					}
+				],
+				"batchCount": 5
+			},
+			{
+				"name": "List_Requested_Date_Decrypted_Outputs",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "Verify_Exact_Decrypted_Outputs",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "adls_aml_decrypted_file",
+						"type": "DatasetReference",
+						"parameters": {
+							"FolderPath": "dev/decrypted/FCBS",
+							"FileName": {
+								"value": "@concat('*CBC-AML-FCBS-CUSTOM.C_CSALMCGC-',pipeline().parameters.DateToProcess,'*')",
+								"type": "Expression"
+							}
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "Require_Complete_Decrypted_Set",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "List_Requested_Date_Decrypted_Outputs",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(and(equals(length(activity('List_Requested_Date_Encrypted_Files').output.childItems), 0), equals(length(activity('List_Requested_Date_Decrypted_Outputs').output.childItems), 0), equals(pipeline().parameters.MissingFilePolicy, 'Skip')), equals(length(activity('List_Requested_Date_Decrypted_Outputs').output.childItems), 1))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Incomplete_Decrypted_Set",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "The FCBS requested-date decrypted output set is incomplete or contains an unexpected count.",
+								"errorCode": "AML_DECRYPTED_FILE_SET_INCOMPLETE"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Decrypted_File_Set_Valid",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"DateToProcess": {
+				"type": "String"
+			},
+			"ExecutionMode": {
+				"type": "String",
+				"defaultValue": "PlanOnly"
+			},
+			"MissingFilePolicy": {
+				"type": "String",
+				"defaultValue": "Skip"
+			},
+			"kvsecpass": {
+				"type": "String",
+				"defaultValue": "cbcpassp"
+			},
+			"kvsecpriv": {
+				"type": "String",
+				"defaultValue": "cbcprivkeyaml"
+			}
+		},
+		"folder": {
+			"name": "AML_ETL/Decrypt"
+		},
+		"annotations": [
+			"AML",
+			"FCBS",
+			"ExactDateDecrypt",
+			"PGP_FUNCTION_UNCHANGED",
+			"MISSING_FILE_POLICY_CONFIGURABLE",
+			"INDEPENDENT_OUTPUT_VERIFICATION"
+		],
+		"lastPublishTime": "2026-08-07T10:16:31Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

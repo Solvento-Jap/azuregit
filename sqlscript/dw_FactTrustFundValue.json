@@ -1,0 +1,20 @@
+{
+	"name": "dw_FactTrustFundValue",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nALTER PROC [DW].[SP_DW_FACTTRUSTFUNDVALUE] AS\nBEGIN\n\nWITH CNT_CustomerAccountParticipation\nAS(\nSELECT BUB.CustomerAccountId,  COUNT(InternalCustomerId) CNT FROM [BNKM].[UITFAUMBalance] BUB\nLEFT JOIN (SELECT InternalCustomerId,BaseAccountId FROM BNKM.CustomerRelatedBaseAccount) BCRB ON BUB.BaseAccountId = BCRB.BaseAccountId\nGROUP BY BUB.CustomerAccountId \n)\n\n, DW_FACTTRUSTFUNDVALUE AS (\n\n-- UITF --\nSELECT DISTINCT\n CONVERT(VARCHAR,BUB.BalanceTimestamp,112) AS BusinessDateSK\n ,-1 AS BranchSK\n ,DDK.BankSK AS BankSK\n ,DDA.AccountSK AS AccountSK\n ,DDA.AccountId AS AccountId\n ,BUB.TotalBalanceAmount AS AUMAmountFull\n ,BUB.TotalBalanceAmount/CASE WHEN CAP.CNT = 0 THEN 1 ELSE CAP.CNT END AS AUMAmountProrated\n ,BUB.SourceSystemCode AS SourceSystemCode\n ,0 AS WorkFlowId\n ,0 AS TaskRunId\n ,Getdate() AS InsertDttm\nfrom [BNKM].[UITFAUMBalance] BUB\nLEFT JOIN [BNKM].[CustomerAccount] BCA\tON BUB.CustomerAccountId = BCA.CustomerAccountId \n--LEFT JOIN [DW].[DimBranch] DDB\tON BCA.BranchId = DDB.BranchID aND DDB.CurrentIndicator = 1\nLEFT JOIN [DW].[DimBank] DDK \tON BUB.FinancialInstitutionId = DDK.BankID\nLEFT JOIN [DW].[DimAccount] DDA\t\tON BUB.CustomerAccountId = DDA.AccountID AND DDA.CurrentIndicator = 1\n--LEFT JOIN [BNKM].[CustomerRelatedBaseAccount] BCBA\tON BUB.BaseAccountId = BCBA.BaseAccountId --- NO BaseAccountId field in BNKM.CustomerAccount\nLEFT JOIN CNT_CustomerAccountParticipation CAP ON BUB.CustomerAccountId = CAP.CustomerAccountId\nWHERE DDA.AccountSK IS NOT NULL\nGROUP BY \nBUB.BalanceTimestamp\n,DDK.BankSK\n,DDA.AccountSK\n,DDA.AccountId\n,BUB.TotalBalanceAmount\n,CAP.CNT\n,BUB.SourceSystemCode\n\n\nUNION ALL\n\n\n-- NonUITF --\nSELECT DISTINCT\n CONVERT(VARCHAR,BUB.BalanceTimestamp,112) AS BusinessDateSK\n ,-1 AS BranchSK\n ,DDK.BankSK AS BankSK\n ,DDA.AccountSK AS AccountSK\n ,DDA.AccountId AS AccountId\n ,BUB.BalanceAmount AS AUMAmountFull\n ,BUB.BalanceAmount/CASE WHEN CAP.CNT = 0 THEN 1 ELSE CAP.CNT END AS AUMAmountProrated\n ,BUB.SourceSystemCode AS SourceSystemCode\n ,0 AS WorkFlowId\n ,0 AS TaskRunId\n ,Getdate() AS InsertDttm\nFROM [BNKM].[NonUITFAUMBalance] BUB\nLEFT JOIN [BNKM].[CustomerAccount] BCA\tON BUB.CustomerAccountId = BCA.CustomerAccountId\n--LEFT JOIN [DW].[DimBranch] DDB\tON BCA.BranchId = DDB.BranchID AND DDB.CurrentIndicator = 1\nLEFT JOIN [DW].[DimBank] DDK \tON BUB.FinancialInstitutionId = DDK.BankID\nLEFT JOIN [DW].[DimAccount] DDA\t\tON BUB.CustomerAccountId = DDA.AccountID AND DDA.CurrentIndicator = 1\n--LEFT JOIN [BNKM].[CustomerRelatedBaseAccount] BCBA\tON BCA.BaseAccountId = BCBA.BaseAccountId --- NO BaseAccountId field in BNKM.CustomerAccount\nLEFT JOIN CNT_CustomerAccountParticipation CAP ON BUB.CustomerAccountId = CAP.CustomerAccountId\nWHERE DDA.AccountSK IS NOT NULL\nGROUP BY \nBUB.BalanceTimestamp\n,DDK.BankSK\n,DDA.AccountSK\n,DDA.AccountId\n,BUB.BalanceAmount\n,CAP.CNT\n,BUB.SourceSystemCode\n)\n\nINSERT INTO [DW].[FactTrustFundValue]\n\nSELECT DISTINCT\n BusinessDateSK\n ,BranchSK\n ,BankSK\n ,AccountSK\n ,AccountId\n ,SUM(AUMAmountFull)\n ,SUM(AUMAmountProrated)\n ,SourceSystemCode\n ,WorkFlowId\n ,TaskRunId\n ,InsertDttm\nFROM DW_FACTTRUSTFUNDVALUE\nGROUP BY\n BusinessDateSK\n ,BranchSK\n ,BankSK\n ,AccountSK\n ,AccountId\n ,SourceSystemCode\n ,WorkFlowId\n ,TaskRunId\n ,InsertDttm\n\nEND\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

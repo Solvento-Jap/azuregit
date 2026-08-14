@@ -1,0 +1,758 @@
+{
+	"name": "Workflow_EDS_CRM_ADDRESS_Manifest_Weekend_V2",
+	"properties": {
+		"activities": [
+			{
+				"name": "Iterate Execution of Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@pipeline().parameters.startDate",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "OM_SRC_CHECK_CRM_ADDRESS",
+							"type": "SqlPoolStoredProcedure",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [
+								{
+									"activity": "Condition Success Count",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_EDS_CRM_ADDRESS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@replace(substring(item(),0,10),'-','')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Manifest_file",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Workflow_Manifest",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"MaxPipelineCalls": 5,
+									"RetryInterval": 600,
+									"DatetoProcessed": {
+										"value": "@substring(item(),0,10)",
+										"type": "Expression"
+									},
+									"tables": {
+										"value": "@concat('''',pipeline().parameters.tables,'''')",
+										"type": "Expression"
+									},
+									"EndTime": "6:00",
+									"src_sys": "CRM"
+								}
+							}
+						},
+						{
+							"name": "Get Success Count",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_STG_EDS_CRM_ADDRESS'',''EDS_STG'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Manifest_file",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "END_TASK_STG_EDS_CRM_ADDRESS_SUCCESSFUL",
+										"type": "SqlPoolStoredProcedure",
+										"state": "Inactive",
+										"onInactiveMarkAs": "Succeeded",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_CRM_ADDRESS_Weekend",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_STG_EDS_CRM_ADDRESS",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_STG_EDS_CRM_ADDRESS_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"state": "Inactive",
+										"onInactiveMarkAs": "Succeeded",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_CRM_ADDRESS_Weekend",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_STG_EDS_CRM_ADDRESS",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "START_TASK_STG_EDS_CRM_ADDRESS",
+										"type": "SqlPoolStoredProcedure",
+										"state": "Inactive",
+										"onInactiveMarkAs": "Succeeded",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_STG_EDS_CRM_ADDRESS",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "Onprem",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_STG_EDS_CRM_ADDRESS",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "OnPremToADLS_CRM_ADDRESS_EDS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"DatetoProcessed": {
+													"value": "@replace(substring(item(),0,10),'-','')",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "PGP Decrypt Address",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "Onprem",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "PGPDecrypt_CRM_ADDRESS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true
+										}
+									},
+									{
+										"name": "DecToStg_CRM_ADDRESS_Weekend",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "Truncate Staging",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "DecToStg_CRM_ADDRESS_EDS_Weekend",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"DatetoProcessed": {
+													"value": "@replace(substring(item(),0,10),'-','')",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "MovToArchive_CRM_ADDRESS",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_CRM_ADDRESS_Weekend",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "MovToArchive_EDS_CRM_ADDRESS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true
+										}
+									},
+									{
+										"name": "Truncate Staging",
+										"type": "Script",
+										"state": "Inactive",
+										"onInactiveMarkAs": "Succeeded",
+										"dependsOn": [
+											{
+												"activity": "PGP Decrypt Address",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 3,
+											"retryIntervalInSeconds": 60,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"type": "NonQuery",
+													"text": "TRUNCATE TABLE D360.STG_EDS_CRM_ADDRESS;"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									},
+									{
+										"name": "HashLog_CRM_ADDRESS",
+										"type": "ExecutePipeline",
+										"state": "Inactive",
+										"onInactiveMarkAs": "Succeeded",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_CRM_ADDRESS_Weekend",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "HashLog_CRM_ADDRESS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "Get Success Count EDS",
+							"type": "Lookup",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [
+								{
+									"activity": "OM_SRC_CHECK_CRM_ADDRESS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_EDS_CRM_ADDRESS'',''EDS'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count EDS",
+							"type": "IfCondition",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count EDS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count EDS').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "START_TASK_EDS_CRM_ADDRESS",
+										"type": "SqlPoolStoredProcedure",
+										"state": "Inactive",
+										"onInactiveMarkAs": "Succeeded",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_CRM_ADDRESS",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_CRM_ADDRESS_SUCCESSFUL",
+										"type": "SqlPoolStoredProcedure",
+										"state": "Inactive",
+										"onInactiveMarkAs": "Succeeded",
+										"dependsOn": [
+											{
+												"activity": "EDS_CRM_ADDRESS",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_CRM_ADDRESS",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_CRM_ADDRESS_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"state": "Inactive",
+										"onInactiveMarkAs": "Succeeded",
+										"dependsOn": [
+											{
+												"activity": "EDS_CRM_ADDRESS",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_CRM_ADDRESS",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "EDS_CRM_ADDRESS",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_EDS_CRM_ADDRESS",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "EDS_CRM_ADDRESS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "array",
+				"defaultValue": [
+					"2024-07-27",
+					"2024-07-28",
+					"2024-08-03",
+					"2024-08-04",
+					"2024-08-10",
+					"2024-08-11",
+					"2024-08-17",
+					"2024-08-18",
+					"2024-08-23",
+					"2024-08-24",
+					"2024-08-25",
+					"2024-08-26",
+					"2024-08-31",
+					"2024-09-01",
+					"2024-09-07",
+					"2024-09-08",
+					"2024-09-14",
+					"2024-09-15"
+				]
+			},
+			"tables": {
+				"type": "string",
+				"defaultValue": "CRM_ADDRESS"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "CRM"
+			}
+		},
+		"variables": {
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"CheckFEstatus": {
+				"type": "String",
+				"defaultValue": "True"
+			},
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			},
+			"Source": {
+				"type": "String",
+				"defaultValue": "CRM"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-09-20T03:09:32Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

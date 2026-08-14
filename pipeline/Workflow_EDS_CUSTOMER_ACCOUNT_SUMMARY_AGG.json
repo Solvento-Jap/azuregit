@@ -1,0 +1,692 @@
+{
+	"name": "Workflow_EDS_CUSTOMER_ACCOUNT_SUMMARY_AGG",
+	"properties": {
+		"activities": [
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_START_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "IF NOT EXISTS(select * FROM EDS.DATE_DIM EDD WHERE EDD.FULLDATE = DATEADD(MM,1,(SELECT MAX(DATE_ID) DATE_ID FROM EDS.CUSTOMER_ACCOUNT_SUMMARY_AGG)))\n    BEGIN\n        SELECT '2023-01-01' start_date\n    END\nELSE\n    BEGIN\n        SELECT CASE WHEN ISNULL(CURRENT_MONTH_END,'') = '' THEN '2023-01-01' ELSE CURRENT_MONTH_END END start_date FROM EDS.DATE_DIM EDD \n\t    WHERE EDD.FULLDATE = DATEADD(MM,1,(SELECT MAX(DATE_ID) DATE_ID FROM EDS.CUSTOMER_ACCOUNT_SUMMARY_AGG))\n    END\n\n",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": " "
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_START_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_START_PROCESS_DATE').output.firstRow.start_date\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_END_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_END_PROCESS_DATE').output.firstRow.end_date\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "GET_END_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "select Previous_Month_Last_Bus_Day end_date FROM EDS.DATE_DIM EDD\n\tWHERE EDD.FULLDATE = CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATE)\n",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": " "
+									}
+								},
+								"firstRowOnly": true
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "GET_DATES_TO _PROCESS",
+				"type": "Lookup",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": {
+							"value": "@concat('SELECT DISTINCT SUBSTRING(CAST(CURRENT_MONTH_END AS VARCHAR),1,10) MONTH_END FROM EDS.DATE_DIM WHERE FULLDATE BETWEEN ''',substring(variables('V_startDate'),0,10), ''' AND GREATEST(''',substring(variables('V_startDate'),0,10), ''',''',substring(variables('V_endDate'),0,10),''') ORDER BY SUBSTRING(CAST(CURRENT_MONTH_END AS VARCHAR),1,10)')",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_EDS",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": " "
+						}
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "DATES_TO_PROCESS",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "GET_DATES_TO _PROCESS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "V_datestoprocess_arr",
+					"value": {
+						"value": "@activity('GET_DATES_TO _PROCESS').output.value",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "ITERATE_MONTH_END",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DATES_TO_PROCESS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('V_datestoprocess_arr')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "END_TASK_EDS_SUCCESS",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "CUST_ACCT_SUM_AGG",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_EDS_CUSTOMER_ACCOUNT_SUMMARY_AGG",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "SUCCESSFUL",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "END_TASK_EDS_FAILED",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "CUST_ACCT_SUM_AGG",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_EDS_CUSTOMER_ACCOUNT_SUMMARY_AGG",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "FAILED",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "CUST_ACCT_SUM_AGG",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "START_TASK",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[EDS].[SP_CUST_ACCT_SUMMARY_AGG]",
+								"storedProcedureParameters": {
+									"datetoprocessed": {
+										"value": {
+											"value": "@variables('V_datestoprocess')",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									}
+								}
+							}
+						},
+						{
+							"name": "Set v_error_desc_get",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "CUST_ACCT_SUM_AGG",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "@activity('CUST_ACCT_SUM_AGG').Error.message",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SP_LOG_TASK_ERROR_DTL_GET",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Set v_error_desc_get",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "TSK_EDS_CUSTOMER_ACCOUNT_SUMMARY_AGG",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@variables('V_datestoprocess')",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"error_desc": {
+										"value": {
+											"value": "@variables('v_error_desc')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Failed_cust_acct_sum_agg",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "SP_LOG_TASK_ERROR_DTL_GET",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": {
+									"value": "@variables('v_error_desc')",
+									"type": "Expression"
+								},
+								"errorCode": "500"
+							}
+						},
+						{
+							"name": "SET_DATE_TO_PROCESS",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_datestoprocess",
+								"value": {
+									"value": "@item().MONTH_END",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "START_TASK",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count EDS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_START]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_EDS_CUSTOMER_ACCOUNT_SUMMARY_AGG",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@variables('V_datestoprocess')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "OM_SRC_CHECK_CUSTOMER_ACCOUNT_SUMMARY_AGG",
+							"type": "SqlPoolStoredProcedure",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [
+								{
+									"activity": "SET_DATE_TO_PROCESS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_EDS_CUSTOMER_ACCOUNT_SUMMARY_AGG",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@replace(substring(variables('V_datestoprocess'),0,10),'-','')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Get Success Count EDS",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "OM_SRC_CHECK_CUSTOMER_ACCOUNT_SUMMARY_AGG",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_EDS_CUSTOMER_ACCOUNT_SUMMARY_AGG'',''EDS'',''',substring(variables('V_datestoprocess'),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			}
+		},
+		"variables": {
+			"v_error_desc": {
+				"type": "String"
+			},
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			},
+			"V_datestoprocess_arr": {
+				"type": "Array"
+			},
+			"V_datestoprocess": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-07-25T05:21:46Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

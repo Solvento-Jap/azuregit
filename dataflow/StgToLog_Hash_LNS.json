@@ -1,0 +1,176 @@
+{
+	"name": "StgToLog_Hash_LNS",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference"
+					},
+					"name": "source1"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "SQLPool_tgt_Logstable",
+						"type": "DatasetReference"
+					},
+					"name": "sink1"
+				}
+			],
+			"transformations": [
+				{
+					"name": "filter1"
+				},
+				{
+					"name": "derivedColumn1"
+				},
+				{
+					"name": "unpivot1"
+				},
+				{
+					"name": "filter2"
+				},
+				{
+					"name": "surrogateKey1"
+				},
+				{
+					"name": "derivedColumn2"
+				},
+				{
+					"name": "sort1"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          H as string,",
+				"          ACID as string,",
+				"          ACCT_POA_AS_SRL_NUM as string,",
+				"          ACCT_POA_AS_REC_TYPE as string,",
+				"          ACCT_POA_AS_NAME as string,",
+				"          ACCT_POA_AS_DESIG as string,",
+				"          ACCT_POA_AS_RMKS as string,",
+				"          ACCT_POA_AS_AMT_ALWD as string,",
+				"          START_DATE as string,",
+				"          END_DATE as string,",
+				"          LCHG_USER_ID as string,",
+				"          LCHG_TIME as string,",
+				"          RCRE_USER_ID as string,",
+				"          RCRE_TIME as string,",
+				"          CUST_ID as string,",
+				"          CUST_RELTN_CODE as string,",
+				"          PASS_SHEET_FLG as string,",
+				"          SI_FLG as string,",
+				"          TD_MATRTY_FLG as string,",
+				"          LOAN_OVRDUE_FLG as string,",
+				"          NMA_KEY_TYPE as string,",
+				"          NMA_KEY_ID as string,",
+				"          DEL_FLG as string,",
+				"          MODE_OF_DESPATCH as string,",
+				"          TS_CNT as string,",
+				"          SCHM_TYPE as string,",
+				"          XCLUDE_FOR_COMB_STMT as string,",
+				"          STMT_CUST_ID as string,",
+				"          INT_ADV_FLG as string,",
+				"          INTCERT_PRINT_FLG as string,",
+				"          GUARANTOR_LIAB_PCNT as string,",
+				"          GUARANTOR_LIAB_SEQ as string,",
+				"          INTRADAY_STMNT_REQD as string,",
+				"          BANK_ID as string,",
+				"          CUST_PHONE_TYPE as string,",
+				"          CUST_EMAIL_TYPE as string,",
+				"          RELATED_PARTY_TYPE as string,",
+				"          PROFIT_CERT_FLG as string,",
+				"          PREF_LANG_CODE as string,",
+				"          PREF_LANG_ACCT_POA_AS_RMKS as string,",
+				"          ALT1_ACCT_POA_AS_NAME as string,",
+				"          RPARTY_STMT_PRNT_CHRG_FLG as string,",
+				"          RPARTY_RGLR_STMT_CHRG_ID as string,",
+				"          RPARTY_DUP_STMT_CHRG_ID as string,",
+				"          WTAX_NOTICE_RCV_DATE as string,",
+				"          WTAX_WAIVER_START_DATE as string,",
+				"          WTAX_WAIVER_END_DATE as string,",
+				"          TAX_CERT_NUM as string,",
+				"          TAX_FORM_PARTICULARS as string,",
+				"          TAX_CERT_SUBMISSION_DATE as string,",
+				"          ENTITY_CRE_FLG as string,",
+				"          TAX_EVENT as string,",
+				"          REQUESTED_BY as string,",
+				"          TAX_EVENT_REASON_CODE as string,",
+				"          TAX_MARKER as string,",
+				"          CORP_REP_CIF_ID as string,",
+				"          MINOR_MAJOR_LET_GEN_FLG as string,",
+				"          CHNGD_DUE_TO_ASSUMPTN_FLG as string,",
+				"          REASON_FOR_RELEASE as string,",
+				"          FileName as string,",
+				"          TABLE_NAME as string,",
+				"          FILE_NAME as string,",
+				"          BANK_CODE as string,",
+				"          SOURCE_CODE as string,",
+				"          insert_dttm as timestamp",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     query: 'select * from d360.STG_LNS_ACCTAUTHSIGN where H <> \\'D\\'',",
+				"     format: 'query',",
+				"     staged: true,",
+				"     partitionBy('roundRobin', 3)) ~> source1",
+				"source1 filter(H !='D') ~> filter1",
+				"filter1 derive(each(match(name=='H'), 'Count_src' = toString(substring($$,3, length($$)))),",
+				"          File_name = FILE_NAME,",
+				"          Date = toDate(left(right(FILE_NAME, 12),8),'yyyyMMdd'),",
+				"          Load_date = insert_dttm) ~> derivedColumn1",
+				"derivedColumn1 unpivot(output(",
+				"          Metrics as string,",
+				"          Source as string,",
+				"          Target as string",
+				"     ),",
+				"     ungroupBy(derivedColumn1@File_name,",
+				"          BANK_CODE,",
+				"          SOURCE_CODE,",
+				"          insert_dttm,",
+				"          Date,",
+				"          Load_date),",
+				"     lateral: true,",
+				"     ignoreNullPivots: true) ~> unpivot1",
+				"unpivot1 filter(like(Metrics,'%_src')) ~> filter2",
+				"sort1 keyGenerate(output(ID as long),",
+				"     startAt: 1L,",
+				"     stepValue: 1L) ~> surrogateKey1",
+				"surrogateKey1 derive(Source = toDouble(Source),",
+				"          Target = toDouble(Target),",
+				"          Metrics = replace(Metrics,'_src','')) ~> derivedColumn2",
+				"filter2 sort(asc(BANK_CODE, true),",
+				"     asc(Date, true),",
+				"     asc(SOURCE_CODE, true),",
+				"     asc(Metrics, true)) ~> sort1",
+				"derivedColumn2 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          ID as integer,",
+				"          File_name as string,",
+				"          Date as date,",
+				"          Load_date as timestamp,",
+				"          Metrics as string,",
+				"          Source as decimal(16,4),",
+				"          Target as decimal(16,4)",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     staged: true,",
+				"     allowCopyCommand: true,",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     partitionBy('roundRobin', 3)) ~> sink1"
+			]
+		}
+	}
+}

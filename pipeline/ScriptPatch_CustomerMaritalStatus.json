@@ -1,0 +1,97 @@
+{
+	"name": "ScriptPatch_CustomerMaritalStatus",
+	"properties": {
+		"activities": [
+			{
+				"name": "ALTER SP_CUSTOMERMARITALSTATUS_CCD",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SET ANSI_NULLS ON\r\nGO\r\nSET QUOTED_IDENTIFIER ON\r\nGO\r\n\r\nALTER PROC [BNKM].[SP_CUSTOMERMARITALSTATUS_CCD] AS\r\nBEGIN\r\n--------------GET DELTA FROM BUSC\r\nWITH TMP_BNKM_CustomerMaritalStatus AS \r\n(\r\n     SELECT ROW_NUMBER() OVER(PARTITION BY CustomerId ORDER BY InsertDttm DESC ) RN, * FROM (\r\nSELECT\r\n     BCD.CUST_NBR AS CustomerId\r\n    ,BCD.CUST_DATE_MAINT AS PeriodStartDate\r\n    ,BCD.CUST_MARITAL_ST AS MaritalStatusId\r\n    ,'CCD' AS SourceCode\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\n    ,BCD.BNK_CODE AS FinancialInstitutionId\r\nFROM BUSC.CCD_MCUSTOMER BCD\r\nWHERE BCD.ISLATEST = 1\r\n\r\nUNION\r\nSELECT\r\n     BCD.CUST_NBR AS CustomerId\r\n    ,BCD.CUST_DATE_MAINT AS PeriodStartDate\r\n    ,BCD.CUST_MARITAL_ST AS MaritalStatusId\r\n    ,'CCD' AS SourceCode\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\n    ,BCD.BNK_CODE AS FinancialInstitutionId\r\nFROM BUSC.CCD_DCUSTOMER BCD\r\nWHERE BCD.ISLATEST = 1\r\n)A\r\n)\r\n\r\nSELECT * INTO #TMP_BNKM_CustomerMaritalStatus FROM TMP_BNKM_CustomerMaritalStatus WHERE RN = 1;\r\n\r\n-------------CHECK IF THERE IS DELTA \r\nWITH\r\nTMP_BNKM_CustomerMaritalStatus_SRC\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nconvert(varchar,CustomerId)\r\n,convert(varchar,MaritalStatusId)\r\n)) HASHROW, CustomerId, FinancialInstitutionId, SourceCode\r\nFROM #TMP_BNKM_CustomerMaritalStatus\r\n)\r\n\r\n,\r\nTMP_BNKM_CustomerMaritalStatus_TGT\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nconvert(varchar,CustomerId)\r\n,convert(varchar,MaritalStatusId)\r\n)) HASHROW, CustomerId, FinancialInstitutionId, SourceCode\r\nFROM BNKM.CustomerMaritalStatus WHERE PeriodEndDate ='9999-12-31' AND SourceCode = 'CCD'\t\r\n)\r\n,\r\nTMP_BNKM_CustomerMaritalStatus_DELTA\r\nAS\r\n(\r\nSELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n\t,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\r\n     ,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n     ,ISNULL(SRC.SourceCode,TGT.SourceCode) AS SourceCode\r\n\t,CASE\r\n          WHEN TGT.HASHROW IS NULL THEN 'INSERT' \r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\tELSE NULL END AS RECORD_STATUS\r\n\t\r\nFROM TMP_BNKM_CustomerMaritalStatus_SRC\tSRC\r\nLEFT JOIN TMP_BNKM_CustomerMaritalStatus_TGT\tTGT\r\nON\tSRC.CustomerId = TGT.CustomerId\r\nAND\tSRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND\tSRC.SourceCode = TGT.SourceCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW  OR TGT.HASHROW IS NULL\r\n)\r\nSELECT * INTO #TMP_BNKM_CustomerMaritalStatus_DELTA FROM TMP_BNKM_CustomerMaritalStatus_DELTA;\r\n\r\n------UPDATE TO BNKM\r\nUPDATE TGT \r\nSET\r\nPeriodEndDate = convert(date, DATEADD(day, -1, SRC.PeriodStartDate))\r\nFROM BNKM.CustomerMaritalStatus TGT\r\nJOIN #TMP_BNKM_CustomerMaritalStatus_DELTA DELTA \r\nON DELTA.CustomerId = TGT.CustomerId  \r\nAND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId  \r\nAND DELTA.SourceCode = TGT.SourceCode  \r\nAND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TMP_BNKM_CustomerMaritalStatus SRC \r\nON SRC.CustomerId = TGT.CustomerId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceCode = TGT.SourceCode\r\nWHERE TGT.PeriodEndDate = '9999-12-31';\r\n\r\n\r\n\r\n-----INSERT TO BNKM\r\nINSERT INTO BNKM.CustomerMaritalStatus\r\n(\r\n     CustomerId\r\n    ,PeriodStartDate\r\n    ,PeriodEndDate\r\n    ,MaritalStatusId\r\n    ,CustomerMaritalStatusNote\r\n    ,SourceCode\r\n    ,FinancialInstitutionId\r\n    ,WorkFlowId\r\n    ,TaskRunId\r\n    ,InsertDttm\r\n\r\n)\r\nSELECT\r\n     SRC.CustomerId AS CustomerId\r\n    ,CONVERT(DATE,CONVERT(VARCHAR,SRC.PeriodStartDate)) AS PeriodStartDate\r\n    ,'9999-12-31' AS PeriodEndDate\r\n    ,SRC.MaritalStatusId AS MaritalStatusId\r\n    ,NULL AS CustomerMaritalStatusNote\r\n    ,'CCD' AS SourceCode\r\n    ,SRC.FinancialInstitutionId AS FinancialInstitutionId\r\n    ,0 AS WorkFlowId\r\n    ,0 AS TaskRunId\r\n    ,SRC.InsertDttm AS InsertDttm\r\nFROM #TMP_BNKM_CustomerMaritalStatus SRC\r\nJOIN #TMP_BNKM_CustomerMaritalStatus_DELTA DELTA \r\n ON DELTA.CustomerId = SRC.CustomerId\r\n   AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\r\n    AND DELTA.SourceCode = SRC.SourceCode\r\n WHERE RECORD_STATUS IN ('UPDATE','INSERT');\r\n\r\n\r\n\r\nDROP TABLE #TMP_BNKM_CustomerMaritalStatus;\r\nDROP TABLE #TMP_BNKM_CustomerMaritalStatus_DELTA;\r\n\r\nEND\r\nGO"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ALTER CUSTOMERMARITALSTATUS_CRM",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SET ANSI_NULLS ON\r\nGO\r\nSET QUOTED_IDENTIFIER ON\r\nGO\r\n\r\nALTER PROC [BNKM].[SP_CUSTOMERMARITALSTATUS_CRM] AS\r\nBEGIN\r\n--------------GET DELTA FROM BUSC\r\nWITH TEMP_BNKM_CUSTOMERMARITALSTATUS AS (\r\nSELECT \r\n\tBCC.ORGKEY as CustomerID\r\n\t,TMDATE as PeriodStartDate\r\n\t,'9999-12-31' as PeriodEndDate\r\n\t,BCC.MARITAL_STATUS as MaritalStatusID\r\n\t,NULL as CustomerMaritalStatusNote\r\n\t,'CRM' AS SourceCode\r\n\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\n\t,BCC.BANK_ID AS FinancialInstitutionId\r\nFROM BUSC.CRM_DEMOGRAPHIC BCC\r\n\tWHERE  BCC.isLatest = '1'\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CUSTOMERMARITALSTATUS FROM TEMP_BNKM_CUSTOMERMARITALSTATUS;\r\n\r\n\r\n-------------CHECK IF THERE IS DELTA \r\n\r\nWITH TEMP_BNKM_CUSTOMERMARITALSTATUS_SRC AS (\r\n    SELECT \r\n        HASHBYTES('MD5',CONCAT(\r\n\t\t\tconvert(varchar,CustomerID), \r\n\t\tconvert(char,MaritalStatusID))) AS HASHROW\r\n        ,CustomerID\r\n\t\t,FinancialInstitutionId\r\n\t\t,SourceCode\r\n    FROM #TEMP_BNKM_CUSTOMERMARITALSTATUS\r\n)\r\n\r\n,\r\nTEMP_BNKM_CUSTOMERMARITALSTATUS_TGT AS (\r\n    SELECT  \r\n        HASHBYTES('MD5', CONCAT(convert(varchar,CustomerID), \r\n\t\tconvert(char,MaritalStatusID))) AS HASHROW\r\n        ,CustomerID\r\n\t\t,FinancialInstitutionId\r\n\t\t,SourceCode\r\n    FROM BNKM.CUSTOMERMARITALSTATUS\r\n\tWHERE SourceCode = 'CRM' \r\n\tAND (PeriodEndDate = '9999-12-31')\r\n)\r\n\r\n\r\n,\r\nTEMP_BNKM_CUSTOMERMARITALSTATUS_DELTA AS (\r\n\tSELECT\t\r\n\t\tSRC.HASHROW AS SRC_HR\r\n\t\t,TGT.HASHROW AS TGT_HR\r\n\t\t,ISNULL(SRC.CustomerID,TGT.CustomerID) AS CustomerID\r\n\t\t ,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n     \t,ISNULL(SRC.SourceCode,TGT.SourceCode) AS SourceCode\r\n\t\t,CASE\r\n\t\t\t WHEN TGT.HASHROW IS NULL THEN 'INSERT' \r\n\t\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\t\tELSE NULL END AS RECORD_STATUS\r\n\t\r\nFROM TEMP_BNKM_CUSTOMERMARITALSTATUS_SRC\tSRC\r\nLEFT JOIN TEMP_BNKM_CUSTOMERMARITALSTATUS_TGT\tTGT\r\nON\tSRC.CustomerID = TGT.CustomerID\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceCode = TGT.SourceCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\r\n)\r\nSELECT * INTO #TEMP_BNKM_CUSTOMERMARITALSTATUS_DELTA FROM TEMP_BNKM_CUSTOMERMARITALSTATUS_DELTA;\r\n\r\n\r\n---------UPDATE TO BNKM\r\nUPDATE TGT \r\nSET\r\n[PeriodEndDate] = convert(date, DATEADD(day, -1, SRC.PeriodStartDate))\r\nFROM BNKM.CUSTOMERMARITALSTATUS TGT \r\nJOIN #TEMP_BNKM_CUSTOMERMARITALSTATUS_DELTA DELTA \r\nON DELTA.CustomerID = TGT.CustomerID \r\nAND  DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId \r\nAND  DELTA.SourceCode = TGT.SourceCode \r\nAND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CUSTOMERMARITALSTATUS SRC \r\nON SRC.CustomerID = TGT.CustomerID\r\n AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\n AND SRC.SourceCode = TGT.SourceCode\r\nWHERE TGT.PeriodEndDate = '9999-12-31';\r\n\r\n\r\n-----INSERT TO BNKM\r\nINSERT INTO BNKM.CUSTOMERMARITALSTATUS (\r\n\t[CustomerId]\r\n\t,[PeriodStartDate]\r\n\t,[PeriodEndDate]\r\n\t,[MaritalStatusId]\r\n\t,[CustomerMaritalStatusNote]\r\n\t,[FinancialInstitutionId]\r\n\t,[SourceCode]\r\n\t,[WorkFlowId]\r\n\t,[TaskRunId]\r\n\t,[InsertDttm])\r\n\r\nSELECT DISTINCT \r\n\tSRC.CustomerId\r\n    ,SRC.PeriodStartDate\r\n\t,SRC.PeriodEndDate\r\n    ,SRC.MaritalStatusId\r\n    ,SRC.CustomerMaritalStatusNote\r\n\t,SRC.FinancialInstitutionId\r\n\t,'CRM' AS SourceCode\r\n\t,0 AS WorkFlowId\r\n\t,0 AS TaskRunId\r\n\t,SRC.InsertDttm\r\nFROM #TEMP_BNKM_CUSTOMERMARITALSTATUS SRC\r\nJOIN #TEMP_BNKM_CUSTOMERMARITALSTATUS_DELTA DELTA \r\n ON DELTA.CustomerId = SRC.CustomerId\r\n   AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\r\n    AND DELTA.SourceCode = SRC.SourceCode\r\n WHERE RECORD_STATUS IN ('UPDATE','INSERT');\r\n\r\n\r\nDROP TABLE #TEMP_BNKM_CUSTOMERMARITALSTATUS;\r\nDROP TABLE #TEMP_BNKM_CUSTOMERMARITALSTATUS_DELTA;\r\n\r\nEND\r\nGO"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ALTER CUSTOMERMARITALSTATUS_SEC",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SET ANSI_NULLS ON\r\nGO\r\nSET QUOTED_IDENTIFIER ON\r\nGO\r\n\r\nALTER PROC [BNKM].[SP_CUSTOMERMARITALSTATUS_SEC] AS\r\nBEGIN\r\nWITH\r\nTMP_GET_DATE_CREATED\r\nAS\r\n( SELECT ROW_NUMBER() OVER(PARTITION BY CLTCODE ORDER BY DATE_OPEN) RN, * FROM (\r\n    SELECT BSC.CLTCODE, BSA.DATE_OPEN, BSA.ACCTCODE  FROM BUSC.SEC_TBLACCOUNTS BSA \r\n    JOIN BUSC.SEC_ACCOUNTLINK BSL ON BSA.ACCTCODE = BSL.ACCTKEY AND BSA.ISLATEST = 1 AND BSL.ISLATEST = 1\r\n    JOIN BUSC.SEC_TBLCLIENT BSC ON BSC.CLTCODE = BSL.CLTCODE AND BSC.ISLATEST = 1 \r\n) A\r\n)\r\n----------GET DELTA FROM BUSC\r\n,TMP_BNKM_CustomerMaritalStatus AS \r\n(\r\nSELECT DISTINCT\r\n     BSC.CLTCODE AS CustomerId\r\n    ,CASE WHEN BSC.LASTUPDATED IS NULL OR BSC.LASTUPDATED = '1900-01-01T00:00:00.0000000' \r\n          THEN CASE WHEN  GDC.DATE_OPEN IS NULL OR BSC.LASTUPDATED = '1900-01-01T00:00:00.0000000'  THEN  '1900-01-01T00:00:00.0000000'\r\n                    ELSE GDC.DATE_OPEN END\r\n          ELSE BSC.LASTUPDATED END AS PeriodStartDate\r\n    ,BSC.CIVILSTAT AS MaritalStatusId\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\n    ,BSC.BNK_CODE AS FinancialInstitutionId\r\n    ,BSC.SOURCE_CODE AS SOURCECODE\r\nFROM BUSC.SEC_TBLCLIENT BSC\r\nLEFT JOIN TMP_GET_DATE_CREATED GDC ON BSC.CLTCODE = GDC.CLTCODE\r\nWHERE BSC.CLTTYPE = 'I'\r\nAND BSC.ISLATEST = 1\r\n\r\n)\r\nSELECT * INTO #TMP_BNKM_CustomerMaritalStatus FROM TMP_BNKM_CustomerMaritalStatus;\r\n\r\n-------------CHECK IF THERE IS DELTA \r\nWITH\r\nTMP_BNKM_CustomerMaritalStatus_SRC\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nconvert(varchar,CustomerId)\r\n,convert(char,MaritalStatusId)\r\n)) HASHROW, CustomerId, FinancialInstitutionId, SourceCode\r\nFROM #TMP_BNKM_CustomerMaritalStatus \r\n)\r\n\r\n,\r\nTMP_BNKM_CustomerMaritalStatus_TGT\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nconvert(varchar,CustomerId)\r\n,convert(char,MaritalStatusId)\r\n)) HASHROW, CustomerId, FinancialInstitutionId, SourceCode\r\nFROM BNKM.CustomerMaritalStatus WHERE SOURCECODE = 'SEC'  and PeriodEndDate = '9999-12-31'\r\n)\r\n,\r\nTMP_BNKM_CustomerMaritalStatus_DELTA\r\nAS\r\n(\r\nSELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n\t,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\r\n\t   ,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n     ,ISNULL(SRC.SourceCode,TGT.SourceCode) AS SourceCode\r\n\t,CASE\r\n        WHEN TGT.HASHROW IS NULL THEN 'INSERT' \r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\tELSE NULL END AS RECORD_STATUS\r\n\t\r\nFROM TMP_BNKM_CustomerMaritalStatus_SRC\tSRC\r\nLEFT JOIN TMP_BNKM_CustomerMaritalStatus_TGT\tTGT\r\nON\tSRC.CustomerId = TGT.CustomerId\r\nAND\tSRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND\tSRC.SourceCode = TGT.SourceCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW  OR TGT.HASHROW IS NULL\r\n)\r\nSELECT * INTO #TMP_BNKM_CustomerMaritalStatus_DELTA FROM TMP_BNKM_CustomerMaritalStatus_DELTA;\r\n\r\n------UPDATE TO BNKM\r\nUPDATE TGT \r\nSET\r\nPeriodEndDate = convert(date, DATEADD(day, -1, SRC.PeriodStartDate))\r\nFROM BNKM.CustomerMaritalStatus TGT\r\nJOIN #TMP_BNKM_CustomerMaritalStatus_DELTA DELTA \r\nON DELTA.CustomerId = TGT.CustomerId  \r\nAND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId  \r\nAND DELTA.SourceCode = TGT.SourceCode  \r\nAND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TMP_BNKM_CustomerMaritalStatus SRC \r\nON SRC.CustomerId = TGT.CustomerId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceCode = TGT.SourceCode\r\nWHERE TGT.PeriodEndDate = '9999-12-31' AND TGT.SOURCECODE = 'SEC';\r\n\r\n\r\n\r\n\r\n\r\n-----INSERT TO BNKM\r\nINSERT INTO BNKM.CustomerMaritalStatus\r\n(\r\n     CustomerId\r\n    ,PeriodStartDate\r\n    ,PeriodEndDate\r\n    ,MaritalStatusId\r\n    ,CustomerMaritalStatusNote\r\n    ,SourceCode\r\n    ,FinancialInstitutionId\r\n    ,WorkFlowId\r\n    ,TaskRunId\r\n    ,InsertDttm\r\n\r\n)\r\nSELECT\r\n     SRC.CustomerId AS CustomerId\r\n    ,SRC.PeriodStartDate AS PeriodStartDate\r\n    ,'9999-12-31' AS PeriodEndDate\r\n    ,SRC.MaritalStatusId AS MaritalStatusId\r\n    ,NULL AS CustomerMaritalStatusNote\r\n    ,SRC.SourceCode AS SourceCode\r\n    ,SRC.FinancialInstitutionId AS FinancialInstitutionId\r\n    ,0 AS WorkFlowId\r\n    ,0 AS TaskRunId\r\n    ,SRC.InsertDttm AS InsertDttm\r\nFROM #TMP_BNKM_CustomerMaritalStatus SRC\r\nJOIN #TMP_BNKM_CustomerMaritalStatus_DELTA DELTA \r\n ON DELTA.CustomerId = SRC.CustomerId\r\n   AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\r\n    AND DELTA.SourceCode = SRC.SourceCode\r\n WHERE RECORD_STATUS IN ('UPDATE','INSERT');\r\n\r\n\r\nDROP TABLE #TMP_BNKM_CustomerMaritalStatus;\r\nDROP TABLE #TMP_BNKM_CustomerMaritalStatus_DELTA;\r\n\r\nEND\r\nGO"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-02-16T02:11:42Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

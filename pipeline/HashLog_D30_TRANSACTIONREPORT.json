@@ -1,0 +1,39 @@
+{
+	"name": "HashLog_D30_TRANSACTIONREPORT",
+	"properties": {
+		"activities": [
+			{
+				"name": "HashLog_D30_TRANSACTIONREPORT",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "WITH CTE1 AS(\r\n  SELECT \r\n    COUNT(*) COUNT_TGT, \r\n    FILE_NAME, \r\n    INSERT_DTTM \r\n  FROM \r\n    d360.STG_EDS_D30_TRANSACTIONREPORT \r\n  WHERE \r\n    H = 'D' \r\n  GROUP BY \r\n    FILE_NAME, \r\n    INSERT_DTTM\r\n), \r\nCTE2 AS (\r\n  SELECT \r\n    REPLACE(H, 'F-', '') COUNT_SRC, \r\n    FILE_NAME, \r\n    INSERT_DTTM \r\n  FROM \r\n    d360.STG_EDS_D30_TRANSACTIONREPORT \r\n  WHERE \r\n    H <> 'D'\r\n), \r\nCTE12 as (\r\n  SELECT \r\n    COUNT_SRC, \r\n    COUNT_TGT, \r\n    A.FILE_NAME, \r\n    A.INSERT_DTTM, \r\n    CONVERT(\r\n      DATE, \r\n      (\r\n        left(\r\n          right(A.FILE_NAME, 12), \r\n          8\r\n        )\r\n      )\r\n    ) DATE \r\n  FROM \r\n    CTE1 A \r\n    JOIN CTE2 B ON A.FILE_NAME = B.FILE_NAME \r\n    AND A.INSERT_DTTM = B.INSERT_DTTM\r\n) INSERT INTO [EDS].[EDS_HASH_LOG_TBL] \r\nSELECT \r\n  FILE_NAME, \r\n  DATE, \r\n  insert_dttm, \r\n  REPLACE(METRICS, '_SRC', '') METRICS, \r\n  SRC, \r\n  TGT \r\nFROM \r\n  (\r\n    SELECT \r\n      * \r\n    FROM \r\n      CTE12\r\n  ) src UNPIVOT (\r\n    SRC FOR METRICS IN (COUNT_SRC)\r\n  ) pvt1 UNPIVOT (\r\n    TGT For METRICS2 IN (COUNT_TGT)\r\n  ) pvt2\r\n\r\nWHERE REPLACE(METRICS,'_SRC','') = REPLACE(METRICS2,'_TGT','');"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-11-25T07:37:11Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

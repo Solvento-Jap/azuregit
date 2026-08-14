@@ -1,0 +1,665 @@
+{
+	"name": "CI_Deposit_Transaction_EDS_per_month_consolidated",
+	"properties": {
+		"description": "Sources data from EDS tables",
+		"activities": [
+			{
+				"name": "START_TASK_CI_EDS",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_START]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_CI_EDS_',toUpper(variables('tables')))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": null,
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_EDS_SUCCESSFUL",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Dep Transaction Retail",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_CI_EDS_',toUpper(variables('tables')))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "SUCCESSFUL",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_EDS_FAILED",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Dep Transaction Retail",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_CI_EDS_',toUpper(variables('tables')))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "FAILED",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "temp_DEPAAS_CUSTDIM",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "START_TASK_CI_EDS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "---DEP_AAS AND CUST DIM\r\nIF EXISTS(SELECT TOP 1 * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'D360' AND TABLE_NAME = 'DEP_AAS_CUSTDIM_hash')\r\n    DROP TABLE D360.DEP_AAS_CUSTDIM_hash;\r\n\r\nCREATE TABLE D360.DEP_AAS_CUSTDIM_hash\r\nWITH\r\n(\r\n    DISTRIBUTION = HASH(ACID)\r\n    ,HEAP--CLUSTERED COLUMNSTORE INDEX\r\n)\r\nAS\r\nSELECT \r\n     AAS.AS_OF_DATE\r\n    ,AAS.ACID\r\n    ,AAS.BANK_ID\r\n    ,CUST.ORGKEY\r\nFROM EDS.DEP_ACCOUNTRELATIONSHIP AAS\r\nINNER JOIN EDS.CUSTOMER_DIM CUST\r\n    ON AAS.AS_OF_DATE BETWEEN CUST.SCD_START_DATE AND CUST.SCD_END_DATE\r\n    AND AAS.CUST_ID = CUST.CORE_CUST_ID\r\n    AND CUSTOMER_TYPE = 'Retail'\r\nWHERE AAS.DEL_FLG <> 'Y'\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "temp_DEP_HTD_April",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "truncate_TGT_table",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\n----HTD_APRIL\r\nIF EXISTS(SELECT TOP 1 * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'D360' AND TABLE_NAME = 'DEP_HISTTRANDTLTABLE_April')\r\n    DROP TABLE D360.DEP_HISTTRANDTLTABLE_April;\r\n\r\nCREATE TABLE D360.DEP_HISTTRANDTLTABLE_April\r\nWITH\r\n(\r\n    DISTRIBUTION = HASH(ACID)\r\n    ,HEAP--CLUSTERED COLUMNSTORE INDEX\r\n)\r\nAS\r\nSELECT\r\n     HTD.ACID\r\n    ,HTD.TRAN_ID\r\n    ,HTD.PART_TRAN_SRL_NUM\r\n    ,HTD.TRAN_DATE\r\n    ,HTD.TRAN_CRNCY_CODE\r\n    ,HTD.TRAN_AMT\r\n    ,HTD.TRANSACTION_AMOUNT_PHP \r\n    ,HTD.DTH_INIT_SOL_ID\r\n    ,HTD.PART_TRAN_TYPE\r\n    ,HTD.SOL_ID\r\n    ,HTD.SOURCE_CODE\r\n    ,HTD.TRAN_PARTICULAR\r\n    ,HTD.TRAN_RMKS\r\n    ,HTD.LCHG_TIME\r\n    ,HTD.RCRE_TIME\r\n    ,HTD.PSTD_DATE\r\n    ,HTD.BANK_ID\r\n    ,DAC.ORGKEY AS FCBSCIF\r\n\t,ROW_NUMBER() OVER(ORDER BY HTD.ACID) SK\r\n    FROM (\r\n        SELECT\r\n         HTD.ACID\r\n        ,HTD.TRAN_ID\r\n        ,HTD.PART_TRAN_SRL_NUM\r\n        ,HTD.TRAN_DATE\r\n        ,HTD.TRAN_CRNCY_CODE\r\n        ,HTD.TRAN_AMT\r\n        ,CASE WHEN HTD.TRAN_CRNCY_CODE = 'PHP' THEN HTD.TRAN_AMT \r\n            ELSE HTD.TRAN_AMT * CC.ConversionRate END AS TRANSACTION_AMOUNT_PHP\r\n        --,1 TRAN_CNT\r\n        ,HTD.DTH_INIT_SOL_ID\r\n        ,HTD.PART_TRAN_TYPE\r\n        ,HTD.SOL_ID\r\n        ,HTD.SOURCE_CODE\r\n        ,HTD.TRAN_PARTICULAR\r\n        ,HTD.TRAN_RMKS\r\n        ,HTD.LCHG_TIME\r\n        ,HTD.RCRE_TIME\r\n        ,HTD.PSTD_DATE\r\n        ,HTD.BANK_ID\r\n        ,ROW_NUMBER() OVER(PARTITION BY HTD.ACID, HTD.TRAN_ID, HTD.PART_TRAN_SRL_NUM, HTD.TRAN_DATE  ORDER BY HTD.[FILE_NAME] DESC, HTD.INSERT_DTTM DESC ) RN\r\n        FROM [EDS].[DEP_HISTTRANDTLTABLE] HTD\r\n        LEFT JOIN  (SELECT * FROM bnkm.CurrencyConversion where ConvertToCurrencyId = 'PHP' AND RateId = 'REV') CC\r\n            ON HTD.BANK_ID = CC.FinancialInstitutionId\r\n            AND HTD.TRAN_CRNCY_CODE = CC.ConvertFromCurrencyId\r\n            AND HTD.TRAN_DATE = CC.CurrencyConversionTimestamp\r\n        WHERE BANK_ID = 'CBC01' AND DEL_FLG <> 'Y'\r\n        AND TRAN_DATE BETWEEN '2024-04-01' AND '2024-04-30'\r\n    ) HTD\r\nJOIN D360.DEP_AAS_CUSTDIM_hash DAC\r\n    ON HTD.ACID = DAC.ACID\r\n    AND HTD.TRAN_DATE = DAC.AS_OF_DATE\r\n    AND HTD.BANK_ID = DAC.BANK_ID\r\nWHERE HTD.RN = 1\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "temp_DEP_HTD_May",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "insert_DEP_HTD_April",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\n----HTD_MAY\r\nIF EXISTS(SELECT TOP 1 * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'D360' AND TABLE_NAME = 'DEP_HISTTRANDTLTABLE_May')\r\n    DROP TABLE D360.DEP_HISTTRANDTLTABLE_May;\r\n\r\nCREATE TABLE D360.DEP_HISTTRANDTLTABLE_May\r\nWITH\r\n(\r\n    DISTRIBUTION = HASH(ACID)\r\n    ,HEAP--CLUSTERED COLUMNSTORE INDEX\r\n)\r\nAS\r\nSELECT\r\n     HTD.ACID\r\n    ,HTD.TRAN_ID\r\n    ,HTD.PART_TRAN_SRL_NUM\r\n    ,HTD.TRAN_DATE\r\n    ,HTD.TRAN_CRNCY_CODE\r\n    ,HTD.TRAN_AMT\r\n    ,HTD.TRANSACTION_AMOUNT_PHP \r\n    ,HTD.DTH_INIT_SOL_ID\r\n    ,HTD.PART_TRAN_TYPE\r\n    ,HTD.SOL_ID\r\n    ,HTD.SOURCE_CODE\r\n    ,HTD.TRAN_PARTICULAR\r\n    ,HTD.TRAN_RMKS\r\n    ,HTD.LCHG_TIME\r\n    ,HTD.RCRE_TIME\r\n    ,HTD.PSTD_DATE\r\n    ,HTD.BANK_ID\r\n    ,DAC.ORGKEY AS FCBSCIF\r\n\t,ROW_NUMBER() OVER(ORDER BY HTD.ACID) SK\r\n    FROM (\r\n        SELECT\r\n         HTD.ACID\r\n        ,HTD.TRAN_ID\r\n        ,HTD.PART_TRAN_SRL_NUM\r\n        ,HTD.TRAN_DATE\r\n        ,HTD.TRAN_CRNCY_CODE\r\n        ,HTD.TRAN_AMT\r\n        ,CASE WHEN HTD.TRAN_CRNCY_CODE = 'PHP' THEN HTD.TRAN_AMT \r\n            ELSE HTD.TRAN_AMT * CC.ConversionRate END AS TRANSACTION_AMOUNT_PHP\r\n        --,1 TRAN_CNT\r\n        ,HTD.DTH_INIT_SOL_ID\r\n        ,HTD.PART_TRAN_TYPE\r\n        ,HTD.SOL_ID\r\n        ,HTD.SOURCE_CODE\r\n        ,HTD.TRAN_PARTICULAR\r\n        ,HTD.TRAN_RMKS\r\n        ,HTD.LCHG_TIME\r\n        ,HTD.RCRE_TIME\r\n        ,HTD.PSTD_DATE\r\n        ,HTD.BANK_ID\r\n        ,ROW_NUMBER() OVER(PARTITION BY HTD.ACID, HTD.TRAN_ID, HTD.PART_TRAN_SRL_NUM, HTD.TRAN_DATE  ORDER BY HTD.[FILE_NAME] DESC, HTD.INSERT_DTTM DESC ) RN\r\n        FROM [EDS].[DEP_HISTTRANDTLTABLE] HTD\r\n        LEFT JOIN  (SELECT * FROM bnkm.CurrencyConversion where ConvertToCurrencyId = 'PHP' AND RateId = 'REV') CC\r\n            ON HTD.BANK_ID = CC.FinancialInstitutionId\r\n            AND HTD.TRAN_CRNCY_CODE = CC.ConvertFromCurrencyId\r\n            AND HTD.TRAN_DATE = CC.CurrencyConversionTimestamp\r\n        WHERE BANK_ID = 'CBC01' AND DEL_FLG <> 'Y'\r\n        AND TRAN_DATE BETWEEN '2024-05-01' AND '2024-05-31'\r\n    ) HTD\r\nJOIN D360.DEP_AAS_CUSTDIM_hash DAC\r\n    ON HTD.ACID = DAC.ACID\r\n    AND HTD.TRAN_DATE = DAC.AS_OF_DATE\r\n    AND HTD.BANK_ID = DAC.BANK_ID\r\nWHERE HTD.RN = 1\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "temp_DEP_HTD_June",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "insert_DEP_HTD_May",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\n----HTD_JUNE\r\nIF EXISTS(SELECT TOP 1 * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'D360' AND TABLE_NAME = 'DEP_HISTTRANDTLTABLE_June')\r\n    DROP TABLE D360.DEP_HISTTRANDTLTABLE_June;\r\n\r\nCREATE TABLE D360.DEP_HISTTRANDTLTABLE_June\r\nWITH\r\n(\r\n    DISTRIBUTION = HASH(ACID)\r\n    ,HEAP--CLUSTERED COLUMNSTORE INDEX\r\n)\r\nAS\r\nSELECT\r\n     HTD.ACID\r\n    ,HTD.TRAN_ID\r\n    ,HTD.PART_TRAN_SRL_NUM\r\n    ,HTD.TRAN_DATE\r\n    ,HTD.TRAN_CRNCY_CODE\r\n    ,HTD.TRAN_AMT\r\n    ,HTD.TRANSACTION_AMOUNT_PHP \r\n    ,HTD.DTH_INIT_SOL_ID\r\n    ,HTD.PART_TRAN_TYPE\r\n    ,HTD.SOL_ID\r\n    ,HTD.SOURCE_CODE\r\n    ,HTD.TRAN_PARTICULAR\r\n    ,HTD.TRAN_RMKS\r\n    ,HTD.LCHG_TIME\r\n    ,HTD.RCRE_TIME\r\n    ,HTD.PSTD_DATE\r\n    ,HTD.BANK_ID\r\n    ,DAC.ORGKEY AS FCBSCIF\r\n\t,ROW_NUMBER() OVER(ORDER BY HTD.ACID) SK\r\n    FROM (\r\n        SELECT\r\n         HTD.ACID\r\n        ,HTD.TRAN_ID\r\n        ,HTD.PART_TRAN_SRL_NUM\r\n        ,HTD.TRAN_DATE\r\n        ,HTD.TRAN_CRNCY_CODE\r\n        ,HTD.TRAN_AMT\r\n        ,CASE WHEN HTD.TRAN_CRNCY_CODE = 'PHP' THEN HTD.TRAN_AMT \r\n            ELSE HTD.TRAN_AMT * CC.ConversionRate END AS TRANSACTION_AMOUNT_PHP\r\n        --,1 TRAN_CNT\r\n        ,HTD.DTH_INIT_SOL_ID\r\n        ,HTD.PART_TRAN_TYPE\r\n        ,HTD.SOL_ID\r\n        ,HTD.SOURCE_CODE\r\n        ,HTD.TRAN_PARTICULAR\r\n        ,HTD.TRAN_RMKS\r\n        ,HTD.LCHG_TIME\r\n        ,HTD.RCRE_TIME\r\n        ,HTD.PSTD_DATE\r\n        ,HTD.BANK_ID\r\n        ,ROW_NUMBER() OVER(PARTITION BY HTD.ACID, HTD.TRAN_ID, HTD.PART_TRAN_SRL_NUM, HTD.TRAN_DATE  ORDER BY HTD.[FILE_NAME] DESC, HTD.INSERT_DTTM DESC ) RN\r\n        FROM [EDS].[DEP_HISTTRANDTLTABLE] HTD\r\n        LEFT JOIN  (SELECT * FROM bnkm.CurrencyConversion where ConvertToCurrencyId = 'PHP' AND RateId = 'REV') CC\r\n            ON HTD.BANK_ID = CC.FinancialInstitutionId\r\n            AND HTD.TRAN_CRNCY_CODE = CC.ConvertFromCurrencyId\r\n            AND HTD.TRAN_DATE = CC.CurrencyConversionTimestamp\r\n        WHERE BANK_ID = 'CBC01' AND DEL_FLG <> 'Y'\r\n        AND TRAN_DATE BETWEEN '2024-06-01' AND '2024-06-30'\r\n    ) HTD\r\nJOIN D360.DEP_AAS_CUSTDIM_hash DAC\r\n    ON HTD.ACID = DAC.ACID\r\n    AND HTD.TRAN_DATE = DAC.AS_OF_DATE\r\n    AND HTD.BANK_ID = DAC.BANK_ID\r\nWHERE HTD.RN = 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "temp_DEP_HTD_July",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "insert_DEP_HTD_June",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\n----HTD_JULY\r\nIF EXISTS(SELECT TOP 1 * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'D360' AND TABLE_NAME = 'DEP_HISTTRANDTLTABLE_July')\r\n    DROP TABLE D360.DEP_HISTTRANDTLTABLE_July;\r\n\r\nCREATE TABLE D360.DEP_HISTTRANDTLTABLE_July\r\nWITH\r\n(\r\n    DISTRIBUTION = HASH(ACID)\r\n    ,HEAP--CLUSTERED COLUMNSTORE INDEX\r\n)\r\nAS\r\nSELECT\r\n     HTD.ACID\r\n    ,HTD.TRAN_ID\r\n    ,HTD.PART_TRAN_SRL_NUM\r\n    ,HTD.TRAN_DATE\r\n    ,HTD.TRAN_CRNCY_CODE\r\n    ,HTD.TRAN_AMT\r\n    ,HTD.TRANSACTION_AMOUNT_PHP \r\n    ,HTD.DTH_INIT_SOL_ID\r\n    ,HTD.PART_TRAN_TYPE\r\n    ,HTD.SOL_ID\r\n    ,HTD.SOURCE_CODE\r\n    ,HTD.TRAN_PARTICULAR\r\n    ,HTD.TRAN_RMKS\r\n    ,HTD.LCHG_TIME\r\n    ,HTD.RCRE_TIME\r\n    ,HTD.PSTD_DATE\r\n    ,HTD.BANK_ID\r\n    ,DAC.ORGKEY AS FCBSCIF\r\n\t,ROW_NUMBER() OVER(ORDER BY HTD.ACID) SK\r\n    FROM (\r\n        SELECT\r\n         HTD.ACID\r\n        ,HTD.TRAN_ID\r\n        ,HTD.PART_TRAN_SRL_NUM\r\n        ,HTD.TRAN_DATE\r\n        ,HTD.TRAN_CRNCY_CODE\r\n        ,HTD.TRAN_AMT\r\n        ,CASE WHEN HTD.TRAN_CRNCY_CODE = 'PHP' THEN HTD.TRAN_AMT \r\n            ELSE HTD.TRAN_AMT * CC.ConversionRate END AS TRANSACTION_AMOUNT_PHP\r\n        --,1 TRAN_CNT\r\n        ,HTD.DTH_INIT_SOL_ID\r\n        ,HTD.PART_TRAN_TYPE\r\n        ,HTD.SOL_ID\r\n        ,HTD.SOURCE_CODE\r\n        ,HTD.TRAN_PARTICULAR\r\n        ,HTD.TRAN_RMKS\r\n        ,HTD.LCHG_TIME\r\n        ,HTD.RCRE_TIME\r\n        ,HTD.PSTD_DATE\r\n        ,HTD.BANK_ID\r\n        ,ROW_NUMBER() OVER(PARTITION BY HTD.ACID, HTD.TRAN_ID, HTD.PART_TRAN_SRL_NUM, HTD.TRAN_DATE  ORDER BY HTD.[FILE_NAME] DESC, HTD.INSERT_DTTM DESC ) RN\r\n        FROM [EDS].[DEP_HISTTRANDTLTABLE] HTD\r\n        LEFT JOIN  (SELECT * FROM bnkm.CurrencyConversion where ConvertToCurrencyId = 'PHP' AND RateId = 'REV') CC\r\n            ON HTD.BANK_ID = CC.FinancialInstitutionId\r\n            AND HTD.TRAN_CRNCY_CODE = CC.ConvertFromCurrencyId\r\n            AND HTD.TRAN_DATE = CC.CurrencyConversionTimestamp\r\n        WHERE BANK_ID = 'CBC01' AND DEL_FLG <> 'Y'\r\n        AND TRAN_DATE BETWEEN '2024-07-01' AND '2024-07-31'\r\n    ) HTD\r\nJOIN D360.DEP_AAS_CUSTDIM_hash DAC\r\n    ON HTD.ACID = DAC.ACID\r\n    AND HTD.TRAN_DATE = DAC.AS_OF_DATE\r\n    AND HTD.BANK_ID = DAC.BANK_ID\r\nWHERE HTD.RN = 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "temp_DEP_HTD_August",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "insert_DEP_HTD_July",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\n----HTD_AUGUST\r\nIF EXISTS(SELECT TOP 1 * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'D360' AND TABLE_NAME = 'DEP_HISTTRANDTLTABLE_August')\r\n    DROP TABLE D360.DEP_HISTTRANDTLTABLE_August;\r\n\r\nCREATE TABLE D360.DEP_HISTTRANDTLTABLE_August\r\nWITH\r\n(\r\n    DISTRIBUTION = HASH(ACID)\r\n    ,HEAP--CLUSTERED COLUMNSTORE INDEX\r\n)\r\nAS\r\nSELECT\r\n     HTD.ACID\r\n    ,HTD.TRAN_ID\r\n    ,HTD.PART_TRAN_SRL_NUM\r\n    ,HTD.TRAN_DATE\r\n    ,HTD.TRAN_CRNCY_CODE\r\n    ,HTD.TRAN_AMT\r\n    ,HTD.TRANSACTION_AMOUNT_PHP \r\n    ,HTD.DTH_INIT_SOL_ID\r\n    ,HTD.PART_TRAN_TYPE\r\n    ,HTD.SOL_ID\r\n    ,HTD.SOURCE_CODE\r\n    ,HTD.TRAN_PARTICULAR\r\n    ,HTD.TRAN_RMKS\r\n    ,HTD.LCHG_TIME\r\n    ,HTD.RCRE_TIME\r\n    ,HTD.PSTD_DATE\r\n    ,HTD.BANK_ID\r\n    ,DAC.ORGKEY AS FCBSCIF\r\n\t,ROW_NUMBER() OVER(ORDER BY HTD.ACID) SK\r\n    FROM (\r\n        SELECT\r\n         HTD.ACID\r\n        ,HTD.TRAN_ID\r\n        ,HTD.PART_TRAN_SRL_NUM\r\n        ,HTD.TRAN_DATE\r\n        ,HTD.TRAN_CRNCY_CODE\r\n        ,HTD.TRAN_AMT\r\n        ,CASE WHEN HTD.TRAN_CRNCY_CODE = 'PHP' THEN HTD.TRAN_AMT \r\n            ELSE HTD.TRAN_AMT * CC.ConversionRate END AS TRANSACTION_AMOUNT_PHP\r\n        --,1 TRAN_CNT\r\n        ,HTD.DTH_INIT_SOL_ID\r\n        ,HTD.PART_TRAN_TYPE\r\n        ,HTD.SOL_ID\r\n        ,HTD.SOURCE_CODE\r\n        ,HTD.TRAN_PARTICULAR\r\n        ,HTD.TRAN_RMKS\r\n        ,HTD.LCHG_TIME\r\n        ,HTD.RCRE_TIME\r\n        ,HTD.PSTD_DATE\r\n        ,HTD.BANK_ID\r\n        ,ROW_NUMBER() OVER(PARTITION BY HTD.ACID, HTD.TRAN_ID, HTD.PART_TRAN_SRL_NUM, HTD.TRAN_DATE  ORDER BY HTD.[FILE_NAME] DESC, HTD.INSERT_DTTM DESC ) RN\r\n        FROM [EDS].[DEP_HISTTRANDTLTABLE] HTD\r\n        LEFT JOIN  (SELECT * FROM bnkm.CurrencyConversion where ConvertToCurrencyId = 'PHP' AND RateId = 'REV') CC\r\n            ON HTD.BANK_ID = CC.FinancialInstitutionId\r\n            AND HTD.TRAN_CRNCY_CODE = CC.ConvertFromCurrencyId\r\n            AND HTD.TRAN_DATE = CC.CurrencyConversionTimestamp\r\n        WHERE BANK_ID = 'CBC01' AND DEL_FLG <> 'Y'\r\n        AND TRAN_DATE BETWEEN '2024-08-01' AND '2024-08-31'\r\n    ) HTD\r\nJOIN D360.DEP_AAS_CUSTDIM_hash DAC\r\n    ON HTD.ACID = DAC.ACID\r\n    AND HTD.TRAN_DATE = DAC.AS_OF_DATE\r\n    AND HTD.BANK_ID = DAC.BANK_ID\r\nWHERE HTD.RN = 1\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "insert_DEP_HTD_April",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "temp_DEP_HTD_April",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "INSERT INTO [d360].[DEP_HISTTRANDTLTABLE_CI_LOAD]\r\nSELECT \r\n     ACID\r\n    ,TRAN_ID\r\n    ,PART_TRAN_SRL_NUM\r\n    ,TRAN_DATE\r\n    ,TRAN_CRNCY_CODE\r\n    ,TRAN_AMT\r\n    ,TRANSACTION_AMOUNT_PHP\r\n    ,DTH_INIT_SOL_ID\r\n    ,PART_TRAN_TYPE\r\n    ,SOL_ID\r\n    ,SOURCE_CODE\r\n    ,TRAN_PARTICULAR\r\n    ,TRAN_RMKS\r\n    ,LCHG_TIME\r\n    ,RCRE_TIME\r\n    ,PSTD_DATE\r\n    ,BANK_ID\r\n    ,FCBSCIF\r\nFROM D360.DEP_HISTTRANDTLTABLE_April"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "truncate_TGT_table",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "temp_DEPAAS_CUSTDIM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\n\r\nIF NOT EXISTS(SELECT TOP 1 * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'D360' AND TABLE_NAME = 'DEP_HISTTRANDTLTABLE_CI_LOAD')\r\n   CREATE TABLE [d360].[DEP_HISTTRANDTLTABLE_CI_LOAD]\r\n( \r\n\t[ACID] [varchar](30)  NULL,\r\n\t[TRANSACTION_ID] [varchar](9)  NULL,\r\n\t[TRANSACTION_SERIAL_NUMBER] [varchar](4)  NULL,\r\n\t[TRANSACTION_DATE] [date]  NULL,\r\n\t[TRANSACTION_CURRENCY_CODE] [varchar](3)  NULL,\r\n\t[TRANSACTION_AMOUNT] [numeric](20,4)  NULL,\r\n\t[TRANSACTION_AMOUNT_PHP] [numeric](20,4)  NULL,\r\n\t[INITIALIZING_BRANCH_CODE] [varchar](8)  NULL,\r\n\t[TRANSACTION_TYPE] [char](1)  NULL,\r\n\t[BRANCH_CODE] [varchar](8)  NULL,\r\n\t[SOURCE_CODE] [varchar](20)  NULL,\r\n\t[TRANSACTION_PARTICULAR] [varchar](50)  NULL,\r\n\t[TRANSACTION_REMARKS] [varchar](30)  NULL,\r\n\t[CHANGED_TIME] [datetime2](7)  NULL,\r\n\t[CREATED_TIME] [datetime2](7)  NULL,\r\n\t[POSTED_DATE] [datetime2](7)  NULL,\r\n\t[BANK_ID] [varchar](8)  NULL,\r\n\t[FCBSCIF] [varchar](50)  NULL,\r\n\t[SK] [bigint] IDENTITY \r\n)\r\nWITH\r\n(\r\n\tDISTRIBUTION = ROUND_ROBIN,\r\n\tHEAP\r\n);\r\n\r\nTRUNCATE TABLE [d360].[DEP_HISTTRANDTLTABLE_CI_LOAD];\r\n\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "insert_DEP_HTD_May",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "temp_DEP_HTD_May",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "INSERT INTO [d360].[DEP_HISTTRANDTLTABLE_CI_LOAD]\r\nSELECT \r\n     ACID\r\n    ,TRAN_ID\r\n    ,PART_TRAN_SRL_NUM\r\n    ,TRAN_DATE\r\n    ,TRAN_CRNCY_CODE\r\n    ,TRAN_AMT\r\n    ,TRANSACTION_AMOUNT_PHP\r\n    ,DTH_INIT_SOL_ID\r\n    ,PART_TRAN_TYPE\r\n    ,SOL_ID\r\n    ,SOURCE_CODE\r\n    ,TRAN_PARTICULAR\r\n    ,TRAN_RMKS\r\n    ,LCHG_TIME\r\n    ,RCRE_TIME\r\n    ,PSTD_DATE\r\n    ,BANK_ID\r\n    ,FCBSCIF\r\nFROM D360.DEP_HISTTRANDTLTABLE_May"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "insert_DEP_HTD_June",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "temp_DEP_HTD_June",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "INSERT INTO [d360].[DEP_HISTTRANDTLTABLE_CI_LOAD]\r\nSELECT \r\n     ACID\r\n    ,TRAN_ID\r\n    ,PART_TRAN_SRL_NUM\r\n    ,TRAN_DATE\r\n    ,TRAN_CRNCY_CODE\r\n    ,TRAN_AMT\r\n    ,TRANSACTION_AMOUNT_PHP\r\n    ,DTH_INIT_SOL_ID\r\n    ,PART_TRAN_TYPE\r\n    ,SOL_ID\r\n    ,SOURCE_CODE\r\n    ,TRAN_PARTICULAR\r\n    ,TRAN_RMKS\r\n    ,LCHG_TIME\r\n    ,RCRE_TIME\r\n    ,PSTD_DATE\r\n    ,BANK_ID\r\n    ,FCBSCIF\r\nFROM D360.DEP_HISTTRANDTLTABLE_June"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "insert_DEP_HTD_July",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "temp_DEP_HTD_July",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "INSERT INTO [d360].[DEP_HISTTRANDTLTABLE_CI_LOAD]\r\nSELECT \r\n     ACID\r\n    ,TRAN_ID\r\n    ,PART_TRAN_SRL_NUM\r\n    ,TRAN_DATE\r\n    ,TRAN_CRNCY_CODE\r\n    ,TRAN_AMT\r\n    ,TRANSACTION_AMOUNT_PHP\r\n    ,DTH_INIT_SOL_ID\r\n    ,PART_TRAN_TYPE\r\n    ,SOL_ID\r\n    ,SOURCE_CODE\r\n    ,TRAN_PARTICULAR\r\n    ,TRAN_RMKS\r\n    ,LCHG_TIME\r\n    ,RCRE_TIME\r\n    ,PSTD_DATE\r\n    ,BANK_ID\r\n    ,FCBSCIF\r\nFROM D360.DEP_HISTTRANDTLTABLE_July"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "insert_DEP_HTD_August",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "temp_DEP_HTD_August",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "INSERT INTO [d360].[DEP_HISTTRANDTLTABLE_CI_LOAD]\r\nSELECT \r\n     ACID\r\n    ,TRAN_ID\r\n    ,PART_TRAN_SRL_NUM\r\n    ,TRAN_DATE\r\n    ,TRAN_CRNCY_CODE\r\n    ,TRAN_AMT\r\n    ,TRANSACTION_AMOUNT_PHP \r\n    ,DTH_INIT_SOL_ID\r\n    ,PART_TRAN_TYPE\r\n    ,SOL_ID\r\n    ,SOURCE_CODE\r\n    ,TRAN_PARTICULAR\r\n    ,TRAN_RMKS\r\n    ,LCHG_TIME\r\n    ,RCRE_TIME\r\n    ,PSTD_DATE\r\n    ,BANK_ID\r\n    ,FCBSCIF\r\nFROM D360.DEP_HISTTRANDTLTABLE_August"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Dep Transaction Retail",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "insert_DEP_HTD_August",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "DelimitedTextSink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"formatSettings": {
+							"type": "DelimitedTextWriteSettings",
+							"quoteAllText": true,
+							"fileExtension": ".txt"
+						}
+					},
+					"enableStaging": false,
+					"translator": {
+						"type": "TabularTranslator",
+						"typeConversion": true,
+						"typeConversionSettings": {
+							"allowDataTruncation": true,
+							"treatBooleanAsNumber": false
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "DEP_HISTTRANDTLTABLE_CI_LOAD"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "CI_csv_gen",
+						"type": "DatasetReference",
+						"parameters": {
+							"Table": {
+								"value": "@toUpper(variables('tables'))\n",
+								"type": "Expression"
+							},
+							"Source": "TRANSACTION",
+							"Types": "Retail"
+						}
+					}
+				]
+			}
+		],
+		"variables": {
+			"tables": {
+				"type": "String",
+				"defaultValue": "CI_Dep_Tran_Retail"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-08-13T09:17:45Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

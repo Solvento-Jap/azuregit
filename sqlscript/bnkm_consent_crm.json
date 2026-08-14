@@ -1,0 +1,20 @@
+{
+	"name": "bnkm_consent_crm",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "ALTER PROCEDURE BNKM.SP_CONSENT_CRM\nAS\nBEGIN\n--------------GET DELTA FROM BUSC\nWITH TEMP_BNKM_Consent AS (\n\tSELECT \n\t\tBCC.VALUE AS ConsentId\n\t\t,BCC.DESCRIPTION AS ConsentName\n\t\t,NULL AS ConsentDescription\n\t\t,BCC.BANK_ID AS FinancialInstitutionId\n\t\t,BCC.CATEGORYID AS CategoryId\n\t\t,BCC.INSERT_DTTM AS InsertDttm\n\t\t,BCCD.RECORD_STATUS \n\tFROM BUSC.CRM_CATEGORIES_DELTA BCCD\n\tLEFT JOIN BUSC.CRM_CATEGORIES BCC ON BCCD.BANK_ID = BCC.BANK_ID AND BCCD.CATEGORYID = BCC.CATEGORYID AND BCC.CATEGORYTYPE = 'CONSENT' AND BCC.isLatest = '1'\n\tWHERE BCC.CATEGORYID IS NOT NULL\n)\n\n\nSELECT * INTO #TEMP_BNKM_Consent FROM TEMP_BNKM_Consent;\n\n\n-------------CHECK IF THERE IS DELTA \n\nWITH TEMP_BNKM_Consent_SRC AS (\n    SELECT \n        HASHBYTES('MD5',CONCAT(ConsentId, ConsentName, FinancialInstitutionId, CategoryId)) AS HASHROW\n        ,ConsentId\n\t\t,RECORD_STATUS\n    FROM #TEMP_BNKM_CONSENT\n    WHERE RECORD_STATUS = 'UPDATE'\n)\n\n,\nTEMP_BNKM_Consent_TGT AS (\n    SELECT  \n        HASHBYTES('MD5', CONCAT(ConsentId, ConsentName, FinancialInstitutionId, CategoryId)) AS HASHROW\n        ,ConsentId\n    FROM BNKM.Consent\n\t-- WHERE SOURCE_CODE = 'CRM'\n)\n\n,\nTEMP_BNKM_Consent_DELTA AS (\n\tSELECT\t\n\t\tSRC.HASHROW AS SRC_HR\n\t\t,TGT.HASHROW AS TGT_HR\n\t\t,ISNULL(SRC.ConsentId,TGT.ConsentId) AS ConsentId\n\t\t,CASE\n\t\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n\t\tELSE NULL END AS RECORD_STATUS\n\t\nFROM TEMP_BNKM_Consent_SRC\tSRC\nFULL OUTER JOIN TEMP_BNKM_Consent_TGT\tTGT\nON\tSRC.ConsentId = TGT.ConsentId\nWHERE SRC.HASHROW <> TGT.HASHROW \n)\n\n\nSELECT * INTO #TEMP_BNKM_Consent_DELTA FROM TEMP_BNKM_Consent_DELTA;\n\n\n---------UPDATE TO BNKM\nUPDATE TGT \nSET\n[ConsentId] = SRC.ConsentId\n,[ConsentName] = SRC.ConsentName\n,[ConsentDescription] = NULL\n,[FinancialInstitutionId] = SRC.FinancialInstitutionId\n,[CategoryId] = SRC.CategoryId\n,[SourceCode] = 'CRM'\n,[WorkFlowId] = 0\n,[TaskRunId] = 0\n,[InsertDttm] = getDate()\nFROM BNKM.Consent TGT \nJOIN #TEMP_BNKM_Consent_DELTA DELTA ON DELTA.ConsentId = TGT.ConsentId AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_Consent SRC ON SRC.ConsentId = TGT.ConsentId ;\n\n\n-------INSERT TO BNKM\nINSERT INTO BNKM.Consent (\n\t[ConsentId]\n\t,[ConsentName]\n\t,[ConsentDescription]\n\t,[FinancialInstitutionId]\n\t,[CategoryId]\n\t,[SourceCode]\n\t,[WorkFlowId]\n\t,[TaskRunId]\n\t,[InsertDttm])\n\nSELECT     \n\tConsentId\n    ,ConsentName\n\t,ConsentDescription\n    ,FinancialInstitutionId\n    ,CategoryId\n\t,'CRM' AS SourceCode\n\t,0 AS WorkFlowId\n\t,0 AS TaskRunId\n\t,InsertDttm\nFROM #TEMP_BNKM_CONSENT\nWHERE RECORD_STATUS in ('INSERT');\n\n\nDROP TABLE #TEMP_BNKM_Consent;\nDROP TABLE #TEMP_BNKM_Consent_DELTA;\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

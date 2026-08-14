@@ -1,0 +1,88 @@
+{
+	"name": "Send_Email_CTL",
+	"properties": {
+		"activities": [
+			{
+				"name": "Logic_App_Email",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "Get Job Summary Details",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"method": "POST",
+					"url": {
+						"value": "https://prod-23.southeastasia.logic.azure.com:443/workflows/ef3f59e71d3c4e77b4fd9e5a6cc07b31/triggers/When_a_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_a_HTTP_request_is_received%2Frun&sv=1.0&sig=-Ltp4UouW338vPcAhcJyAFdEOQaUaf1LLVZf1YlgQOs",
+						"type": "Expression"
+					},
+					"connectVia": {
+						"referenceName": "AutoResolveIntegrationRuntime",
+						"type": "IntegrationRuntimeReference"
+					},
+					"body": {
+						"value": "{\n    \"Eml_Sender\" : \"@{pipeline().parameters.Eml_Sender}\",\n    \"Eml_Recipient\" : \"@{pipeline().parameters.Eml_Recipient}\",\n    \"Eml_Subject\" : \"@{pipeline().parameters.Env} EDS_CTL Summary\",\n    \"MessageStatus\" : \"@{activity('Get Job Summary Details').output.resultsets[0].rows[0].body}\"\n}",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Get Job Summary Details",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "-- DECLARE @HEADER NVARCHAR(MAX)\r\n-- DECLARE @STYLE NVARCHAR(MAX)\r\n-- DECLARE @HTML NVARCHAR(MAX)\r\n\r\n-- SELECT @HEADER = '<p><b>Control Date Summary:</b></p>'\r\n-- SELECT @STYLE = '<style>table {border-collapse: collapse; font-family: Aptos; font-size: 11pt;}th, td {text-align: left;padding: 5px;border: 1px solid #BFBFBF;}tr:nth-child(2n) {background-color: #D6EEEE;}</style>'\r\n\r\n-- SELECT @HTML =\r\n-- '<table>' +\r\n-- '<tr><th>SOURCE NAME</th><th>DATE</th></tr>' +\r\n\r\n-- (\r\n--     SELECT STRING_AGG(\r\n--         '<tr><td>' + [SOURCE] + '</td>' +\r\n--         '<td>' + ISNULL(CONVERT(NVARCHAR(50), [DATE], 120),'') + '</td></tr>',\r\n--         ''\r\n--     )\r\n--     FROM (\r\n--         SELECT SOURCE,[DATE]\r\n--         FROM(\r\n--             SELECT        \r\n--                 CRM_DATE, DEPOSITS_DATE,LOANS_DATE,GLD_DATE,\r\n--                 CCD_DATE,DID_DATE,ATM_DATE,TRY_DATE,\r\n--                 MBK_DATE,RIB_DATE,BOB_DATE,TRU_DATE,\r\n--                 SEC_DATE,SED_DATE,DEPOSITS_DATE_P2\r\n--             FROM EDS.EDS_CTL\r\n--         )SRC\r\n--         UNPIVOT(\r\n--             [DATE] FOR SOURCE IN(\r\n--                 CRM_DATE, DEPOSITS_DATE,LOANS_DATE,GLD_DATE,\r\n--                 CCD_DATE,DID_DATE,ATM_DATE,TRY_DATE,\r\n--                 MBK_DATE,RIB_DATE,BOB_DATE,TRU_DATE,\r\n--                 SEC_DATE,SED_DATE,DEPOSITS_DATE_P2\r\n--             )\r\n--         )U\r\n--     ) t\r\n-- )\r\n\r\n-- + '</table>'\r\n\r\n-- SELECT CONCAT(@HEADER,@STYLE,@HTML) AS body\r\n\r\nDECLARE @HEADER NVARCHAR(MAX);\r\nDECLARE @STYLE  NVARCHAR(MAX);\r\nDECLARE @HTML   NVARCHAR(MAX);\r\nDECLARE @SQL    NVARCHAR(MAX);\r\n\r\nSELECT @HEADER = '<p><b>Control Date Summary:</b></p>';\r\n\r\nSELECT @STYLE = '\r\n<style>\r\n    table {\r\n        border-collapse: collapse;\r\n        font-family: Aptos;\r\n        font-size: 11pt;\r\n    }\r\n    th, td {\r\n        text-align: left;\r\n        padding: 5px;\r\n        border: 1px solid #BFBFBF;\r\n    }\r\n    tr:nth-child(2n) {\r\n        background-color: #D6EEEE;\r\n    }\r\n</style>';\r\n\r\nSET @SQL = '\r\nSELECT @HTML_OUT =\r\n    ''<table>'' +\r\n    ''<tr><th>SOURCE NAME</th><th>DATE</th></tr>'' +\r\n\r\n    (\r\n        SELECT STRING_AGG(\r\n            ''<tr><td>'' + [SOURCE] + ''</td>'' +\r\n            ''<td>'' + ISNULL(CONVERT(NVARCHAR(50), [DATE], 120), '''') + ''</td></tr>'',\r\n            ''''\r\n        )\r\n        FROM\r\n        (\r\n            ' +\r\n\r\n            (\r\n                SELECT STRING_AGG(\r\n                    CONCAT(\r\n                        'SELECT ''', COLUMN_NAME, ''' AS [SOURCE], ',\r\n                        'CAST([', COLUMN_NAME, '] AS DATE) AS [DATE] ',\r\n                        'FROM [EDS].[EDS_CTL]'\r\n                    ),\r\n                    ' UNION ALL '\r\n                )\r\n                FROM INFORMATION_SCHEMA.COLUMNS\r\n                WHERE TABLE_SCHEMA = 'EDS'\r\n                  AND TABLE_NAME = 'EDS_CTL'\r\n                  AND DATA_TYPE LIKE '%date%'\r\n            )\r\n\r\n            + '\r\n        ) t\r\n    )\r\n\r\n    + ''</table>'';\r\n';\r\n\r\nEXEC sp_executesql\r\n    @SQL,\r\n    N'@HTML_OUT NVARCHAR(MAX) OUTPUT',\r\n    @HTML_OUT = @HTML OUTPUT;\r\n\r\nSELECT CONCAT(@HEADER, @STYLE, @HTML) AS body;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"parameters": {
+			"Eml_Sender": {
+				"type": "string",
+				"defaultValue": "donotreply@advisory.chinabank.ph"
+			},
+			"Eml_Recipient": {
+				"type": "string",
+				"defaultValue": "jayar.gavina@solventoph.com, arland.bindoy@solventoph.com, japeth.hernandez@solventoph.com, jolenizo@chinabank.ph"
+			},
+			"Env": {
+				"type": "string",
+				"defaultValue": "[D360-DEV]"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-05-06T05:58:36Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

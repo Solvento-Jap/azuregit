@@ -1,0 +1,128 @@
+{
+	"name": "FactTreasuryOutstandingInvestment_20231116",
+	"properties": {
+		"activities": [
+			{
+				"name": "FactTreasuryOutstandingInvestment",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH CustomerAccountBalance AS(\nSELECT * FROM BNKM.CustomerAccountBalance \nWHERE BalanceTypeId IN ('Fixed Income Product Outstanding','Money Market Product Outstanding','Structured Product PYA Outstanding','Structured Product Asset Swap')\nAND SourceSystemCode = 'TRY' AND IsoCurrencyCode = 'PHP')\n\n,CNT_CustomerAccountParticipation AS(\n    select AccountID,\n    count(ShareIndicator) as CNT\n    from DW.DimCustomerAccount where ShareIndicator = 'Y'\n    group by AccountID\n)\n\n,Balance AS (\nSELECT\n\tconvert(varchar,BCAB.[Timestamp],112) AS BusinessDateSK\n\t,DDB.BranchSK AS BranchSK\n\t,DDBANK.BankSK AS BankSK\n\t,DDA.AccountSK AS AccountSK\n\t,DDA.AccountId AS AccountID\n\t,SUM(BCAB.BalanceAmount) AS OutstandingInvestmentFull\n\t,SUM(BCAB.BalanceAmount) / CNT AS OutstandingInvestmentProrated\n\t,BCAB.IsoCurrencyCode AS Currency\n\t,BCAB.SourceSystemCode AS SourceSystemCode\n\t,0 AS WorkFlowId \n\t,0 AS TaskRunId\n\t,GETDATE() AS InsertDttm\nFROM CustomerAccountBalance BCAB\nLEFT JOIN BNKM.CUSTOMERACCOUNT BCA ON BCAB.CUSTOMERACCOUNTID = BCA.CUSTOMERACCOUNTID AND BCAB.SourceSystemCode = BCA.SourceSystemCode\nLEFT JOIN DW.DimBranch DDB ON BCA.BRANCHID = DDB.BRANCHID aND DDB.CurrentIndicator = 1\nLEFT JOIN DW.DIMBANK DDBANK ON BCAB.FINANCIALINSTITUTIONID = DDBANK.BANKID\nLEFT JOIN CNT_CustomerAccountParticipation BCAP ON BCAB.CustomerAccountId = BCAP.AccountId --join for count\nLEFT JOIN DW.DimAccount DDA ON BCAB.CUSTOMERACCOUNTID = DDA.ACCOUNTID AND BCAB.SOURCESYSTEMCODE = DDA.SOURCESYSTEMCODE AND DDA.CurrentIndicator = 1\nWHERE convert(varchar,BCAB.[Timestamp],112) between '20210101' and '20231116'\nGROUP BY \nBCAB.[Timestamp]\n,DDB.BranchSK\n,DDBANK.BankSK\n,DDA.AccountSK\n,DDA.AccountId\n,BCAB.IsoCurrencyCode\n,BCAB.SourceSystemCode\n,CNT\n)\n,Distinct_Balance AS (\nSELECT DISTINCT \n    BranchSK, BankSK, AccountSK, AccountId, BusinessDateSK, OutstandingInvestmentFull, OutstandingInvestmentProrated, Currency, SourceSystemCode, WorkFlowId, TaskRunId, InsertDttm\nFROM Balance)\n\nINSERT INTO DW.FactTreasuryOutstandingInvestment\nSELECT\n    BusinessDateSK\n    ,BranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n    ,OutstandingInvestmentFull\n    ,OutstandingInvestmentProrated\n    ,Currency\n    ,SourceSystemCode\n    ,WorkFlowId\n    ,TaskRunId\n    ,InsertDttm\n\nFROM Distinct_Balance A\nWHERE NOT EXISTS (\n    SELECT * FROM DW.FactTreasuryOutstandingInvestment B\n    WHERE B.AccountId  = A.AccountId\n    AND B.BusinessDateSK = A.BusinessDateSK\n    AND B.BankSK = A.BankSK\n)"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CNT",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(*) CNT FROM dw.FactTreasuryOutstandingInvestment"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Full",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT TOP 10\n\n A.CustomerAccountId, A.[Timestamp], A.BalanceAmount\n\n ,B.AccountID, B.BusinessDateSK, B.OutstandingInvestmentFull, B.OutstandingInvestmentProrated\n\n ,C.AccountStatus\n\n FROM (SELECT CustomerAccountId, [TimeStamp], SUM(BalanceAmount) AS BalanceAmount FROM bnkm.CustomerAccountBalance WHERE IsoCurrencyCode = 'PHP' AND SourceSystemCode = 'TRY' GROUP BY CustomerAccountId, [TimeStamp]) A\n\n LEFT JOIN dw.FactTreasuryOutstandingInvestment B ON B.AccountID = A.CustomerAccountId AND convert(datetime, convert(char(8), B.BusinessDateSK)) = A.[Timestamp]\n\n LEFT JOIN dw.DimAccount C ON C.AccountID = A.CustomerAccountID and C.CurrentIndicator = 1\n\n WHERE C.SourceSystemCode = 'TRY'  AND  A.BalanceAmount <> B.OutstandingInvestmentFull"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Prorated",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT TOP 10\n\n A.CustomerAccountId, A.[Timestamp], A.BalanceAmount\n\n ,B.AccountID, B.BusinessDateSK, B.OutstandingInvestmentFull, B.OutstandingInvestmentProrated\n\n ,C.AccountStatus\n\n FROM (SELECT CustomerAccountId, [TimeStamp], SUM(BalanceAmount) AS BalanceAmount FROM bnkm.CustomerAccountBalance WHERE IsoCurrencyCode = 'PHP' AND SourceSystemCode = 'TRY' GROUP BY CustomerAccountId, [TimeStamp]) A\n\n LEFT JOIN dw.FactTreasuryOutstandingInvestment B ON B.AccountID = A.CustomerAccountId AND convert(datetime, convert(char(8), B.BusinessDateSK)) = A.[Timestamp]\n\n LEFT JOIN dw.DimAccount C ON C.AccountID = A.CustomerAccountID and C.CurrentIndicator = 1\n\n WHERE C.SourceSystemCode = 'TRY'  AND  A.BalanceAmount <> B.OutstandingInvestmentProrated"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-11-16T10:17:33Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

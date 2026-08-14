@@ -1,0 +1,292 @@
+{
+	"name": "CustomerAccountParticipation_CHK",
+	"properties": {
+		"activities": [
+			{
+				"name": "BUSC",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT * FROM BUSC.DEP_GENERALACCOUNTMASTER\nWHERE ISLATEST = 1 AND CounterParty_ID = '62621362b90ae976c9bbc33453c00c59'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "BUSC_GAM",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "BUSC",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) DUP_CNT FROM (\nSELECT ACID, BANK_ID, COUNT(1) CNT FROM BUSC.DEP_GENERALACCOUNTMASTER\nWHERE ISLATEST = 1 \nGROUP BY ACID, BANK_ID\nHAVING COUNT(1) > 1 ) A"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "BUSC_ACCREL",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "BUSC_GAM",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) DUP_CNT FROM (\nSELECT ACID, ACCT_POA_AS_SRL_NUM, BANK_ID, COUNT(1) CNT FROM BUSC.DEP_ACCOUNTRELATIONSHIP\nWHERE ISLATEST = 1 \nGROUP BY ACID, ACCT_POA_AS_SRL_NUM, BANK_ID\nHAVING COUNT(1) > 1 ) A"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "WITH",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "BUSC_ACCREL",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH TEMP_BNKM_CustomerAccountParticipation\nAS(\nSELECT DISTINCT\nBDG.FORACID AS CustomerAccountId\n,NULL AS CustomerId\n,BDA.START_DATE AS PeriodStartDate\n,BDA.END_DATE AS PeriodEndDate\n,BDA.CUST_ID AS CoreCustomerId\n,NULL AS CustomerAccountParticipationNote\n,BDA.DEL_FLG AS DeletedIndicator\n,BDA.GUARANTOR_LIAB_PCNT AS GuarantorLiabilityPercentage\n,BDA.BANK_ID AS FinancialInstitutionId\n,BDA.PROFIT_CERT_FLG AS ProfitCertificateIndicator\n,BDA.ENTITY_CRE_FLG AS VerifiedIndicator\n,BDA.MINOR_MAJOR_LET_GEN_FLG AS MinorToMajorLetterGenerationIndicator\n,BDA.CHNGD_DUE_TO_ASSUMPTN_FLG AS ChangedDueToAssumptionIndicator\n,BDA.ACCT_POA_AS_SRL_NUM AS SerialNumber\n,BDA.ACCT_POA_AS_AMT_ALWD AS RelatedPartyAllowedAmount\n,BDA.CUST_RELTN_CODE AS CustomerRelationCode\n,'DEP' AS SOURCESYSTEMCODE\n,BDA.INSERT_DTTM AS INSERTDTTM\nFROM BUSC.DEP_ACCOUNTRELATIONSHIP BDA\nLEFT JOIN BUSC.DEP_GENERALACCOUNTMASTER BDG ON BDG.ACID = BDA.ACID AND BDG.ISLATEST = '1'\nwhere BDA.ISLATEST = '1'\n\n)\nSELECT count(1) CNT FROM TEMP_BNKM_CustomerAccountParticipation\nWHERE CustomerAccountId = '1664351' ;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "WITH_CAP",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH TEMP_BNKM_CustomerAccountParticipation\nAS(\nSELECT DISTINCT\nBDG.FORACID AS CustomerAccountId\n,NULL AS CustomerId\n,BDA.START_DATE AS PeriodStartDate\n,BDA.END_DATE AS PeriodEndDate\n,BDA.CUST_ID AS CoreCustomerId\n,NULL AS CustomerAccountParticipationNote\n,BDA.DEL_FLG AS DeletedIndicator\n,BDA.GUARANTOR_LIAB_PCNT AS GuarantorLiabilityPercentage\n,BDA.BANK_ID AS FinancialInstitutionId\n,BDA.PROFIT_CERT_FLG AS ProfitCertificateIndicator\n,BDA.ENTITY_CRE_FLG AS VerifiedIndicator\n,BDA.MINOR_MAJOR_LET_GEN_FLG AS MinorToMajorLetterGenerationIndicator\n,BDA.CHNGD_DUE_TO_ASSUMPTN_FLG AS ChangedDueToAssumptionIndicator\n,BDA.ACCT_POA_AS_SRL_NUM AS SerialNumber\n,BDA.ACCT_POA_AS_AMT_ALWD AS RelatedPartyAllowedAmount\n,BDA.CUST_RELTN_CODE AS CustomerRelationCode\n,'DEP' AS SOURCESYSTEMCODE\n,BDA.INSERT_DTTM AS INSERTDTTM\nFROM BUSC.DEP_ACCOUNTRELATIONSHIP BDA\nLEFT JOIN BUSC.DEP_GENERALACCOUNTMASTER BDG ON BDG.ACID = BDA.ACID AND BDG.ISLATEST = '1'\nwhere BDA.ISLATEST = '1'\n\n)\nSELECT count(1) CNT FROM TEMP_BNKM_CustomerAccountParticipation\nWHERE CustomerAccountId = 'c1d23761c4b60742b2554331ea93d953';"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "SRC_CAP",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "WITH_CAP",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH TEMP_BNKM_CustomerAccountParticipation\nAS(\nSELECT DISTINCT\nBDG.FORACID AS CustomerAccountId\n,NULL AS CustomerId\n,BDA.START_DATE AS PeriodStartDate\n,BDA.END_DATE AS PeriodEndDate\n,BDA.CUST_ID AS CoreCustomerId\n,NULL AS CustomerAccountParticipationNote\n,BDA.DEL_FLG AS DeletedIndicator\n,BDA.GUARANTOR_LIAB_PCNT AS GuarantorLiabilityPercentage\n,BDA.BANK_ID AS FinancialInstitutionId\n,BDA.PROFIT_CERT_FLG AS ProfitCertificateIndicator\n,BDA.ENTITY_CRE_FLG AS VerifiedIndicator\n,BDA.MINOR_MAJOR_LET_GEN_FLG AS MinorToMajorLetterGenerationIndicator\n,BDA.CHNGD_DUE_TO_ASSUMPTN_FLG AS ChangedDueToAssumptionIndicator\n,BDA.ACCT_POA_AS_SRL_NUM AS SerialNumber\n,BDA.ACCT_POA_AS_AMT_ALWD AS RelatedPartyAllowedAmount\n,BDA.CUST_RELTN_CODE AS CustomerRelationCode\n,'DEP' AS SOURCESYSTEMCODE\n,BDA.INSERT_DTTM AS INSERTDTTM\nFROM BUSC.DEP_ACCOUNTRELATIONSHIP BDA\nLEFT JOIN BUSC.DEP_GENERALACCOUNTMASTER BDG ON BDG.ACID = BDA.ACID AND BDG.ISLATEST = '1'\nwhere BDA.ISLATEST = '1'\n\n)\nSELECT * INTO #TEMP_BNKM_CustomerAccountParticipation FROM TEMP_BNKM_CustomerAccountParticipation\nWHERE CustomerAccountId = 'c1d23761c4b60742b2554331ea93d953' ;\n\n--CHECK IF THERE IS DELTA\n\nWITH TEMP_BNKM_CustomerAccountParticipation_SRC\nAS(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerAccountId)\n,convert(varchar,CoreCustomerId)\n,convert(varchar,CustomerAccountParticipationNote)\n,convert(char,DeletedIndicator)\n,convert(integer,GuarantorLiabilityPercentage)\n,convert(varchar,FinancialInstitutionId)\n,convert(char,ProfitCertificateIndicator)\n,convert(char,VerifiedIndicator)\n,convert(char,MinorToMajorLetterGenerationIndicator)\n,convert(char,ChangedDueToAssumptionIndicator)\n,convert(varchar,SerialNumber)\n,convert(integer,RelatedPartyAllowedAmount)\n,convert(varchar,CustomerRelationCode)\n)) HASHROW, CustomerAccountId, SerialNumber, CustomerId,FinancialInstitutionId,SourceSystemCode\nFROM #TEMP_BNKM_CustomerAccountParticipation\n)\n\nSELECT count(1) CNT FROM TEMP_BNKM_CustomerAccountParticipation_SRC;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "TGT_CAP",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "SRC_CAP",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH TEMP_BNKM_CustomerAccountParticipation\nAS(\nSELECT DISTINCT\nBDG.FORACID AS CustomerAccountId\n,NULL AS CustomerId\n,BDA.START_DATE AS PeriodStartDate\n,BDA.END_DATE AS PeriodEndDate\n,BDA.CUST_ID AS CoreCustomerId\n,NULL AS CustomerAccountParticipationNote\n,BDA.DEL_FLG AS DeletedIndicator\n,BDA.GUARANTOR_LIAB_PCNT AS GuarantorLiabilityPercentage\n,BDA.BANK_ID AS FinancialInstitutionId\n,BDA.PROFIT_CERT_FLG AS ProfitCertificateIndicator\n,BDA.ENTITY_CRE_FLG AS VerifiedIndicator\n,BDA.MINOR_MAJOR_LET_GEN_FLG AS MinorToMajorLetterGenerationIndicator\n,BDA.CHNGD_DUE_TO_ASSUMPTN_FLG AS ChangedDueToAssumptionIndicator\n,BDA.ACCT_POA_AS_SRL_NUM AS SerialNumber\n,BDA.ACCT_POA_AS_AMT_ALWD AS RelatedPartyAllowedAmount\n,BDA.CUST_RELTN_CODE AS CustomerRelationCode\n,'DEP' AS SOURCESYSTEMCODE\n,BDA.INSERT_DTTM AS INSERTDTTM\nFROM BUSC.DEP_ACCOUNTRELATIONSHIP BDA\nLEFT JOIN BUSC.DEP_GENERALACCOUNTMASTER BDG ON BDG.ACID = BDA.ACID AND BDG.ISLATEST = '1'\nwhere BDA.ISLATEST = '1'\n\n)\nSELECT * INTO #TEMP_BNKM_CustomerAccountParticipation FROM TEMP_BNKM_CustomerAccountParticipation\nWHERE CustomerAccountId = 'c1d23761c4b60742b2554331ea93d953' ;\n\n--CHECK IF THERE IS DELTA\n\nWITH TEMP_BNKM_CustomerAccountParticipation_SRC\nAS(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerAccountId)\n,convert(varchar,CoreCustomerId)\n,convert(varchar,CustomerAccountParticipationNote)\n,convert(char,DeletedIndicator)\n,convert(integer,GuarantorLiabilityPercentage)\n,convert(varchar,FinancialInstitutionId)\n,convert(char,ProfitCertificateIndicator)\n,convert(char,VerifiedIndicator)\n,convert(char,MinorToMajorLetterGenerationIndicator)\n,convert(char,ChangedDueToAssumptionIndicator)\n,convert(varchar,SerialNumber)\n,convert(integer,RelatedPartyAllowedAmount)\n,convert(varchar,CustomerRelationCode)\n)) HASHROW, CustomerAccountId, SerialNumber, CustomerId,FinancialInstitutionId,SourceSystemCode\nFROM #TEMP_BNKM_CustomerAccountParticipation\n),\n\nTEMP_BNKM_CustomerAccountParticipation_TGT\nAS(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerAccountId)\n,convert(varchar,CoreCustomerId)\n,convert(varchar,CustomerAccountParticipationNote)\n,convert(char,DeletedIndicator)\n,convert(integer,GuarantorLiabilityPercentage)\n,convert(varchar,FinancialInstitutionId)\n,convert(char,ProfitCertificateIndicator)\n,convert(char,VerifiedIndicator)\n,convert(char,MinorToMajorLetterGenerationIndicator)\n,convert(char,ChangedDueToAssumptionIndicator)\n,convert(varchar,SerialNumber)\n,convert(integer,RelatedPartyAllowedAmount)\n,convert(varchar,CustomerRelationCode)\n)) HASHROW, CustomerAccountId, SerialNumber, CustomerId,FinancialInstitutionId,SourceSystemCode\nFROM BNKM.CustomerAccountParticipation WHERE PeriodEndDate = '1900-01-01T00:00:00.0000000' AND SOURCESYSTEMCODE = 'DEP'\n)\n\nSELECT count(1) CNT FROM TEMP_BNKM_CustomerAccountParticipation_TGT\nWHERE CustomerAccountId = 'c1d23761c4b60742b2554331ea93d953';"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DELTA_CAP",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "TGT_CAP",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH TEMP_BNKM_CustomerAccountParticipation\nAS(\nSELECT DISTINCT\nBDG.FORACID AS CustomerAccountId\n,NULL AS CustomerId\n,BDA.START_DATE AS PeriodStartDate\n,BDA.END_DATE AS PeriodEndDate\n,BDA.CUST_ID AS CoreCustomerId\n,NULL AS CustomerAccountParticipationNote\n,BDA.DEL_FLG AS DeletedIndicator\n,BDA.GUARANTOR_LIAB_PCNT AS GuarantorLiabilityPercentage\n,BDA.BANK_ID AS FinancialInstitutionId\n,BDA.PROFIT_CERT_FLG AS ProfitCertificateIndicator\n,BDA.ENTITY_CRE_FLG AS VerifiedIndicator\n,BDA.MINOR_MAJOR_LET_GEN_FLG AS MinorToMajorLetterGenerationIndicator\n,BDA.CHNGD_DUE_TO_ASSUMPTN_FLG AS ChangedDueToAssumptionIndicator\n,BDA.ACCT_POA_AS_SRL_NUM AS SerialNumber\n,BDA.ACCT_POA_AS_AMT_ALWD AS RelatedPartyAllowedAmount\n,BDA.CUST_RELTN_CODE AS CustomerRelationCode\n,'DEP' AS SOURCESYSTEMCODE\n,BDA.INSERT_DTTM AS INSERTDTTM\nFROM BUSC.DEP_ACCOUNTRELATIONSHIP BDA\nLEFT JOIN BUSC.DEP_GENERALACCOUNTMASTER BDG ON BDG.ACID = BDA.ACID AND BDG.ISLATEST = '1'\nwhere BDA.ISLATEST = '1'\n\n)\nSELECT * INTO #TEMP_BNKM_CustomerAccountParticipation FROM TEMP_BNKM_CustomerAccountParticipation\nWHERE CustomerAccountId = 'c1d23761c4b60742b2554331ea93d953';\n\n--CHECK IF THERE IS DELTA\n\nWITH TEMP_BNKM_CustomerAccountParticipation_SRC\nAS(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerAccountId)\n,convert(varchar,CoreCustomerId)\n,convert(varchar,CustomerAccountParticipationNote)\n,convert(char,DeletedIndicator)\n,convert(integer,GuarantorLiabilityPercentage)\n,convert(varchar,FinancialInstitutionId)\n,convert(char,ProfitCertificateIndicator)\n,convert(char,VerifiedIndicator)\n,convert(char,MinorToMajorLetterGenerationIndicator)\n,convert(char,ChangedDueToAssumptionIndicator)\n,convert(varchar,SerialNumber)\n,convert(integer,RelatedPartyAllowedAmount)\n,convert(varchar,CustomerRelationCode)\n)) HASHROW, CustomerAccountId, SerialNumber, CustomerId,FinancialInstitutionId,SourceSystemCode\nFROM #TEMP_BNKM_CustomerAccountParticipation\n),\n\nTEMP_BNKM_CustomerAccountParticipation_TGT\nAS(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerAccountId)\n,convert(varchar,CoreCustomerId)\n,convert(varchar,CustomerAccountParticipationNote)\n,convert(char,DeletedIndicator)\n,convert(integer,GuarantorLiabilityPercentage)\n,convert(varchar,FinancialInstitutionId)\n,convert(char,ProfitCertificateIndicator)\n,convert(char,VerifiedIndicator)\n,convert(char,MinorToMajorLetterGenerationIndicator)\n,convert(char,ChangedDueToAssumptionIndicator)\n,convert(varchar,SerialNumber)\n,convert(integer,RelatedPartyAllowedAmount)\n,convert(varchar,CustomerRelationCode)\n)) HASHROW, CustomerAccountId, SerialNumber, CustomerId,FinancialInstitutionId,SourceSystemCode\nFROM BNKM.CustomerAccountParticipation WHERE PeriodEndDate = '1900-01-01T00:00:00.0000000' AND SOURCESYSTEMCODE = 'DEP' AND CustomerAccountId = 'c1d23761c4b60742b2554331ea93d953'\n),\n\nTEMP_BNKM_CustomerAccountParticipation_DELTA\nAS\n(\nSELECT\nSRC.HASHROW AS SRC_HR\n,TGT.HASHROW AS TGT_HR\n,ISNULL(SRC.CustomerAccountId,TGT.CustomerAccountId) AS CustomerAccountId\n,ISNULL(SRC.SerialNumber,TGT.SerialNumber) AS SerialNumber\n,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\n,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\n,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\n,CASE\n    WHEN TGT.HASHROW IS NULL THEN 'INSERT' \n    WHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n    ELSE NULL END AS RECORD_STATUS\n\nFROM TEMP_BNKM_CustomerAccountParticipation_SRC SRC\nLEFT JOIN TEMP_BNKM_CustomerAccountParticipation_TGT TGT\nON SRC.CustomerAccountId = TGT.CustomerAccountId\nAND SRC.SerialNumber = TGT.SerialNumber\nAND ISNULL(SRC.CustomerId,'1') = ISNULL(TGT.CustomerId,'1')\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\n--WHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\n)\nSELECT * FROM TEMP_BNKM_CustomerAccountParticipation_DELTA\nWHERE CustomerAccountId = 'c1d23761c4b60742b2554331ea93d953';"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-10-18T10:39:49Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

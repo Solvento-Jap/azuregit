@@ -1,0 +1,88 @@
+{
+	"name": "Patch_CustomerName",
+	"properties": {
+		"activities": [
+			{
+				"name": "ALTER SP_CUSTOMERNAME_CCD",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SET ANSI_NULLS ON\r\nGO\r\nSET QUOTED_IDENTIFIER ON\r\nGO\r\n\r\nALTER PROC [BNKM].[SP_CUSTOMERNAME_CCD] AS\r\nBEGIN\r\n--GET DELTA FROM BUSC\r\nWITH TEMP_BNKM_CustomerName\r\nAS(\r\nSELECT ROW_NUMBER() OVER(PARTITION BY CustomerId,CustomerNameId ORDER BY InsertDttm DESC ) RN, * FROM (\r\n--(1)CONCAT\r\nSELECT\r\nBCM.CUST_NBR AS CustomerId\r\n,HASHBYTES('MD5',CONCAT(BCM.CUST_FIRST_NAME, BCM.CUST_MIDDLE_NAME, BCM.CUST_LAST_NAME)) AS CustomerNameId\r\n,NULL AS NameUsageId\r\n,CONVERT(DATE,CONVERT(VARCHAR,BCM.CUST_DATE_MAINT)) AS StartDate\r\n,'9999-12-31' AS EndDate\r\n,NULL AS CustomerNameNote\r\n,'CCD' AS SourceSystemCode\r\n,BCM.BNK_CODE AS FINANCIALINSTITUTIONID\r\n,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\n\r\nFROM BUSC.CCD_MCUSTOMER BCM\r\nWHERE BCM.ISLATEST = '1'\r\n\r\nUNION\r\n\r\nSELECT\r\nBCD.CUST_NBR AS CustomerId\r\n,HASHBYTES('MD5',CONCAT(BCD.CUST_FIRST_NAME, BCD.CUST_MIDDLE_NAME, BCD.CUST_LAST_NAME)) AS CustomerNameId\r\n,NULL AS NameUsageId\r\n,CONVERT(DATE,CONVERT(VARCHAR,BCD.CUST_DATE_MAINT)) AS StartDate\r\n,'9999-12-31' AS EndDate\r\n,NULL AS CustomerNameNote\r\n,'CCD' AS SourceSystemCode\r\n,BCD.BNK_CODE AS FINANCIALINSTITUTIONID\r\n,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\nFROM BUSC.CCD_DCUSTOMER BCD\r\nWHERE BCD.ISLATEST = '1'\r\n\r\nUNION\r\n--(2) ENGLISH NAME\r\nSELECT\r\nBCM.CUST_NBR AS CustomerId\r\n,HASHBYTES('MD5',BCM.CUST_ENG_NAME) AS CustomerNameId\r\n,'ENGLISH NAME' AS NameUsageId\r\n,CONVERT(DATE,CONVERT(VARCHAR,BCM.CUST_DATE_MAINT)) AS StartDate\r\n,'9999-12-31' AS EndDate\r\n,NULL AS CustomerNameNote\r\n,'CCD' AS SourceSystemCode\r\n,BCM.BNK_CODE AS FINANCIALINSTITUTIONID\r\n,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\nFROM BUSC.CCD_MCUSTOMER BCM\r\n WHERE BCM.ISLATEST = '1'\r\n\r\nUNION\r\n\r\nSELECT\r\nBCD.CUST_NBR AS CustomerId\r\n,HASHBYTES('MD5',BCD.CUST_ENG_NAME) AS CustomerNameId\r\n,'ENGLISH NAME' AS NameUsageId\r\n,CONVERT(DATE,CONVERT(VARCHAR,BCD.CUST_DATE_MAINT)) AS StartDate\r\n,'9999-12-31' AS EndDate\r\n,NULL AS CustomerNameNote\r\n,'CCD' AS SourceSystemCode\r\n,BCD.BNK_CODE AS FINANCIALINSTITUTIONID\r\n,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\nFROM BUSC.CCD_DCUSTOMER BCD\r\nWHERE BCD.ISLATEST = '1'\r\n)A\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerName FROM TEMP_BNKM_CustomerName WHERE RN = 1;\r\n\r\n--CHECK IF THERE IS DELTA\r\n\r\nWITH TEMP_BNKM_CustomerName_SRC\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\n\tCONVERT(BIGINT,CustomerId)\r\n\t,CONVERT(VARBINARY, CustomerNameId)\r\n\t,CONVERT(VARCHAR, NameUsageId)\r\n\t,CONVERT(VARCHAR, CustomerNameNote)\r\n\t,CONVERT(VARCHAR, FinancialInstitutionId)\r\n\t,CONVERT(VARCHAR, SourceSystemCode)\r\n)) HASHROW, CustomerId, CustomerNameId ,NameUsageId, FinancialInstitutionId, SourceSystemCode\r\nFROM #TEMP_BNKM_CustomerName\r\n),\r\n\r\nTEMP_BNKM_CustomerName_TGT\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\n\tCONVERT(BIGINT,CustomerId)\r\n\t,CONVERT(VARBINARY, CustomerNameId)\r\n\t,CONVERT(VARCHAR, NameUsageId)\r\n\t,CONVERT(VARCHAR, CustomerNameNote)\r\n\t,CONVERT(VARCHAR, FinancialInstitutionId)\r\n\t,CONVERT(VARCHAR, SourceSystemCode)\r\n)) HASHROW, CustomerId, CustomerNameId ,NameUsageId, FinancialInstitutionId, SourceSystemCode\r\nFROM BNKM.CustomerName WHERE EndDate= '9999-12-31' AND SourceSystemCode = 'CCD'\r\n),\r\n\r\nTEMP_BNKM_CustomerName_DELTA\r\nAS(\r\nSELECT\r\nSRC.HASHROW AS SRC_HR\r\n,TGT.HASHROW AS TGT_HR\r\n,ISNULL(SRC.CustomerId, TGT.CustomerId) AS CustomerId\r\n,ISNULL(SRC.CustomerNameId, TGT.CustomerNameId) AS CustomerNameId\r\n,ISNULL(SRC.NameUsageId, TGT.NameUsageId) AS NameUsageId\r\n,ISNULL(SRC.FinancialInstitutionId, TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n,ISNULL(SRC.SourceSystemCode, TGT.SourceSystemCode) AS SourceSystemCode\r\n,CASE\r\n\tWHEN TGT.HASHROW IS NULL THEN 'INSERT'\r\n\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\tELSE NULL END AS RECORD_STATUS\r\nFROM TEMP_BNKM_CustomerName_SRC SRC\r\nLEFT JOIN TEMP_BNKM_CustomerName_TGT TGT\r\nON CONVERT(VARCHAR,SRC.CustomerId) = CONVERT(VARCHAR,TGT.CustomerId)\r\nAND SRC.CustomerNameId = TGT.CustomerNameId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\r\n)\r\n\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerName_DELTA FROM TEMP_BNKM_CustomerName_DELTA;\r\n\r\n--UPDATE RECORDS TO BNKM\r\n\r\nUPDATE TGT\r\nSET\r\nEndDate = convert(date, DATEADD(day, -1, SRC.StartDate))\r\nFROM BNKM.CustomerName TGT\r\nJOIN #TEMP_BNKM_CustomerName_DELTA DELTA\r\nON CONVERT(VARCHAR,DELTA.CustomerId) = CONVERT(VARCHAR,TGT.CustomerId)\r\nAND DELTA.CustomerNameId = TGT.CustomerNameId\r\nAND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND DELTA.SourceSystemCode = TGT.SourceSystemCode\r\nAND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CustomerName SRC\r\nON CONVERT(VARCHAR,SRC.CustomerId) = CONVERT(VARCHAR,TGT.CustomerId)\r\nAND SRC.CustomerNameId = TGT.CustomerNameId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE TGT.EndDate = '9999-12-31'\r\n\r\n\r\n\r\n\r\n--INSERT RECCORDS TO BNKM\r\nINSERT INTO BNKM.CustomerName\r\n(\r\nCustomerId\r\n,CustomerNameId\r\n,NameUsageId\r\n,StartDate\r\n,EndDate\r\n,CustomerNameNote\r\n,FinancialInstitutionId\r\n,SourceSystemCode\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\n\r\nSELECT\r\nSRC.CustomerId\r\n,SRC.CustomerNameId\r\n,SRC.NameUsageId\r\n,CONVERT(DATE,CONVERT(VARCHAR,StartDate))\r\n,'9999-12-31' AS EndDate\r\n,SRC.CustomerNameNote\r\n,SRC.FinancialInstitutionId\r\n,'CCD' AS SourceSystemCode\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,SRC.InsertDttm\r\nFROM #TEMP_BNKM_CustomerName SRC\r\nJOIN #TEMP_BNKM_CustomerName_DELTA DELTA \r\nON CONVERT(VARCHAR,DELTA.CustomerId) = CONVERT(VARCHAR,SRC.CustomerId)\r\n     AND DELTA.CustomerNameId = SRC.CustomerNameId\r\n\t AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\r\n     AND DELTA.SourceSystemCode = SRC.SourceSystemCode\r\n WHERE DELTA.RECORD_STATUS IN ('INSERT');\r\n\r\nDROP TABLE #TEMP_BNKM_CustomerName;\r\nDROP TABLE #TEMP_BNKM_CustomerName_DELTA;\r\n\r\nEND\r\nGO"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ALTER SP_CUSTOMERNAME_SEC",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SET ANSI_NULLS ON\r\nGO\r\nSET QUOTED_IDENTIFIER ON\r\nGO\r\n\r\nALTER PROC [BNKM].[SP_CUSTOMERNAME_SEC] AS\r\nBEGIN\r\n--GET DELTA FROM BUSC\r\nWITH TEMP_BNKM_CustomerName\r\nAS\r\n(\r\nSELECT\r\nBST.CLTCODE AS CustomerId\r\n,HASHBYTES('MD5', CONCAT(BST.FNAME, BST.MNAME,BST.LNAME)) AS CustomerNameId\r\n,NULL AS NameUsageId\r\n,BST.DATE_CREATED AS StartDate\r\n,BST.LASTUPDATED AS EndDate\r\n,NULL AS CustomerNameNote\r\n,'SEC' AS SOURCESYSTEMCODE\r\n,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\n,BST.BNK_CODE AS FINANCIALINSTITUTIONID\r\nFROM BUSC.SEC_TBLCLIENT BST\r\nWHERE CLTTYPE = 'I'\r\n AND BST.ISLATEST = '1'\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerName FROM TEMP_BNKM_CustomerName;\r\n\r\n--CHECK IF THERE IS DELTA\r\nWITH TEMP_BNKM_CustomerName_SRC\r\nAS\r\n(\r\nSELECT HASHBYTES('MD5', CONCAT(\r\n\tCONVERT(BIGINT, CustomerId)\r\n\t,CONVERT(VARBINARY, CustomerNameId)\r\n\t,CONVERT(VARCHAR, NameUsageId)\r\n\t,CONVERT(VARCHAR, CustomerNameNote)\r\n\t,CONVERT(VARCHAR, FinancialInstitutionId)\r\n\t,CONVERT(VARCHAR, SourceSystemCode)\r\n)) HASHROW, CustomerId, CustomerNameId ,NameUsageId, FinancialInstitutionId, SourceSystemCode\r\nFROM #TEMP_BNKM_CustomerName\r\n),\r\n\r\nTEMP_BNKM_CustomerName_TGT\r\nAS(\r\nSELECT HASHBYTES('MD5', CONCAT(\r\n\tCONVERT(BIGINT, CustomerId)\r\n\t,CONVERT(VARBINARY, CustomerNameId)\r\n\t,CONVERT(VARCHAR, NameUsageId)\r\n\t,CONVERT(VARCHAR, CustomerNameNote)\r\n\t,CONVERT(VARCHAR, FinancialInstitutionId)\r\n\t,CONVERT(VARCHAR, SourceSystemCode)\r\n)) HASHROW, CustomerId, CustomerNameId ,NameUsageId, FinancialInstitutionId, SourceSystemCode\r\nFROM BNKM.CustomerName WHERE EndDate = '9999-12-31' AND SourceSystemCode = 'SEC'\r\n),\r\n\r\nTEMP_BNKM_CustomerName_DELTA\r\nAS(\r\nSELECT\r\nSRC.HASHROW AS SRC_HR\r\n,TGT.HASHROW AS TGT_HR\r\n,ISNULL(SRC.CustomerId, TGT.CustomerId) AS CustomerId\r\n,ISNULL(SRC.CustomerNameId, TGT.CustomerNameId) AS CustomerNameId\r\n,ISNULL(SRC.NameUsageId, TGT.NameUsageId) AS NameUsageId\r\n,ISNULL(SRC.FinancialInstitutionId, TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n,ISNULL(SRC.SourceSystemCode, TGT.SourceSystemCode) AS SourceSystemCode\r\n,CASE\r\n    WHEN TGT.HASHROW IS NULL THEN 'INSERT'\r\n\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\tELSE NULL END AS RECORD_STATUS\r\nFROM TEMP_BNKM_CustomerName_SRC SRC\r\nLEFT JOIN TEMP_BNKM_CustomerName_TGT TGT\r\nON SRC.CustomerId = TGT.CustomerId\r\nAND SRC.CustomerNameId = TGT.CustomerNameId\r\nAND SRC.NameUsageId = TGT.NameUsageId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerName_DELTA FROM TEMP_BNKM_CustomerName_DELTA;\r\n\r\n--UPDATE RECORDS TO BNKM\r\n\r\nUPDATE TGT\r\nSET\r\nEndDate = convert(date, DATEADD(day, -1, SRC.StartDate))\r\nFROM BNKM.CustomerName TGT\r\nJOIN #TEMP_BNKM_CustomerName_DELTA DELTA\r\nON DELTA.CustomerId = TGT.CustomerId\r\nAND DELTA.CustomerNameId = TGT.CustomerNameId\r\nAND DELTA.NameUsageId = TGT.NameUsageId\r\nAND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND DELTA.SourceSystemCode = TGT.SourceSystemCode\r\nAND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CustomerName SRC\r\nON SRC.CustomerId = TGT.CustomerId\r\nAND SRC.CustomerNameId = TGT.CustomerNameId\r\nAND SRC.NameUsageId = TGT.NameUsageId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE TGT.EndDate = '9999-12-31'\r\n\r\n\r\n\r\n\r\n--INSERT RECORDS TO BNKM\r\nINSERT INTO BNKM.CustomerName\r\n(\r\nCustomerId\r\n,CustomerNameId\r\n,NameUsageId\r\n,StartDate\r\n,EndDate\r\n,CustomerNameNote\r\n,SOURCESYSTEMCODE\r\n,FINANCIALINSTITUTIONID\r\n,WORKFLOWID\r\n,TASKRUNID\r\n,INSERTDTTM\r\n)\r\n\r\nSELECT\r\nSRC.CustomerId AS CustomerId\r\n,SRC.CustomerNameId AS CustomerNameId\r\n,SRC.NameUsageId AS NameUsageId\r\n,SRC.StartDate AS StartDate\r\n,SRC.EndDate AS EndDate\r\n,NULL AS CustomerNameNote\r\n,'SEC' AS SOURCESYSTEMCODE\r\n,SRC.FINANCIALINSTITUTIONID AS FINANCIALINSTITUTIONID\r\n,0 AS WORKFLOWID\r\n,0 AS TASKRUNID\r\n,SRC.INSERTDTTM\r\nFROM #TEMP_BNKM_CustomerName SRC\r\nJOIN #TEMP_BNKM_CustomerName_DELTA DELTA \r\nON DELTA.CustomerId = SRC.CustomerId\r\n     AND DELTA.CustomerNameId = SRC.CustomerNameId\r\n\t AND DELTA.NameUsageId = SRC.NameUsageId\r\n\t AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\r\n     AND DELTA.SourceSystemCode = SRC.SourceSystemCode\r\n WHERE DELTA.RECORD_STATUS IN ('INSERT');\r\n\r\n\r\nDROP TABLE #TEMP_BNKM_CustomerName;\r\nDROP TABLE #TEMP_BNKM_CustomerName_DELTA;\r\n\r\nEND\r\nGO"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Execute Patch",
+				"type": "ExecutePipeline",
+				"dependsOn": [],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Patch",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"table": "BNKM.CustomerName",
+						"col": "EndDate"
+					}
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-02-12T09:35:53Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

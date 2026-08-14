@@ -1,0 +1,1126 @@
+{
+	"name": "Workflow_EDS_DEP_P1_DEV_Load",
+	"properties": {
+		"activities": [
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "select fulldate\nfrom \n    eds.eds_ctl ect\ninner join \n    eds.date_dim dd\n    on \n    ect.DEPOSITS_Date=dd.previous_business_day and dd.business_day_flag='Y'\n",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "eds_ctl"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(variables('V_endDate')),ticks(variables('V_startDate'))),864000000000),1))\n",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append Process Date",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Iterate Execution of Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "OM_SP_UPDATE_PROCESS_DATE_DEP",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Wait3",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_UPDATE_PROCESS_DATE_DEP]"
+							}
+						},
+						{
+							"name": "All pipelines success",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "Workflow_EDS_DEP_SETIDTABLE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "OM_SP_UPDATE_PROCESS_DATE_DEP",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_SOLIDSETTABLE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_BRANCH_DIM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_SERVICEOUTLETTABLE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_CUSTREPRINTTBL",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_GAC",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_TDMASTER",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_ACCOUNTRELATIONSHIP",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEPOSIT_FACT",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_HISTTRANDTLTABLE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_CUSTOMCHANNELTRANSTABLE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_CASAMASTER",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEPOSITS_ACCOUNT_HOLDER",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_HTD_CHTR_REPRINT",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "Pipeline fail",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "All pipelines success",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "One or more pipelines failed",
+								"errorCode": "2001"
+							}
+						},
+						{
+							"name": "Manifest_file",
+							"type": "ExecutePipeline",
+							"dependsOn": [],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Workflow_Manifest",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"MaxPipelineCalls": 5,
+									"RetryInterval": 600,
+									"DatetoProcessed": {
+										"value": "@substring(item(),0,10)",
+										"type": "Expression"
+									},
+									"tables": "'FMS_CS_CASE', 'FMS_CS_CASE_H', 'FMS_CS_CASE_ACTION', 'FMS_CS_CASE_ACTION_H', 'FMS_CS_CASE_LEVEL', 'FMS_CS_CASE_NOTE', 'FMS_CS_CASE_NOTE_H', 'FMS_CS_CASE_STATUS', 'FMS_CS_CASE_STATUS_H', 'FMS_FRAUD_ACCOUNT_SUMMARY', 'FMS_FRAUD_CUSTOMER_INFORMATION', 'FMS_FRAUD_FI_TRANSACTION', 'FMS_FRAUD_PAYMENT_INSTRUMENT', 'FMS_FRAUD_VERIFIED', 'FMS_IMPORT_ADT', 'FMS_IMPORT_CREDIT_AUTH_POST', 'FMS_IMPORT_DEBIT_AUTH_POST', 'FMS_IMPORT_NON_MONETARY', 'FMS_IMPORT_RETAIL_BANKING', 'FMS_IMPORT_SCORING', 'FMS_SECRTY_USER', 'FMS_SECRTY_ROLE', 'FMS_SECRTY_AUTHORIZATION'",
+									"EndTime": "03:30",
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "Onprem",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Manifest_file",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "OnPremToADLS_EDS_v2",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"DatetoProcessed": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"tables": "DEP*",
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									},
+									"Bank_ID": "CBC01"
+								}
+							}
+						},
+						{
+							"name": "Workflow_EDS_DEP_SETIDTABLE",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "DELAY",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "wf_EDS",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"startDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"endDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"tables": "DEP_SETIDTABLE",
+									"src_sys": "DEP",
+									"Bank_Id": "CBC01"
+								}
+							}
+						},
+						{
+							"name": "Workflow_EDS_DEP_SOLIDSETTABLE",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "DELAY",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "wf_EDS",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"startDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"endDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"tables": "DEP_SOLIDSETTABLE",
+									"src_sys": "DEP",
+									"Bank_Id": "CBC01"
+								}
+							}
+						},
+						{
+							"name": "Workflow_EDS_DEP_SERVICEOUTLETTABLE",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "DELAY",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "wf_EDS",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"startDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"endDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"tables": "DEP_SERVICEOUTLETTABLE",
+									"src_sys": "DEP",
+									"Bank_Id": "CBC01"
+								}
+							}
+						},
+						{
+							"name": "Workflow_EDS_BRANCH_DIM",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Wait1",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "wf_EDS",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"startDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"endDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"tables": "BRANCH_DIM",
+									"src_sys": "DID",
+									"Bank_Id": "CBC01"
+								}
+							}
+						},
+						{
+							"name": "Workflow_EDS_DEP_CUSTREPRINTTBL",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "DELAY",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "wf_EDS",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"startDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"endDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"tables": "DEP_CUSTREPRINTTBL",
+									"src_sys": "DEP",
+									"Bank_Id": "CBC01"
+								}
+							}
+						},
+						{
+							"name": "Workflow_EDS_DEP_GAC",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "DELAY",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "wf_EDS",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"startDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"endDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"tables": "DEP_GAC",
+									"src_sys": "DEP",
+									"Bank_Id": "CBC01"
+								}
+							}
+						},
+						{
+							"name": "Workflow_EDS_DEP_TDMASTER",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "DELAY",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "wf_EDS",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"startDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"endDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"tables": "DEP_TDMASTER",
+									"src_sys": "DEP",
+									"Bank_Id": "CBC01"
+								}
+							}
+						},
+						{
+							"name": "Workflow_EDS_DEP_ACCOUNTRELATIONSHIP",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "DELAY",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "wf_EDS",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"startDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"endDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"tables": "DEP_ACCOUNTRELATIONSHIP",
+									"src_sys": "DEP",
+									"Bank_Id": "CBC01"
+								}
+							}
+						},
+						{
+							"name": "Workflow_EDS_DEPOSIT_FACT",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "DELAY",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "wf_EDS",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"startDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"endDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"tables": "DEPOSIT_FACT",
+									"src_sys": "DEP",
+									"Bank_Id": "CBC01"
+								}
+							}
+						},
+						{
+							"name": "Workflow_EDS_DEP_HISTTRANDTLTABLE",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "DELAY",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "wf_EDS",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"startDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"endDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"tables": "DEP_HISTTRANDTLTABLE",
+									"src_sys": "DEP",
+									"Bank_Id": "CBC01"
+								}
+							}
+						},
+						{
+							"name": "Workflow_EDS_DEP_CUSTOMCHANNELTRANSTABLE",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "DELAY",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "wf_EDS",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"startDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"endDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"tables": "DEP_CUSTOMCHANNELTRANSTABLE",
+									"src_sys": "DEP",
+									"Bank_Id": "CBC01"
+								}
+							}
+						},
+						{
+							"name": "Workflow_EDS_DEP_CASAMASTER",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "DELAY",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "wf_EDS",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"startDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"endDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"tables": "DEP_CASAMASTER",
+									"src_sys": "DEP",
+									"Bank_Id": "CBC01"
+								}
+							}
+						},
+						{
+							"name": "DELAY",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "Onprem",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 30
+							}
+						},
+						{
+							"name": "Workflow_EDS_DEPOSITS_ACCOUNT_HOLDER",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Wait2",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "wf_EDS",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"startDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"endDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"tables": "DEPOSITS_ACCOUNT_HOLDER",
+									"src_sys": "DEP",
+									"Bank_Id": "CBC01"
+								}
+							}
+						},
+						{
+							"name": "Workflow_EDS_DEP_HTD_CHTR_REPRINT",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Wait2",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "wf_EDS",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"startDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"endDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"tables": "DEP_HTD_CHTR_REPRINT",
+									"src_sys": "DEP",
+									"Bank_Id": "CBC01"
+								}
+							}
+						},
+						{
+							"name": "Wait1",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "Workflow_EDS_DEP_SETIDTABLE",
+									"dependencyConditions": [
+										"Completed"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_SOLIDSETTABLE",
+									"dependencyConditions": [
+										"Completed"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_SERVICEOUTLETTABLE",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "Wait2",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "Workflow_EDS_BRANCH_DIM",
+									"dependencyConditions": [
+										"Completed"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_CUSTREPRINTTBL",
+									"dependencyConditions": [
+										"Completed"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_GAC",
+									"dependencyConditions": [
+										"Completed"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_TDMASTER",
+									"dependencyConditions": [
+										"Completed"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_ACCOUNTRELATIONSHIP",
+									"dependencyConditions": [
+										"Completed"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEPOSIT_FACT",
+									"dependencyConditions": [
+										"Completed"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_HISTTRANDTLTABLE",
+									"dependencyConditions": [
+										"Completed"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_CUSTOMCHANNELTRANSTABLE",
+									"dependencyConditions": [
+										"Completed"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_CASAMASTER",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "Wait3",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "Workflow_EDS_DEPOSITS_ACCOUNT_HOLDER",
+									"dependencyConditions": [
+										"Completed"
+									]
+								},
+								{
+									"activity": "Workflow_EDS_DEP_HTD_CHTR_REPRINT",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "DEP"
+			},
+			"eml_sender": {
+				"type": "string"
+			},
+			"eml_recipient": {
+				"type": "string"
+			},
+			"eml_subject": {
+				"type": "string"
+			}
+		},
+		"variables": {
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			},
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"CheckFEstatus": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-05-12T03:33:38Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

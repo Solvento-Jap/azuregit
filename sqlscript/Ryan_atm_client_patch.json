@@ -1,0 +1,20 @@
+{
+	"name": "Ryan_atm_client_patch",
+	"properties": {
+		"folder": {
+			"name": "Ryan"
+		},
+		"content": {
+			"query": "\n\n/*===================================BACKUP===================================*/\nCREATE TABLE D360.EDS_ATM_CLIENT_BU_20250114\nWITH \n(\n\tDISTRIBUTION = HASH([CLT_CIF_NUMBER]),\n\tHEAP\n) AS\nSELECT * FROM EDS.ATM_CLIENT\n\n/*==================================PATCH SCRIPT===================================*/\nselect a.CLT_ID, A.BNK_CODE,a.SCD_START_DATE,a.SCD_END_DATE pre_patch, case when b.SCD_END_DATE = '9999-12-31' then b.SCD_END_DATE else  c.previous_business_day end post_patch,a.file_name from EDS.ATM_CLIENT a\ninner join (\n            select CLT_ID,BNK_CODE,SCD_START_DATE,\n            LEAD(SCD_START_DATE, 1 ,'9999-12-31') OVER (PARTITION BY CLT_ID,BNK_CODE  ORDER BY SCD_START_DATE) as SCD_END_DATE\n            from EDS.ATM_CLIENT where clt_id = '11111') b\n            on a.CLT_ID = b.CLT_ID and a.SCD_START_DATE = b.SCD_START_DATE and a.BNK_CODE = b.BNK_CODE\nleft join eds.date_dim c on b.SCD_end_date = c.fulldate\n\nupdate a \nset a.scd_end_date = case when b.SCD_END_DATE = '9999-12-31' then b.SCD_END_DATE else  c.previous_business_day  end \n, a.islatest =  case when b.SCD_END_DATE = '9999-12-31' then 1 else  0  end \nfrom EDS.ATM_CLIENT a\ninner join (\n            select CLT_ID,BNK_CODE,SCD_START_DATE,\n            LEAD(SCD_START_DATE, 1 ,'9999-12-31') OVER (PARTITION BY CLT_ID,BNK_CODE  ORDER BY SCD_START_DATE) as SCD_END_DATE\n            from EDS.ATM_CLIENT where CLT_ID = '11111'  ) b\n            on a.CLT_ID = b.CLT_ID and a.SCD_START_DATE = b.SCD_START_DATE and a.BNK_CODE = b.BNK_CODE\nleft join eds.date_dim c on b.SCD_end_date = c.fulldate\n\n\n/*==================================PROD PATCH SCRIPT===================================*/\nupdate a \nset a.scd_end_date = case when b.SCD_END_DATE = '9999-12-31' then b.SCD_END_DATE else  c.previous_business_day  end \n, a.islatest =  case when b.SCD_END_DATE = '9999-12-31' then 1 else  0  end \nfrom EDS.ATM_CLIENT a\ninner join (\n            select CLT_ID,BNK_CODE,SCD_START_DATE,\n            LEAD(SCD_START_DATE, 1 ,'9999-12-31') OVER (PARTITION BY CLT_ID,BNK_CODE  ORDER BY SCD_START_DATE) as SCD_END_DATE\n            from EDS.ATM_CLIENT where clt_id in ('125838','1953383','138855') ) b\n            on a.CLT_ID = b.CLT_ID and a.SCD_START_DATE = b.SCD_START_DATE and a.BNK_CODE = b.BNK_CODE\nleft join eds.date_dim c on b.SCD_end_date = c.fulldate\n\n\n\nUpdate EDS.ATM_CLIENT set SCD_END_DATE = '9998-12-31', islatest = 1 where clt_id = \nSELECT clt_id,scd_start_date,scd_end_date,islatest,* FROM EDS.ATM_CLIENT order by 1,2",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

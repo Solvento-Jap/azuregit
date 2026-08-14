@@ -1,0 +1,20 @@
+{
+	"name": "Ryan_eds_views",
+	"properties": {
+		"folder": {
+			"name": "Ryan"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nCREATE EXTERNAL TABLE [d360].[STG_CRM_CATEGORIES_PROD]\n( \n\t[BANK_ID] [nvarchar](8)  NULL,\n\t[CATEGORYID] [numeric](38,0)  NULL,\n\t[CATEGORYTYPE] [nvarchar](30)  NULL,\n\t[VALUE] [nvarchar](200)  NULL,\n\t[DESCRIPTION] [nvarchar](200)  NULL,\n\t[DEL_FLG] [nvarchar](1)  NULL,\n\t[isActive] [int]  NULL,\n\t[isLatest] [int]  NULL,\n\t[BNK_CODE] [nvarchar](20)  NULL,\n\t[SOURCE_CODE] [nvarchar](20)  NULL,\n\t[FILE_NAME] [nvarchar](100)  NULL,\n\t[insert_dttm] [nvarchar](100)  NULL\n)\nWITH (DATA_SOURCE = [testsqlpool_ext], LOCATION = N'dev/decrypted/CRM_CATEGORIES_20240416', FILE_FORMAT = [csv2], REJECT_TYPE = VALUE, REJECT_VALUE = 0 )\nGO\n\nselect * from [d360].[STG_CRM_CATEGORIES_PROD]\n\n\n\nCREATE MATERIALIZED VIEW EDS.MV_GENDER\nWITH (DISTRIBUTION  = ROUND_ROBIN  )\nAS\n \nSELECT BANK_ID\n,CATEGORYID\n,CATEGORYTYPE\n,[VALUE]\n,DESCRIPTION\n,DEL_FLG\n,SCD_Start_Date\n,SCD_End_Date\n,isActive\n,isLatest\n,BNK_CODE\n,SOURCE_CODE\n,FILE_NAME\nFROM BUSC.CRM_CATEGORIES\nWHERE CATEGORYTYPE = 'GENDER' AND BANK_ID = 'CBC01'\n;\n\n\nCREATE VIEW DROP VIEW EDS.MV_CONSENT\n\nAS\n \nSELECT BANK_ID\n,CATEGORYID\n,CATEGORYTYPE\n,[VALUE]\n,DESCRIPTION\n,DEL_FLG\n,SCD_Start_Date\n,SCD_End_Date\n,isActive\n,isLatest\n,BNK_CODE\n,SOURCE_CODE\n,FILE_NAME\nFROM BUSC.CRM_CATEGORIES\nWHERE CATEGORYTYPE = 'CONSENT' AND BANK_ID = 'CBC01'\n\n\nwith category_tbl as (\nselect Row_number() over(order by categorytype) rn, * from (\nselect DISTINCT CATEGORYTYPE from BUSC.CRM_CATEGORIES where CATEGORYTYPE not in ('CONSENT','GENDER')\n) a )\n\nwhile(rn<58)\n\nSELECT BANK_ID\n,CATEGORYID\n,CATEGORYTYPE\n,[VALUE]\n,DESCRIPTION\n,DEL_FLG\n,SCD_Start_Date\n,SCD_End_Date\n,isActive\n,isLatest\n,BNK_CODE\n,SOURCE_CODE\n,FILE_NAME\nFROM BUSC.CRM_CATEGORIES\nWHERE CATEGORYTYPE = 'CONSENT' AND BANK_ID = 'CBC01'\n\n-- Loop counter\nDECLARE @counter INT = 1,\n@sql VARCHAR(8000),\n@cattype varchar(50);\n\nWHILE EXISTS (\nSELECT *\nFROM category_tbl\nWHERE rn = @counter\n)\nBEGIN\n\nselect CATEGORYTYPE\n\nSET @counter += 1;\n\n-- break in case infinite loop\nIF @counter > 57\nBEGIN \n\tRAISERROR( 'Too many loops!', 16, 1 ) \n\tBREAK \nEND;\nEND\n\n\n\nCREATE TABLE #tbl\nWITH\n( DISTRIBUTION = ROUND_ROBIN\n)\nAS\nselect Row_number() over(order by categorytype) rn, * from (\nselect DISTINCT CATEGORYTYPE from BUSC.CRM_CATEGORIES where CATEGORYTYPE NOT in ('CONSENT','GENDER') AND CATEGORYTYPE IS NOT NULL\n) a \n;\n\n\nDECLARE @nbr_statements INT = (SELECT COUNT(*) FROM #tbl)\n,       @i INT = 1\n;\n\nWHILE   @i <= @nbr_statements\nBEGIN\n    DECLARE @sql_code NVARCHAR(4000) = (--SELECT sql_code FROM #tbl WHERE rn = @i\n\tSELECT '\n\t\tCREATE VIEW EDS.MV_'+CATEGORYTYPE+'\n\t\tAS\n\t\tSELECT BANK_ID\n\t\t,CATEGORYID\n\t\t,CATEGORYTYPE\n\t\t,[VALUE]\n\t\t,DESCRIPTION\n\t\t,DEL_FLG\n\t\t,SCD_Start_Date\n\t\t,SCD_End_Date\n\t\t,isActive\n\t\t,isLatest\n\t\t,BNK_CODE\n\t\t,SOURCE_CODE\n\t\t,FILE_NAME\n\t\tFROM BUSC.CRM_CATEGORIES\n\t\tWHERE CATEGORYTYPE = '''+CATEGORYTYPE+''' AND BANK_ID = ''CBC01''' FROM #tbl WHERE rn = @i);\n    EXEC    sp_executesql @sql_code;\n    SET     @i +=1;\nEND\n\n\nDROP TABLE #tbl;\n\n\n\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

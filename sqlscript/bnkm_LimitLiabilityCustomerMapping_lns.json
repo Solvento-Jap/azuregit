@@ -1,0 +1,20 @@
+{
+	"name": "bnkm_LimitLiabilityCustomerMapping_lns",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "CREATE PROCEDURE BNKM.SP_LIMITLIABILITYCUSTOMERMAPPING_LNS\nAS\nBEGIN\n\n--GET DELTA FROM BUSC\n\nWITH TEMP_BNKM_LimitLiabilityCustomerMapping\nAS(\nSELECT\nBLL.LIMIT_B2KID\n,BLL.BANK_ID\n,BLL.LCHG_TIME\n,BLL.CUST_ID\n,BLLD.RECORD_STATUS\n,BLL.INSERT_DTTM\nFROM BUSC.LNS_LIMITLIAB_DELTA BLLD\nLEFT JOIN BUSC.LNS_LIMITLIAB BLL ON BLL.LIMIT_B2KID = BLLD.LIMIT_B2KID AND BLL.BANK_ID = BLLD.BANK_ID AND BLL.ISLATEST = '1'\n)\n\nSELECT * INTO #TEMP_BNKM_LimitLiabilityCustomerMapping FROM TEMP_BNKM_LimitLiabilityCustomerMapping;\n\n--CHECK IF THERE IS DELTA\n\nWITH TEMP_BNKM_LimitLiabilityCustomerMapping_SRC\nAS(\nSELECT\nHASHBYTES('MD5', CONCAT(\nLIMIT_B2KID\n,BANK_ID\n,LCHG_TIME\n,CUST_ID\n)) HASHROW, LIMIT_B2KID, RECORD_STATUS\nFROM #TEMP_BNKM_LimitLiabilityCustomerMapping WHERE RECORD_STATUS = 'UPDATE'\n),\n\nTEMP_BNKM_LimitLiabilityCustomerMapping_TGT\nAS(\nSELECT\nHASHBYTES('MD5', CONCAT(\n[LimitId]\n,[FinancialInstitutionId]\n,[Timestamp]\n,[CoreCustomerId]\n)) HASHROW, LimitId\nFROM BNKM.LimitLiabilityCustomerMapping\n),\n\nTEMP_BNKM_LimitLiabilityCustomerMapping_DELTA\nAS(\nSELECT\nSRC.HASHROW AS SRC_HR\n,TGT.HASHROW AS TGT_HR\n,ISNULL(SRC.LIMIT_B2KID, TGT.LimitId) AS LimitId\n,CASE\n    WHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n    ELSE NULL END AS RECORD_STATUS\n\nFROM TEMP_BNKM_LimitLiabilityCustomerMapping_SRC SRC\nFULL OUTER JOIN TEMP_BNKM_LimitLiabilityCustomerMapping_TGT TGT\nON SRC.LIMIT_B2KID = TGT.LimitId\nWHERE SRC.HASHROW <> TGT.HASHROW\n)\n\nSELECT * INTO #TEMP_BNKM_LimitLiabilityCustomerMapping_DELTA FROM TEMP_BNKM_LimitLiabilityCustomerMapping_DELTA;\n\n\nUPDATE TGT\nSET\n[LimitId] = SRC.LIMIT_B2KID\n,[FinancialInstitutionId] = SRC.BANK_ID\n,[Timestamp] = SRC.LCHG_TIME\n,[CoreCustomerId] = SRC.CUST_ID\n,[SOURCESYSTEMCODE] = 'LNS'\n,[WORKFLOWID] = 0\n,[TASKRUNID] = 0\n,[INSERTDTTM] = SRC.INSERT_DTTM\nFROM BNKM.LimitLiabilityCustomerMapping TGT\nJOIN #TEMP_BNKM_LimitLiabilityCustomerMapping_DELTA DELTA ON DELTA.LimitId = TGT.LimitId AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_LimitLiabilityCustomerMapping SRC ON SRC.LIMIT_B2KID = TGT.LimitId;\n\n\n--INSERT RECORDS TO BNKM\nINSERT INTO BNKM.LimitLiabilityCustomerMapping\n(\n[LimitId]\n,[FinancialInstitutionId]\n,[Timestamp]\n,[CoreCustomerId]\n,[SOURCESYSTEMCODE]\n,[WORKFLOWID]\n,[TASKRUNID]\n,[INSERTDTTM]\n)\n\nSELECT\nLIMIT_B2KID AS [LimitId]\n,BANK_ID AS [FinancialInstitutionId]\n,LCHG_TIME AS [Timestamp]\n,CUST_ID AS [CoreCustomerId]\n,'LNS' AS [SOURCESYSTEMCODE]\n,0 AS [WORKFLOWID]\n,0 AS [TASKRUNID]\n,INSERT_DTTM AS [INSERTDTTM]\nFROM #TEMP_BNKM_LimitLiabilityCustomerMapping\nWHERE RECORD_STATUS = 'INSERT'\n\nDROP TABLE #TEMP_BNKM_LimitLiabilityCustomerMapping;\nDROP TABLE #TEMP_BNKM_LimitLiabilityCustomerMapping_DELTA;\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

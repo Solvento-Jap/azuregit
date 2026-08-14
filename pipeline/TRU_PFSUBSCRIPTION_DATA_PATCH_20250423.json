@@ -1,0 +1,183 @@
+{
+	"name": "TRU_PFSUBSCRIPTION_DATA_PATCH_20250423",
+	"properties": {
+		"activities": [
+			{
+				"name": "CreateBU",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "--CHANGE D360.TRU_PFSUBSCRIPTION_BU_<DATE> ACCORDINGLY WITH THE DEPLOYMENT DATE\r\n\r\nIF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'TRU_PFSUBSCRIPTION_BU_20250423' and table_schema = 'D360') \r\n\tBEGIN\r\n\t\tDROP TABLE D360.TRU_PFSUBSCRIPTION_BU_20250423;\r\n\tEND;\r\n\r\nCREATE TABLE D360.TRU_PFSUBSCRIPTION_BU_20250423\r\nWITH\r\n(\r\n\tHEAP, DISTRIBUTION = ROUND_ROBIN\r\n)\r\nAS\r\nSELECT \r\n\t*\r\nFROM EDS.TRU_PFSUBSCRIPTION;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "BU_Validation",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CreateBU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "--CHANGE D360.TRU_PFSUBSCRIPTION_BU_<DATE> ACCORDINGLY WITH THE DEPLOYMENT DATE\n\nSELECT 'TARGET' [TABLE_NAME], COUNT(1) REC_CNT FROM EDS.TRU_PFSUBSCRIPTION\nUNION ALL\nSELECT 'TARGET' [TABLE_NAME], COUNT(1) REC_CNT FROM D360.TRU_PFSUBSCRIPTION_BU_20250423;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Data_Patch",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DELETE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "--CHANGE D360.TRU_PFSUBSCRIPTION_BU_<DATE> ACCORDINGLY WITH THE DEPLOYMENT DATE\r\n\r\nWITH TEMP AS (\r\n    SELECT SUBSCRIPTION_ID\r\n\t, BR_CD\r\n\t, BASE_NO\r\n\t, LAST6_BASE_NO\r\n\t, SUBSCRIPTION_NAME\r\n\t, PRODUCT_ID\r\n\t, PURPOSE\r\n\t, INCEPTION_DATE\r\n\t, MARKETING_OFFICER\r\n\t, STATUS\r\n\t, PAYMENT_TYPE\r\n\t, RC_DIVISION\r\n\t, REFERRED_BY\r\n\t, REVIEW_DATE\r\n\t, DISPOSITIVE_PROVISION\r\n\t, TBG_REFERRAL\r\n\t, FEE_SERVICE\r\n\t, MAKER_ID\r\n\t, MAKER_DATE\r\n\t, AUTH_ID\r\n\t, AUTH_DATE\r\n\t, REJECT_REASON\r\n\t, TRUST_AGMT_EXT\r\n\t, TRUST_AGMT_INT\r\n\t, MANDATE\r\n\t, IS_BLACKLISTED\r\n\t, BLACKLISTED_DATE\r\n\t, CAST(Left(Right(FILE_NAME, 12), 8) AS DATE) AS SCD_START_DATE\r\n\t, COALESCE(DATE_DIM.Previous_Business_Day, CAST('99991231' AS DATE)) AS SCD_END_DATE\r\n\t, ISACTIVE\r\n\t, CASE WHEN DATE_DIM.Previous_Business_Day is null then 1 else 0 end as ISLATEST\r\n\t, BNK_CODE\r\n\t, SOURCE_CODE\r\n\t, FILE_NAME\r\n\t, INSERT_DTTM\r\n\r\nFROM\r\n(\r\n\tSELECT SUBSCRIPTION_ID\r\n\t\t, BR_CD\r\n\t\t, BASE_NO\r\n\t\t, LAST6_BASE_NO\r\n\t\t, SUBSCRIPTION_NAME\r\n\t\t, PRODUCT_ID\r\n\t\t, PURPOSE\r\n\t\t, INCEPTION_DATE\r\n\t\t, MARKETING_OFFICER\r\n\t\t, STATUS\r\n\t\t, PAYMENT_TYPE\r\n\t\t, RC_DIVISION\r\n\t\t, REFERRED_BY\r\n\t\t, REVIEW_DATE\r\n\t\t, DISPOSITIVE_PROVISION\r\n\t\t, TBG_REFERRAL\r\n\t\t, FEE_SERVICE\r\n\t\t, MAKER_ID\r\n\t\t, MAKER_DATE\r\n\t\t, AUTH_ID\r\n\t\t, AUTH_DATE\r\n\t\t, REJECT_REASON\r\n\t\t, TRUST_AGMT_EXT\r\n\t\t, TRUST_AGMT_INT\r\n\t\t, MANDATE\r\n\t\t, IS_BLACKLISTED\r\n\t\t, BLACKLISTED_DATE\r\n\t\t, ISACTIVE\r\n\t\t, ISLATEST\r\n\t\t, BNK_CODE\r\n\t\t, SOURCE_CODE\r\n\t\t, FILE_NAME\r\n\t\t, INSERT_DTTM\r\n\r\n\t\t, Left(Right(FILE_NAME, 12), 8) START_DATE     \r\n\t\t, Max(Left(Right(FILE_NAME, 12), 8)) Over (PARTITION BY SUBSCRIPTION_ID, BASE_NO\r\n\t\t\tORDER BY Left(Right(FILE_NAME, 12), 8) ROWS BETWEEN 1 Following AND 1 Following) END_DATE                  \t\t\t\t\r\n\tFROM\r\n\t(\r\n\t\tSELECT SUBSCRIPTION_ID\r\n\t\t\t, BR_CD\r\n\t\t\t, BASE_NO\r\n\t\t\t, LAST6_BASE_NO\r\n\t\t\t, SUBSCRIPTION_NAME\r\n\t\t\t, PRODUCT_ID\r\n\t\t\t, PURPOSE\r\n\t\t\t, INCEPTION_DATE\r\n\t\t\t, MARKETING_OFFICER\r\n\t\t\t, STATUS\r\n\t\t\t, PAYMENT_TYPE\r\n\t\t\t, RC_DIVISION\r\n\t\t\t, REFERRED_BY\r\n\t\t\t, REVIEW_DATE\r\n\t\t\t, DISPOSITIVE_PROVISION\r\n\t\t\t, TBG_REFERRAL\r\n\t\t\t, FEE_SERVICE\r\n\t\t\t, MAKER_ID\r\n\t\t\t, MAKER_DATE\r\n\t\t\t, AUTH_ID\r\n\t\t\t, AUTH_DATE\r\n\t\t\t, REJECT_REASON\r\n\t\t\t, TRUST_AGMT_EXT\r\n\t\t\t, TRUST_AGMT_INT\r\n\t\t\t, MANDATE\r\n\t\t\t, IS_BLACKLISTED\r\n\t\t\t, BLACKLISTED_DATE\r\n\t\t\t, ISACTIVE\r\n\t\t\t, ISLATEST\r\n\t\t\t, BNK_CODE\r\n\t\t\t, SOURCE_CODE\r\n\t\t\t, FILE_NAME\r\n\t\t\t, INSERT_DTTM\r\n\t\t\t, row_number() \r\n\t\t\t\tover( partition by SUBSCRIPTION_ID\r\n\t\t\t\t\t\t, BR_CD\r\n\t\t\t\t\t\t, BASE_NO\r\n\t\t\t\t\t\t, LAST6_BASE_NO\r\n\t\t\t\t\t\t, SUBSCRIPTION_NAME\r\n\t\t\t\t\t\t, PRODUCT_ID\r\n\t\t\t\t\t\t, PURPOSE\r\n\t\t\t\t\t\t, INCEPTION_DATE\r\n\t\t\t\t\t\t, MARKETING_OFFICER\r\n\t\t\t\t\t\t, STATUS\r\n\t\t\t\t\t\t, PAYMENT_TYPE\r\n\t\t\t\t\t\t, RC_DIVISION\r\n\t\t\t\t\t\t, REFERRED_BY\r\n\t\t\t\t\t\t, REVIEW_DATE\r\n\t\t\t\t\t\t, DISPOSITIVE_PROVISION\r\n\t\t\t\t\t\t, TBG_REFERRAL\r\n\t\t\t\t\t\t, FEE_SERVICE\r\n\t\t\t\t\t\t, MAKER_ID\r\n\t\t\t\t\t\t, MAKER_DATE\r\n\t\t\t\t\t\t, AUTH_ID\r\n\t\t\t\t\t\t, AUTH_DATE\r\n\t\t\t\t\t\t, REJECT_REASON\r\n\t\t\t\t\t\t, TRUST_AGMT_EXT\r\n\t\t\t\t\t\t, TRUST_AGMT_INT\r\n\t\t\t\t\t\t, MANDATE\r\n\t\t\t\t\t\t, IS_BLACKLISTED\r\n\t\t\t\t\t\t, BLACKLISTED_DATE\r\n\t\t\t\t\t\t--, ISACTIVE\r\n\t\t\t\t\t\t--, ISLATEST\r\n\t\t\t\t\t\t, BNK_CODE\r\n\t\t\t\t\t\t, SOURCE_CODE\r\n\t\t\t\t\t\t, LEFT(RIGHT(FILE_NAME,12),8)\r\n\t\t\t\t\torder by insert_dttm DESC) AS SEQ_NO\r\n\t\tFROM D360.TRU_PFSUBSCRIPTION_BU_20250423\r\n\r\n\t) AS TMP\r\n\tWHERE SEQ_NO = 1\r\n) AS SCDT2\r\nLEFT JOIN EDS.DATE_DIM\r\n\tON CAST(END_DATE AS INTEGER) = DATE_DIM.DATESK\r\n)\r\n\r\nINSERT INTO \r\nEDS.TRU_PFSUBSCRIPTION\r\n(\r\n\t  SUBSCRIPTION_ID\r\n\t, BR_CD\r\n\t, BASE_NO\r\n\t, LAST6_BASE_NO\r\n\t, SUBSCRIPTION_NAME\r\n\t, PRODUCT_ID\r\n\t, PURPOSE\r\n\t, INCEPTION_DATE\r\n\t, MARKETING_OFFICER\r\n\t, STATUS\r\n\t, PAYMENT_TYPE\r\n\t, RC_DIVISION\r\n\t, REFERRED_BY\r\n\t, REVIEW_DATE\r\n\t, DISPOSITIVE_PROVISION\r\n\t, TBG_REFERRAL\r\n\t, FEE_SERVICE\r\n\t, MAKER_ID\r\n\t, MAKER_DATE\r\n\t, AUTH_ID\r\n\t, AUTH_DATE\r\n\t, REJECT_REASON\r\n\t, TRUST_AGMT_EXT\r\n\t, TRUST_AGMT_INT\r\n\t, MANDATE\r\n\t, IS_BLACKLISTED\r\n\t, BLACKLISTED_DATE\r\n\t, SCD_START_DATE\r\n\t, SCD_END_DATE\r\n\t, ISACTIVE\r\n\t, ISLATEST\r\n\t, BNK_CODE\r\n\t, SOURCE_CODE\r\n\t, FILE_NAME\r\n\t, INSERT_DTTM\r\n)\r\nSELECT \r\n\t  SUBSCRIPTION_ID\r\n\t, BR_CD\r\n\t, BASE_NO\r\n\t, LAST6_BASE_NO\r\n\t, SUBSCRIPTION_NAME\r\n\t, PRODUCT_ID\r\n\t, PURPOSE\r\n\t, INCEPTION_DATE\r\n\t, MARKETING_OFFICER\r\n\t, STATUS\r\n\t, PAYMENT_TYPE\r\n\t, RC_DIVISION\r\n\t, REFERRED_BY\r\n\t, REVIEW_DATE\r\n\t, DISPOSITIVE_PROVISION\r\n\t, TBG_REFERRAL\r\n\t, FEE_SERVICE\r\n\t, MAKER_ID\r\n\t, MAKER_DATE\r\n\t, AUTH_ID\r\n\t, AUTH_DATE\r\n\t, REJECT_REASON\r\n\t, TRUST_AGMT_EXT\r\n\t, TRUST_AGMT_INT\r\n\t, MANDATE\r\n\t, IS_BLACKLISTED\r\n\t, BLACKLISTED_DATE\r\n\t, SCD_START_DATE\r\n\t, SCD_END_DATE\r\n\t, ISACTIVE\r\n\t, ISLATEST\r\n\t, BNK_CODE\r\n\t, SOURCE_CODE\r\n\t, FILE_NAME\r\n\t, INSERT_DTTM\r\nFROM \r\n\tTEMP"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DELETE",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "BU_Validation",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "DELETE FROM EDS.TRU_PFSUBSCRIPTION;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DP_Validation",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Data_Patch",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH TMP AS(\n    SELECT DISTINCT SUBSCRIPTION_ID, BASE_NO FROM EDS.TRU_PFSUBSCRIPTION\n)\nSELECT 'DISTINCT_RECORDS' [RECORD_TYPE], COUNT(1) RECROD_CNT FROM TMP\nUNION ALL\nSELECT 'ACTIVE_RECORDS', COUNT(1) FROM EDS.TRU_PFSUBSCRIPTION\nWHERE ISLATEST = 1;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2025-04-23T10:47:26Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

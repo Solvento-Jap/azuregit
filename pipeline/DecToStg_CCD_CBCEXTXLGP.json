@@ -1,0 +1,174 @@
+{
+	"name": "DecToStg_CCD_CBCEXTXLGP",
+	"properties": {
+		"activities": [
+			{
+				"name": "CCD_CBCEXTXLGP",
+				"type": "Copy",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "DelimitedTextSource",
+						"additionalColumns": [
+							{
+								"name": "FILE_NAME",
+								"value": "$$FILEPATH"
+							},
+							{
+								"name": "insert_dttm",
+								"value": {
+									"value": "@pipeline().TriggerTime",
+									"type": "Expression"
+								}
+							}
+						],
+						"storeSettings": {
+							"type": "AzureBlobFSReadSettings",
+							"recursive": true,
+							"wildcardFolderPath": "dev/decrypted/CCD",
+							"wildcardFileName": "*CCD_CBCEXTXLGP*",
+							"enablePartitionDiscovery": false
+						},
+						"formatSettings": {
+							"type": "DelimitedTextReadSettings"
+						}
+					},
+					"sink": {
+						"type": "SqlDWSink",
+						"preCopyScript": "TRUNCATE TABLE D360.STG_CCD_CBCEXTXLGP",
+						"allowPolyBase": true,
+						"polyBaseSettings": {
+							"rejectValue": 0,
+							"rejectType": "value",
+							"useTypeDefault": false
+						},
+						"disableMetricsCollection": false
+					},
+					"enableStaging": true,
+					"stagingSettings": {
+						"linkedServiceName": {
+							"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+							"type": "LinkedServiceReference"
+						},
+						"path": "data360/dev/stg_synapse"
+					},
+					"enableSkipIncompatibleRow": true,
+					"logSettings": {
+						"enableCopyActivityLog": true,
+						"copyActivityLogSettings": {
+							"logLevel": "Info",
+							"enableReliableLogging": true
+						},
+						"logLocationSettings": {
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+								"type": "LinkedServiceReference"
+							},
+							"path": "data360/dev/Copy_logs/CCD/CCD_CBCEXTXLGP"
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": " ",
+							"SourceCode": " "
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_CCD_CBCEXTXLGP"
+						}
+					}
+				]
+			},
+			{
+				"name": "Logging2",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "CCD_CBCEXTXLGP",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "BinarySource",
+						"storeSettings": {
+							"type": "AzureBlobFSReadSettings",
+							"recursive": false,
+							"wildcardFolderPath": {
+								"value": "@replace(activity('CCD_CBCEXTXLGP').output.logFilePath,'data360/','')",
+								"type": "Expression"
+							},
+							"wildcardFileName": "*.txt",
+							"deleteFilesAfterCompletion": false
+						},
+						"formatSettings": {
+							"type": "BinaryReadSettings"
+						}
+					},
+					"sink": {
+						"type": "BinarySink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						}
+					},
+					"enableStaging": false
+				},
+				"inputs": [
+					{
+						"referenceName": "Copylogs_mov",
+						"type": "DatasetReference",
+						"parameters": {
+							"CopyLogsFiles": "*",
+							"CopyLogsPath": {
+								"value": "@activity('CCD_CBCEXTXLGP').output.logFilePath",
+								"type": "Expression"
+							}
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "CopyLogsDes",
+						"type": "DatasetReference",
+						"parameters": {
+							"CopyLogsPathDes": {
+								"value": "@concat('dev/Logging/CCD/CCD_CBCEXTXLGP/',substring(replace(replace(replace(addHours(utcnow(),+8),'-',''),'T','_'),':',''),0,15))",
+								"type": "Expression"
+							}
+						}
+					}
+				]
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-05-14T03:11:13Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

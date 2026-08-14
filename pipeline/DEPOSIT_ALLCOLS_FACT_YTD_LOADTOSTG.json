@@ -1,0 +1,600 @@
+{
+	"name": "DEPOSIT_ALLCOLS_FACT_YTD_LOADTOSTG",
+	"properties": {
+		"activities": [
+			{
+				"name": "DEP_YTDDEPAGGRBALANCES_getfile_CBC01",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('CBC01_DEP_YTDDEPAGGRBALANCES_*',pipeline().parameters.DateToProcess,'*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/DEP"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "File_Checking_YTD",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "DEP_YTDDEPAGGRBALANCES_getfile_CBC01",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "DEP_YTDDEPAGGRBALANCES_getfile_CBC02",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@empty(activity('DEP_YTDDEPAGGRBALANCES_getfile_CBC01').output.childItems)\n",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "DEP_YTDDEPAGGRBALANCES",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@pipeline().TriggerTime",
+												"type": "Expression"
+											}
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/DEP",
+										"wildcardFileName": {
+											"value": "@concat('*DEP_YTDDEPAGGRBALANCES_*',pipeline().parameters.DateToProcess,'*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": "TRUNCATE TABLE D360.STG_EDS_DEP_YTDDEPAGGRBALANCESFULL",
+									"allowCopyCommand": true,
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									},
+									"path": "data360/dev/stg_synapse"
+								},
+								"enableSkipIncompatibleRow": true,
+								"logSettings": {
+									"enableCopyActivityLog": true,
+									"copyActivityLogSettings": {
+										"logLevel": "Warning",
+										"enableReliableLogging": true
+									},
+									"logLocationSettings": {
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+											"type": "LinkedServiceReference"
+										},
+										"path": {
+											"value": "@concat('data360/dev/Logging/DEP/DEP_YTDDEPAGGRBALANCES/',substring(replace(replace(replace(addHours(utcnow(),+8),'-',''),'T','_'),':',''),0,15))",
+											"type": "Expression"
+										}
+									}
+								},
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "H",
+												"type": "String"
+											},
+											"sink": {
+												"name": "H",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BANK_ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BANK_ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ACID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "PREVIOUS_CURRBAL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PREVIOUS_CURRBAL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "PREVIOUS_CLEARBAL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PREVIOUS_CLEARBAL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CURRENT_EOD_DATE",
+												"type": "Date",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "CURRENT_EOD_DATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCUMULATED_CURRBAL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACCUMULATED_CURRBAL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCUMULATED_CLEARBAL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACCUMULATED_CLEARBAL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FILE_NAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm",
+												"type": "String"
+											},
+											"sink": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": " "
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_EDS_DEP_YTDDEPAGGRBALANCESFULL"
+									}
+								}
+							]
+						},
+						{
+							"name": "SP_LOG_COPY_ACTIVITY_DTL",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "DEP_YTDDEPAGGRBALANCES",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_LOG_COPY_ACTIVITY_DTL]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "TSK_STG_EDS_DEP_YTDDEPAGGRBALANCES",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS_STG",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DatetoProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"dataread": {
+										"value": {
+											"value": "@activity('DEP_YTDDEPAGGRBALANCES').output.dataRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"datawritten": {
+										"value": {
+											"value": "@activity('DEP_YTDDEPAGGRBALANCES').output.dataWritten",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"filesread": {
+										"value": {
+											"value": "@activity('DEP_YTDDEPAGGRBALANCES').output.filesRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"sourcepeakconnections": {
+										"value": {
+											"value": "@activity('DEP_YTDDEPAGGRBALANCES').output.sourcePeakConnections",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsread": {
+										"value": {
+											"value": "@activity('DEP_YTDDEPAGGRBALANCES').output.rowsRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowscopied": {
+										"value": {
+											"value": "@activity('DEP_YTDDEPAGGRBALANCES').output.rowsCopied",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsskipped": {
+										"value": {
+											"value": "@activity('DEP_YTDDEPAGGRBALANCES').output.rowsSkipped",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"copyduration": {
+										"value": {
+											"value": "@activity('DEP_YTDDEPAGGRBALANCES').output.copyDuration",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"throughput": {
+										"value": {
+											"value": "@activity('DEP_YTDDEPAGGRBALANCES').output.throughput",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"redirectrowpath": {
+										"value": {
+											"value": "@activity('DEP_YTDDEPAGGRBALANCES').output.redirectRowPath",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"logfilepath": {
+										"value": {
+											"value": "@activity('DEP_YTDDEPAGGRBALANCES').output.logFilePath",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Set v_error_desc_get",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "DEP_YTDDEPAGGRBALANCES",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "@activity('DEP_YTDDEPAGGRBALANCES').Error.message",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "File not found - DEP_YTDDEPAGGRBALANCES",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "Set v_error_desc_get_nofile",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": {
+									"value": "File not found: DEP_YTDDEPAGGRBALANCES",
+									"type": "Expression"
+								},
+								"errorCode": {
+									"value": "404",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "Set v_error_desc_get_nofile",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "File not found: DEP_YTDDEPAGGRBALANCES",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "DEP_YTDDEPAGGRBALANCES_getfile_CBC02",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('CBC02_DEP_YTDDEPAGGRBALANCES_*',pipeline().parameters.DateToProcess,'*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/DEP"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_GET",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "File_Checking_YTD",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "TSK_STG_EDS_DEP_YTDDEPAGGRBALANCES",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_STG",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@pipeline().parameters.DateToProcess",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_DectoStg",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "SP_LOG_TASK_ERROR_DTL_GET",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": {
+						"value": "@variables('v_error_desc')",
+						"type": "Expression"
+					},
+					"errorCode": "500"
+				}
+			}
+		],
+		"parameters": {
+			"DateToProcess": {
+				"type": "string"
+			}
+		},
+		"variables": {
+			"v_error_desc": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-02-14T05:30:28Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

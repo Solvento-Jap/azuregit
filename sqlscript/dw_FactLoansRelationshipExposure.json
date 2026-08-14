@@ -1,0 +1,20 @@
+{
+	"name": "dw_FactLoansRelationshipExposure",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "CREATE PROCEDURE DW.SP_DW_FACTLOANSRELATIONSHIPEXPOSURE  @Businessdate VARCHAR(10)\nAS\nBEGIN\n\n\nWITH CustomerAccountPeriodBalance\nAS(\n    SELECT CustomerAccountId,PeriodEndDate,BalanceAmount,IsoCurrencyCode,FinancialInstitutionId,PeriodStartDate,SourceSystemCode\n    FROM BNKM.CustomerAccountPeriodBalance  WHERE SourceSystemCode = 'LNS' AND PeriodBalanceTypeId = 'EOD Running Balance of Transaction Date' AND @Businessdate BETWEEN CONVERT(VARCHAR,PERIODSTARTDATE,112) AND ISNULL(CONVERT(VARCHAR,PERIODENDDATE,112),'20991231')\n    GROUP BY CustomerAccountId,PeriodEndDate,BalanceAmount,IsoCurrencyCode,FinancialInstitutionId,PeriodStartDate,SourceSystemCode\n)\n, CurrencyConversion\nAS(\n    SELECT * FROM BNKM.CurrencyConversion WHERE ConvertToCurrencyId = 'PHP' AND RateId = 'REV'\n)\n, Cnt_DimCustomerAccount\nAS(\n    SELECT BCAB.CustomerAccountId, COUNT(1) CNT FROM BNKM.CustomerAccountPeriodBalance BCAB\n    LEFT JOIN DW.DimCustomerAccount DCA ON BCAB.CustomerAccountId = DCA.AccountID and DCA.ShareIndicator = 'Y' \n    GROUP BY BCAB.CustomerAccountId\n)\n\nINSERT INTO DW.FactLoansRelationshipExposure (\n    BusinessDateSK\n    ,BranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n    ,BalanceAmount\n    ,TotalRelationshipExposureFull\n    ,TotalRelationshipExposureProrated\n    ,SourceSystemCode\n    ,WorkFlowId\n    ,TaskRunId\n    ,InsertDttm\n)\n\n SELECT\n @Businessdate AS BusinessDateSK\n ,DDB.BranchSK AS BranchSK\n ,DDBK.BankSK AS BankSK\n ,DDA.AccountSK AS AccountSK\n ,DDA.AccountId AS AccountId\n ,BCAB.BalanceAmount AS BalanceAmount\n ,CASE WHEN BCAB.IsoCurrencyCode <> 'PHP' THEN BCAB.BalanceAmount * CC.ConversionRate ELSE BCAB.BalanceAmount End AS TotalRelationshipExposureFull\n ,CASE WHEN BCAB.IsoCurrencyCode <> 'PHP' THEN (BCAB.BalanceAmount * CC.ConversionRate) / DCA.CNT ELSE BCAB.BalanceAmount / DCA.CNT END AS TotalRelationshipExposureProrated\n ,BCAB.SourceSystemCode AS SourceSystemCode\n ,0 AS WorkFlowId\n ,0 AS TaskRunId\n ,Getdate() AS InsertDttm\n FROM \n CustomerAccountPeriodBalance BCAB\n LEFT JOIN BNKM.CustomerAccount BCA ON CONVERT(VARCHAR,BCAB.CustomerAccountId) = CONVERT(VARCHAR,BCA.CustomerAccountId)\n LEFT JOIN DW.DimBranch DDB ON BCA.BranchId = DDB.BranchID AND DDB.CurrentIndicator = 1 \n LEFT JOIN DW.DimBank DDBK ON BCAB.FinancialInstitutionId = DDBK.BankID\n LEFT JOIN DW.DimAccount DDA ON BCAB.CustomerAccountId = DDA.AccountID  AND DDA.CurrentIndicator = 1\n LEFT JOIN CurrencyConversion CC ON BCAB.IsoCurrencyCode = CC.ConvertFromCurrencyId AND BCAB.FinancialInstitutionId = CC.FinancialInstitutionId AND BCAB.PeriodStartDate = CC.CurrencyConversionTimestamp\n LEFT JOIN Cnt_DimCustomerAccount DCA ON DCA.CustomerAccountId = BCAB.CustomerAccountId\n WHERE @Businessdate NOT IN (SELECT BusinessDateSK FROM DW.FactLoansRelationshipExposure)\n\n\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

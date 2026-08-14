@@ -1,0 +1,352 @@
+{
+	"name": "CI_Demographics_EDS_DEBUG",
+	"properties": {
+		"description": "Sources data from EDS tables",
+		"activities": [
+			{
+				"name": "Demographics Retail",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "START_TASK_CI_EDS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "\r\n/*\r\nList down all Customers and their balances using the DEPOSITS_ACCOUNT_HOLDER data.\r\n*/\r\nWITH DEP AS\r\n(\r\n     SELECT \r\n        DAH.AAS_AS_OF_DATE AS AS_OF_DATE\r\n        ,ORGKEY\r\n        ,SUM(OUTSTANDING_BALANCE_PHP) AS OUTSTANDING_BALANCE_PHP\r\n        --,SUM(MONTH_TO_DATE_AVERAGE_DAILY_BALANCE_PHP) AS MONTH_TO_DATE_AVERAGE_DAILY_BALANCE_PHP\r\n        ,SUM(CASE WHEN DAH.ACCT_CRNCY_CODE = 'PHP' THEN ISNULL(DAH.YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP,0)\r\n\t\tELSE ISNULL(NONPHP.YTD_BALANCE_PHP,0) END) AS YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP\r\n    FROM \r\n(\r\n\t\t\tSELECT \r\n\t\t\tEDA.AS_OF_DATE\tAS\tAAS_AS_OF_DATE\r\n\t\t\t,EDF.OUTSTANDING_BALANCE_PHP AS OUTSTANDING_BALANCE_PHP\r\n\t\t\t,EDF.ACCT_CRNCY_CODE AS ACCT_CRNCY_CODE\r\n\t\t\t,EDF.YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP\tAS\tYEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP\r\n\t\t\t,EDF.GAM_ACID\tAS\tGAM_ACID\r\n\t\t\t,EDF.GAM_BANK_ID\tAS\tGAM_BANK_ID\r\n\t\t\t,EDF.DEP_Account_Status AS DEP_Account_Status\r\n\t\t\t,EDA.ACCT_POA_AS_REC_TYPE\tAS\tACCT_POA_AS_REC_TYPE\r\n\t\t\t,ECD.ORGKEY AS ORGKEY\r\n\t\t\t,EDA.BANK_ID\tAS\tAAS_BANK_ID\r\n\t\t\tFROM EDS.DATE_DIM EDD\r\n\t\t\tINNER JOIN (SELECT DateSk, FullDate, Previous_Business_Day, Month_End\r\n\t\t\tFROM EDS.DATE_DIM DD\r\n\t\t\tWHERE DD.FULLDATE = CAST('2024-08-05' AS DATE)) EEC \r\n\t\t\tON EDD.FullDate = EEC.FullDate\r\n\t\t\tINNER JOIN EDS.DEP_ACCOUNTRELATIONSHIP EDA\r\n\t\t\tON EDA.AS_OF_DATE = EDD.FULLDATE\r\n\t\t\tLEFT JOIN EDS.DEPOSIT_FACT EDF\r\n\t\t\t\tON EDA.ACID = EDF.GAM_ACID\r\n\t\t\t\tAND EDA.BANK_ID = EDF.GAM_BANK_ID\r\n\t\t\t\tAND EDA.AS_OF_DATE = EDF.AS_OF_DATE\r\n\t\t\t--LEFT JOIN EDS.DEP_CASAMASTER CASA\r\n\t\t\t--\tON EDA.ACID = CASA.ACID\r\n\t\t\t--\tAND EDA.BANK_ID = CASA.BANK_ID\r\n\t\t\t--\tAND EDA.AS_OF_DATE BETWEEN CASA.SCD_START_DATE AND CASA.SCD_END_DATE\r\n\t\t\t--LEFT JOIN EDS.DEP_TDMASTER TD\r\n\t\t\t--\tON EDA.ACID = TD.ACID\r\n\t\t\t--\tAND EDA.BANK_ID = TD.BANK_ID\r\n\t\t\t--\tAND EDA.AS_OF_DATE BETWEEN TD.SCD_START_DATE AND TD.SCD_END_DATE\r\n\t\t\t--LEFT JOIN EDS.BRANCH_DIM EBD\r\n\t\t\t--    ON EDF.SOL_ID = EBD.SOL_ID\r\n\t\t\t--    AND EDF.GAM_BANK_ID = EBD.BANK_ID\r\n\t\t\t--    AND EDA.AS_OF_DATE BETWEEN EBD.SCD_START_DATE AND EBD.SCD_END_DATE\r\n\t\t\tLEFT JOIN EDS.CUSTOMER_DIM ECD\r\n\t\t\t\tON EDA.CUST_ID = ECD.CORE_CUST_ID\r\n\t\t\t\tAND EDA.BANK_ID = ECD.BANK_ID\r\n\t\t\t\tAND EDA.AS_OF_DATE BETWEEN ECD.SCD_START_DATE AND ECD.SCD_END_DATE\r\n\t\t\t--LEFT JOIN EDS.DID_PRODUCTGROUPING EDP\r\n\t\t\t--    ON EDF.GAM_SCHM_CODE = EDP.PRODUCT_TYPE\r\n\t\t\t--    AND EDF.GAM_BANK_ID = EDP.BANK_CODE\r\n\t\t\t--    AND EDA.AS_OF_DATE BETWEEN EDP.SCD_START_DATE AND EDP.SCD_END_DATE\r\n\t\t\tWHERE EEC.FullDate IS NOT NULL AND DEP_Account_Status <> 'C' AND EDF.AS_OF_DATE = CAST('2024-08-05' AS DATE)\r\n) DAH       \r\n\tLEFT JOIN EDS.DEPOSIT_NONPHP_YTD NONPHP\r\n        \tON DAH.GAM_ACID = NONPHP.GAM_ACID\r\n        \tAND DAH.GAM_BANK_ID = NONPHP.GAM_BANK_ID\r\n        \tAND DAH.AAS_AS_OF_DATE = NONPHP.FULLDATE\r\n        \tAND NONPHP.ACCT_CRNCY_CODE <> 'PHP'\r\n    WHERE DAH.AAS_BANK_ID = 'CBC01'\r\n\tAND DAH.ACCT_POA_AS_REC_TYPE IN ('M', 'J')\r\n\tAND DAH.DEP_ACCOUNT_STATUS <> 'C'\r\n    AND DAH.AAS_AS_OF_DATE = '2024-08-05'\r\n        --AND CTL.CRM_DATE = CTL.DEPOSITS_DATE AND CTL.CRM_DATE = CTL.LOANS_DATE\r\n    GROUP BY DAH.AAS_AS_OF_DATE, ORGKEY\r\n)\r\n/*\r\nList down all Customers and their balances using the LOANS_ACCOUNT_HOLDER data.\r\n*/\r\n\r\n\r\n\r\n, LNS AS\r\n(\r\n    SELECT \r\n        LAH.AS_OF_DATE AS AS_OF_DATE\r\n        ,CUST.ORGKEY\r\n        ,SUM(RELATIONSHIP_EXPOSURE_PHP) AS RELATIONSHIP_EXPOSURE_PHP\r\n        ,SUM(BILLED_AMOUNT_PHP) AS BILLED_AMOUNT_PHP\r\n        ,SUM(CREDIT_LIMIT_PHP) AS CREDIT_LIMIT_PHP\r\n    FROM eds.LOANS_ACCOUNT_HOLDER_AAS_VW LAH\r\n\tINNER JOIN eds.CUSTOMER_DIM CUST\r\n\t\tON LAH.CUST_ID = CUST.CORE_CUST_ID\r\n\t\tAND LAH.BANK_ID = CUST.BANK_ID\r\n\t\tAND LAH.AS_OF_DATE BETWEEN CUST.SCD_START_DATE AND SCD_END_DATE\r\n    WHERE LAH.BANK_ID = 'CBC01'\r\n\tAND LAH.ACCT_POA_AS_REC_TYPE IN ('M', 'J')\r\n\tAND LAH.LNS_ACCOUNT_STATUS <> 'C'\r\n    AND LAH.AS_OF_DATE = '2024-08-5'\r\n        --AND CTL.CRM_DATE = CTL.DEPOSITS_DATE AND CTL.CRM_DATE = CTL.LOANS_DATE\r\n    GROUP BY LAH.AS_OF_DATE, CUST.ORGKEY\r\n)\r\n/*\r\nGet the total balances per Customer.\r\n*/\r\n, CI_CUSTOMER_BALANCES AS\r\n(\r\nSELECT \r\n    B.AS_OF_DATE AS AS_OF_DATE\r\n    ,A.ORGKEY AS FCBS_CIF\r\n    ,SUM(B.TOTAL_OUTSTANDING_BALANCE_PHP) AS TOTAL_DEPOSIT_OUTSTANDING_BALANCE_PHP\r\n    ,SUM(B.TOTAL_YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP) AS TOTAL_DEPOSIT_YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP\r\n    ,SUM(B.TOTAL_RELATIONSHIP_EXPOSURE_PHP) AS TOTAL_LOAN_RELATIONSHIP_EXPOSURE_PHP\r\n    ,SUM(B.TOTAL_BILLED_AMOUNT_PHP) AS TOTAL_LOAN_BILLED_AMOUNT_PHP\r\n    ,SUM(B.TOTAL_CREDIT_LIMIT_PHP) AS TOTAL_LOAN_CREDIT_LIMIT_PHP\r\n    ,A.BANK_ID\r\n    ,A.SOURCE_CODE\r\nFROM eds.CUSTOMER_DIM A\r\n/*\r\nCombine the DEP & LNS balances for all the Customers.\r\n*/\r\n    INNER JOIN\r\n    (\r\n    SELECT \r\n        AS_OF_DATE\r\n        ,ORGKEY\r\n        ,OUTSTANDING_BALANCE_PHP AS TOTAL_OUTSTANDING_BALANCE_PHP\r\n        ,YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP AS TOTAL_YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP\r\n        ,0 AS TOTAL_RELATIONSHIP_EXPOSURE_PHP\r\n        ,0 AS TOTAL_BILLED_AMOUNT_PHP\r\n        ,0 AS TOTAL_CREDIT_LIMIT_PHP\r\n    FROM DEP\r\n    UNION\r\n    SELECT \r\n        AS_OF_DATE\r\n        ,ORGKEY\r\n        ,0 AS TOTAL_OUTSTANDING_BALANCE_PHP\r\n        ,0 AS TOTAL_YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP\r\n        ,RELATIONSHIP_EXPOSURE_PHP AS TOTAL_RELATIONSHIP_EXPOSURE_PHP\r\n        ,BILLED_AMOUNT_PHP AS TOTAL_BILLED_AMOUNT_PHP\r\n        ,CREDIT_LIMIT_PHP AS TOTAL_CREDIT_LIMIT_PHP\r\n    FROM LNS\r\n    ) B\r\n        ON A.ORGKEY = B.ORGKEY\r\n        AND B.AS_OF_DATE BETWEEN A.SCD_START_DATE AND A.SCD_END_DATE\r\nWHERE A.BANK_ID = 'CBC01'\r\nGROUP BY B.AS_OF_DATE, A.ORGKEY, A.BANK_ID, A.SOURCE_CODE\r\n)\r\n/*\r\nSummarize the Customer information and join the total balances.\r\nThis follows the file format from original CI Staging data from Oct 2023.\r\nUse this dataset to load to Dynamics Customer Insights.\r\n*/\r\n\r\nSELECT TOP 1250000\r\nCUST.ORGKEY\tAS\tCustomerID\r\n,CUST.NAME\tAS\tCustomerName\r\n,NULL\tAS\tGlobalCIF\r\n,CUST.ORGKEY\tAS\tEntityCIF\r\n,CUST.ORGKEY\tAS\tFCBSCIF\r\n,CUST.CUSTOMER_TYPE\tAS\tCustomerType\r\n,CUST.CUST_DOB\tAS\tBirthdate\r\n,LEFT(CUST_DOB,4) as Birthdate_Masked\r\n,CUST.MARITAL_STATUS\tAS\tMaritalStatus\r\n,CUST.GENDER_DESCRIPTION\tAS\tGender\r\n,CUST.MOBILE_NUMBER\tAS\tMobileNumber\r\n,CASE WHEN MOBILE_NUMBER IS NULL THEN NULL ELSE CONCAT(SUBSTRING(MOBILE_NUMBER,1,CHARINDEX(')',MOBILE_NUMBER)),'*******') END as MobileNumber_Masked\r\n,CUST.EMAIL_ADDRESS\tAS\tEmailAddress\r\n,CASE WHEN EMAIL_ADDRESS IS NULL THEN NULL\r\n      WHEN EMAIL_ADDRESS LIKE '%@%' THEN TRIM(SUBSTRING(EMAIL_ADDRESS,CHARINDEX('@',EMAIL_ADDRESS),LEN(EMAIL_ADDRESS))) ELSE '*******' END as EmailAddress_Masked\r\n,CUST.ADDRESS_LINE1\tAS\tAddressLine1\r\n,CUST.ADDRESS_LINE2\tAS\tAddressLine2\r\n,MV_CITY.DESCRIPTION\tAS\tCity\r\n,MV_STATE.DESCRIPTION\tAS\tProvince\r\n,CUST.ZIP\tAS\tZipCode\r\n,MV_COUNTRY.DESCRIPTION\tAS\tCountry\r\n,NULL\tAS\tNationality\r\n,NULL\tAS\tEmployerName\r\n,NULL\tAS\tOfficeAddressLine1\r\n,NULL\tAS\tOfficeAddressLine2\r\n,NULL\tAS\tOfficeCity\r\n,NULL\tAS\tOfficeProvince\r\n,NULL\tAS\tOfficeZipCode\r\n,NULL\tAS\tOfficeCountry\r\n,NULL\tAS\tIndustry\r\n,CUST.OCCUPATION_DESCRIPTION\tAS\tOccupation\r\n,DATEDIFF(yy, CUST.RELATIONSHIPOPENINGDATE, DATEADD (hh , 8 , getdate()))\tAS\tTenure\r\n,AGG_BAL.TOTAL_DEPOSIT_YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP\tAS\tTotalRelationshipBalance_Full\r\n,NULL\tAS\tTotalRelationshipBalance_Prorated\r\n,NULL\tAS\tTotalMTDADBPHPDeposits_Full\r\n,NULL\tAS\tTotalMTDADBPHPDeposits_Prorated\r\n,AGG_BAL.TOTAL_DEPOSIT_YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP\tAS\tTotalYTDADBPHPDeposits_Full\r\n,NULL\tAS\tTotalYTDADBPHPDeposits_Prorated\r\n,AGG_BAL.TOTAL_DEPOSIT_OUTSTANDING_BALANCE_PHP\tAS\tTotalOutBalPHPDeposits_Full\r\n,NULL\tAS\tTotalOutBalPHPDeposits_Prorated\r\n,AGG_BAL.TOTAL_LOAN_RELATIONSHIP_EXPOSURE_PHP\tAS\tTotalRelationshipExposureLoans_Full\r\n,NULL\tAS\tTotalRelationshipExposureLoans_Prorated\r\n,AGG_BAL.TOTAL_LOAN_BILLED_AMOUNT_PHP\tAS\tTotalOutBalPHPLoans_Full\r\n,NULL\tAS\tTotalOutBalPHPLoans_Prorated\r\n,AGG_BAL.TOTAL_LOAN_CREDIT_LIMIT_PHP\tAS\tTotalCreditLimitLoans_Full\r\n,NULL\tAS\tTotalCreditLimitLoans_Prorated\r\n,NULL\tAS\tTotalOutBalPHPCards\r\n,NULL\tAS\tTotalOutstandingBalanceCards\r\n,NULL\tAS\tTotalCreditLimitCards\r\n,NULL\tAS\tTotalRelationshipExposureLoansCards_Full\r\n,NULL\tAS\tTotalRelationshipExposureLoansCards_Prorated\r\n,NULL\tAS\tTotalSecuritiesPortfolioSizeCBSEC_Full\r\n,NULL\tAS\tTotalSecuritiesPortfolioSizeCBSEC_Prorated\r\n,NULL\tAS\tTotalFundValueTrust_Full\r\n,NULL\tAS\tTotalFundValueTrust_Prorated\r\n,NULL\tAS\tTotalOutstandingInvestmentTRY_Full\r\n,NULL\tAS\tTotalOutstandingInvestmentTRY_Prorated\r\n,CUST.DATA_PRIVACY_CONSENT\tAS\tDataPrivacyConsent\r\n,CUST.LAST_KYC_DATE\tAS\tLastKYCDate\r\n,CUST.RISK_RATING_TYPE\tAS\tRiskRatingType\r\n,CUST.RISK_RATING_NAME\tAS\tRiskRating\r\n,NULL\tAS\tSuspendedIndicator\r\n,CUST.ATM_ENROLLMENT\tAS\tATMEnrollmentIndicator\r\n,CUST.MOBILE_BANKING_ENROLLMENT\tAS\tMBKEnrollmentIndicator\r\n,CUST.ONLINE_BANKING_ENROLLMENT\tAS\tRIBBOBEnrollmentIndicator\r\n,NULL\tAS\tPayrollIndicator\r\n,NULL\tAS\tGenerationalCohort\r\n,NULL\tAS\tMarketSegment\r\n,AS_OF_DATE\tAS\tLastUpdatedDate\r\n,AS_OF_DATE\tAS\tBusinessDate\r\n,'CRM'\tAS\tSourceSystemCode\r\n,'CBC01'\tAS\tBankCode\r\nFROM eds.CUSTOMER_DIM CUST\r\n    LEFT JOIN eds.MV_CITY_DIM AS MV_CITY\r\n        ON CUST.CITY = MV_CITY.VALUE\r\n        AND CUST.BANK_ID = MV_CITY.BANK_ID\r\n    LEFT JOIN eds.MV_STATE_DIM AS MV_STATE\r\n        ON CUST.STATE = MV_STATE.VALUE\r\n        AND CUST.BANK_ID = MV_STATE.BANK_ID\r\n    LEFT JOIN eds.MV_COUNTRY_DIM AS MV_COUNTRY\r\n        ON CUST.COUNTRY = MV_COUNTRY.VALUE\r\n        AND CUST.BANK_ID = MV_COUNTRY.BANK_ID\r\n    LEFT JOIN CI_CUSTOMER_BALANCES AGG_BAL\r\n        ON CUST.ORGKEY = AGG_BAL.FCBS_CIF\r\n        AND CUST.BANK_ID = AGG_BAL.BANK_ID\r\nWHERE CUST.BANK_ID = 'CBC01'\r\nAND LEFT(CUST.ORGKEY, 1) = 'R'\r\nAND '2024-08-05' BETWEEN CUST.SCD_START_DATE AND CUST.SCD_END_DATE\r\n--AND AGG_BAL.TOTAL_DEPOSIT_OUTSTANDING_BALANCE_PHP > 500000 --Removed 20240821 RTSF\r\n--ORDER BY AGG_BAL.TOTAL_DEPOSIT_OUTSTANDING_BALANCE_PHP DESC --Changed 20240821 RTSF\r\nORDER BY AGG_BAL.TOTAL_DEPOSIT_YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP DESC",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "DelimitedTextSink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"formatSettings": {
+							"type": "DelimitedTextWriteSettings",
+							"quoteAllText": true,
+							"fileExtension": ".txt"
+						}
+					},
+					"enableStaging": false,
+					"translator": {
+						"type": "TabularTranslator",
+						"typeConversion": true,
+						"typeConversionSettings": {
+							"allowDataTruncation": true,
+							"treatBooleanAsNumber": false
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_EDS",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "-"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "CI_csv_gen",
+						"type": "DatasetReference",
+						"parameters": {
+							"Table": "Demographics_Retail",
+							"Source": "DEMOGRAPHICS",
+							"Types": "Retail"
+						}
+					}
+				]
+			},
+			{
+				"name": "START_TASK_CI_EDS",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_START]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_CI_EDS_',variables('tables'))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": null,
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_EDS_SUCCESSFUL",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Demographics Retail",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_CI_EDS_',variables('tables'))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "SUCCESSFUL",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_EDS_FAILED",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Demographics Retail",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_CI_EDS_',variables('tables'))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "FAILED",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SP_LOG_COPY_ACTIVITY_DTL",
+				"type": "SqlPoolStoredProcedure",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Demographics Retail",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_COPY_ACTIVITY_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_CI_EDS_',variables('tables'))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": null,
+							"type": "String"
+						},
+						"dataread": {
+							"value": {
+								"value": "@activity('Demographics Retail').output.dataRead",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"datawritten": {
+							"value": {
+								"value": "@activity('Demographics Retail').output.dataWritten",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"filesread": {
+							"value": {
+								"value": "@activity('Demographics Retail').output.filesWritten",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"sourcepeakconnections": {
+							"value": {
+								"value": "@activity('Demographics Retail').output.sourcePeakConnections",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowsread": {
+							"value": {
+								"value": "@activity('Demographics Retail').output.rowsRead",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowscopied": {
+							"value": {
+								"value": "@activity('Demographics Retail').output.rowsCopied",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowsskipped": {
+							"value": null,
+							"type": "String"
+						},
+						"copyduration": {
+							"value": {
+								"value": "@activity('Demographics Retail').output.copyDuration",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"throughput": {
+							"value": {
+								"value": "@activity('Demographics Retail').output.throughput",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"redirectrowpath": {
+							"value": null,
+							"type": "String"
+						},
+						"logfilepath": {
+							"value": null,
+							"type": "String"
+						}
+					}
+				}
+			}
+		],
+		"variables": {
+			"tables": {
+				"type": "String",
+				"defaultValue": "CI_Demographics_Retail"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-08-27T07:49:58Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

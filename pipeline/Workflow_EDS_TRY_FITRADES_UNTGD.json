@@ -1,0 +1,597 @@
+{
+	"name": "Workflow_EDS_TRY_FITRADES_UNTGD",
+	"properties": {
+		"activities": [
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "select fulldate\nfrom \n    eds.eds_ctl ect\ninner join \n    eds.date_dim dd\n    on \n    ect.FMS_Date=dd.previous_business_day and dd.business_day_flag='Y'\n",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "eds_ctl"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(variables('V_endDate')),ticks(variables('V_startDate'))),864000000000),1))\n",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append Process Date",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Iterate Execution of Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Send_Email",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "WF_STG_EDS_TRY_FITRADES_UNTGD",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Send_Email",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									},
+									"PipelineName": {
+										"value": "@pipeline().Pipeline",
+										"type": "Expression"
+									},
+									"ProcessDate": {
+										"value": "@variables('V_startDate')",
+										"type": "Expression"
+									},
+									"RunDateTime": {
+										"value": "@addhours(pipeline().TriggerTime,8)",
+										"type": "Expression"
+									},
+									"Eml_Sender": {
+										"value": "@pipeline().parameters.eml_sender",
+										"type": "Expression"
+									},
+									"Eml_Recipient": {
+										"value": "@pipeline().parameters.eml_subject",
+										"type": "Expression"
+									},
+									"Eml_Subject": {
+										"value": "@pipeline().parameters.eml_subject",
+										"type": "Expression"
+									},
+									"EndDateTime": {
+										"value": "@addhours(utcNow(),8)",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "All pipelines success",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "Send_Email",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "WF_STG_EDS_TRY_FITRADES_UNTGD",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "WF_STG_EDS_TRY_FITRADES_UNTGD",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Onprem",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "wf_STG_EDS",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"startDate": {
+										"value": "@substring(item(),0,10)",
+										"type": "Expression"
+									},
+									"endDate": {
+										"value": "@substring(item(),0,10)",
+										"type": "Expression"
+									},
+									"sourcefile": "TRY_FITRADESUNTGDTRXNS",
+									"tables": "TRY_FITRADES_UNTGD",
+									"src_sys": "TRY",
+									"ColumnSchema": "{\n    \"type\": \"TabularTranslator\",\n    \"mappings\": [\n        { \"source\": { \"name\": \"H\", \"type\": \"String\"}, \"sink\": { \"name\": \"H\", \"type\": \"String\" } },\n        { \"source\": { \"name\": \"CIF_ID\", \"type\": \"String\"}, \"sink\": { \"name\": \"CIF_ID\", \"type\": \"String\" } },\n        { \"source\": { \"name\": \"Counterparty_ID\", \"type\": \"String\"}, \"sink\": { \"name\": \"COUNTERPARTY_ID\", \"type\": \"String\" } },\n        { \"source\": { \"name\": \"CounterParty_Name\", \"type\": \"String\"}, \"sink\": { \"name\": \"COUNTERPARTY_NAME\", \"type\": \"String\" } },\n        { \"source\": { \"name\": \"Product_Description\", \"type\": \"String\"}, \"sink\": { \"name\": \"PRODUCT_DESCRIPTION\", \"type\": \"String\" } },\n        { \"source\": { \"name\": \"Reference_No\", \"type\": \"String\"}, \"sink\": { \"name\": \"REFERENCE_NO\", \"type\": \"String\" } },\n        { \"source\": { \"name\": \"Settlement_Date\", \"type\": \"DATE\",\"format\": \"yyyyMMdd\"}, \"sink\": { \"name\": \"SETTLEMENT_DATE\", \"type\": \"DATE\" } },\n        { \"source\": { \"name\": \"Face_Value\", \"type\": \"String\"}, \"sink\": { \"name\": \"FACE_VALUE\", \"type\": \"String\" } },\n        { \"source\": { \"name\": \"Interest_Rate\", \"type\": \"String\"}, \"sink\": { \"name\": \"INTEREST_RATE\", \"type\": \"String\" } },\n        { \"source\": { \"name\": \"Maturity_Date\", \"type\": \"DATE\",\"format\": \"yyyyMMdd\"}, \"sink\": { \"name\": \"MATURITY_DATE\", \"type\": \"DATE\" } },\n        { \"source\": { \"name\": \"Next_Coupon_Date\", \"type\": \"DATE\",\"format\": \"yyyyMMdd\"}, \"sink\": { \"name\": \"NEXT_COUPON_DATE\", \"type\": \"DATE\" } },\n        { \"source\": { \"name\": \"Cost_Price\", \"type\": \"String\"}, \"sink\": { \"name\": \"COST_PRICE\", \"type\": \"String\" } },\n        { \"source\": { \"name\": \"Principal_Amount\", \"type\": \"String\"}, \"sink\": { \"name\": \"PRINCIPAL_AMOUNT\", \"type\": \"String\" } },\n        { \"source\": { \"name\": \"Market_Price\", \"type\": \"String\"}, \"sink\": { \"name\": \"MARKET_PRICE\", \"type\": \"String\" } },\n        { \"source\": { \"name\": \"Accrued_Interest\", \"type\": \"String\"}, \"sink\": { \"name\": \"ACCRUED_INTEREST\", \"type\": \"String\" } },\n        { \"source\": { \"name\": \"Market_Value\", \"type\": \"String\"}, \"sink\": { \"name\": \"MARKET_VALUE\", \"type\": \"String\" } },\n        { \"source\": { \"name\": \"Currency\", \"type\": \"String\"}, \"sink\": { \"name\": \"CURRENCY\", \"type\": \"String\" } },\n        { \"source\": { \"name\": \"FILE_NAME\", \"type\": \"String\"}, \"sink\": { \"name\": \"FILE_NAME\", \"type\": \"String\" } },\n        { \"source\": { \"name\": \"insert_dttm\", \"type\": \"DateTime\"}, \"sink\": { \"name\": \"insert_dttm\", \"type\": \"DateTime\" } }\n    ]\n}",
+									"HashLog_SQL": "WITH [METRIC_BASE] AS (\n    SELECT\n        [FILE_NAME],\n        [INSERT_DTTM],\n        TRY_CAST(LEFT(RIGHT(FILE_NAME,12),8) AS DATE) AS [DATE],\n        TRY_CAST(SUM(CASE WHEN H = 'D' THEN 1 ELSE 0 END) AS NUMERIC(25,5)) AS TGT_COUNT,\n        MAX(CASE WHEN H <> 'D' THEN TRY_CAST(REPLACE(H,'F-','') AS NUMERIC(25,5)) END) AS SRC_COUNT\n    FROM [D360].[STG_EDS_TRY_FITRADES_UNTGD]\n    GROUP BY [FILE_NAME], [INSERT_DTTM]\n)\n \nINSERT INTO [EDS].[EDS_HASH_LOG_TBL]\n(\n    [FILE_NAME],\n    [DATE],\n    [INSERT_DTTM],\n    [METRICS],\n    [SOURCE],\n    [TARGET]\n)\nSELECT\n    [FILE_NAME],\n    [DATE],\n    [INSERT_DTTM],\n    [METRIC_NAME],\n    [SRC_VALUE],\n    [TGT_VALUE]\nFROM [METRIC_BASE]\nCROSS APPLY (\n    SELECT 'COUNT' AS [METRIC_NAME], [SRC_COUNT] AS [SRC_VALUE], [TGT_COUNT] AS [TGT_VALUE]\n) M"
+								}
+							}
+						},
+						{
+							"name": "Manifest_file",
+							"type": "ExecutePipeline",
+							"dependsOn": [],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Workflow_Manifest_V3",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"MaxPipelineCalls": 5,
+									"RetryInterval": 600,
+									"DatetoProcessed": {
+										"value": "@substring(item(),0,10)",
+										"type": "Expression"
+									},
+									"tables": "'TRY_FITRADESUNTGDTRXNS'",
+									"EndTime": "03:30",
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "Onprem",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Manifest_file",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "OnPremToADLS_EDS_v2",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"DatetoProcessed": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"tables": "TRY*",
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									},
+									"Bank_ID": "CBC01"
+								}
+							}
+						},
+						{
+							"name": "Send_Email_Manifest",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Manifest_file",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Send_Email_Manifest",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									},
+									"PipelineName": {
+										"value": "@pipeline().Pipeline",
+										"type": "Expression"
+									},
+									"ProcessDate": {
+										"value": "@variables('V_startDate')",
+										"type": "Expression"
+									},
+									"RunDateTime": {
+										"value": "@addhours(pipeline().TriggerTime,8)",
+										"type": "Expression"
+									},
+									"Eml_Sender": {
+										"value": "@pipeline().parameters.eml_sender",
+										"type": "Expression"
+									},
+									"Eml_Recipient": {
+										"value": "@pipeline().parameters.eml_subject",
+										"type": "Expression"
+									},
+									"Eml_Subject": {
+										"value": "@pipeline().parameters.eml_subject",
+										"type": "Expression"
+									},
+									"EndDateTime": {
+										"value": "@addhours(utcNow(),8)",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "Send_Email_Manifest_Onprem",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Onprem",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Send_Email",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									},
+									"PipelineName": {
+										"value": "@pipeline().Pipeline",
+										"type": "Expression"
+									},
+									"ProcessDate": {
+										"value": "@replace(substring(item(),0,10),'-','')",
+										"type": "Expression"
+									},
+									"RunDateTime": {
+										"value": "@addhours(pipeline().TriggerTime,8)",
+										"type": "Expression"
+									},
+									"Eml_Sender": {
+										"value": "@pipeline().parameters.eml_sender",
+										"type": "Expression"
+									},
+									"Eml_Recipient": {
+										"value": "@pipeline().parameters.eml_subject",
+										"type": "Expression"
+									},
+									"Eml_Subject": {
+										"value": "@pipeline().parameters.eml_subject",
+										"type": "Expression"
+									},
+									"EndDateTime": {
+										"value": "@addhours(utcNow(),8)",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "Pipeline fail",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "All pipelines success",
+									"dependencyConditions": [
+										"Skipped"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "One or more pipelines failed",
+								"errorCode": "2001"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "TRY"
+			},
+			"eml_sender": {
+				"type": "string"
+			},
+			"eml_recipient": {
+				"type": "string",
+				"defaultValue": "JOLENIZO@chinabank.ph"
+			},
+			"eml_subject": {
+				"type": "string"
+			}
+		},
+		"variables": {
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			},
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"CheckFEstatus": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-08-12T03:52:11Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

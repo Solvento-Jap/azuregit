@@ -1,0 +1,241 @@
+{
+	"name": "Patch_CustomerAccountFinancialProduct",
+	"properties": {
+		"activities": [
+			{
+				"name": "ALTER SP_CUSTOMERACCOUNTFINANCIALPRODUCT_CCD",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CUSTOMERACCOUNTFINANCIALPRODUCT_CCD] AS\r\nBEGIN\r\n--GET DELTA FROM BUSC\r\n\r\nWITH TEMP_BNKM_CustomerAccountFinancialProduct\r\nAS(\r\n    SELECT ROW_NUMBER() OVER(PARTITION BY CustomerAccountId ORDER BY INSERT_DTTM DESC ) RN, * FROM \r\n    (\r\n    SELECT\r\n    BCC.CRDACCT_NBR AS CustomerAccountId\r\n    ,BCC.CRDACCT_DTE_OPEN AS PeriodStartDate\r\n    ,CASE WHEN BCC.CRDACCT_DTE_CLOSE = 0\r\n          THEN NULL\r\n          ELSE BCC.CRDACCT_DTE_CLOSE END AS PeriodEndDate\r\n    ,BCC.CRDACCT_PDT_NBR AS ProductId\r\n    ,BCC.INSERT_DTTM\r\n    ,BCC.BNK_CODE AS FinancialInstitutionId\r\n    ,'CCD' AS SourceSystemCode\r\n    FROM BUSC.CCD_CBCEXCACFP BCC\r\n    WHERE  BCC.CRDACCT_NBR IS NOT NULL\r\n    AND BCC.ISLATEST = '1'\r\nUNION\r\n\r\n    SELECT\r\n     BCC.CRDACCT_NBR AS CustomerAccountId\r\n    ,BCC.CRDACCT_DTE_OPEN AS PeriodStartDate\r\n    ,CASE WHEN BCC.CRDACCT_DTE_CLOSE = 0\r\n          THEN NULL\r\n          ELSE BCC.CRDACCT_DTE_CLOSE END AS PeriodEndDate\r\n    ,BCC.CRDACCT_PDT_NBR AS ProductId\r\n    ,BCC.INSERT_DTTM\r\n    ,BCC.BNK_CODE AS FinancialInstitutionId\r\n    ,'CCD' AS SourceSystemCode\r\n    FROM BUSC.CCD_CBCEXCACCP BCC\r\n\t WHERE  BCC.CRDACCT_NBR IS NOT NULL\r\n     AND BCC.ISLATEST = '1'\r\n)A\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerAccountFinancialProduct FROM TEMP_BNKM_CustomerAccountFinancialProduct WHERE RN = 1;\r\n\r\n--CHECK IF THERE IS DELTA\r\n\r\nWITH TEMP_BNKM_CustomerAccountFinancialProduct_SRC\r\nAS(\r\n    SELECT\r\n    HASHBYTES('MD5',CONCAT(\r\n         convert(varchar,CustomerAccountId)\r\n        ,CONVERT(DATE,CONVERT(VARCHAR,PeriodStartDate))\r\n        ,CONVERT(DATE,CONVERT(VARCHAR,PeriodEndDate))\r\n        ,convert(varchar,ProductId)\r\n    )) HASHROW, CustomerAccountId, ProductId, FinancialInstitutionId, SourceSystemCode\r\n    FROM #TEMP_BNKM_CustomerAccountFinancialProduct \r\n),\r\n\r\nTEMP_BNKM_CustomerAccountFinancialProduct_TGT\r\nAS(\r\n    SELECT\r\n    HASHBYTES('MD5',CONCAT(\r\n         convert(varchar,CustomerAccountId)\r\n        ,CONVERT(DATE,CONVERT(VARCHAR,PeriodStartDate))\r\n        ,CONVERT(DATE,CONVERT(VARCHAR,PeriodEndDate))\r\n        ,convert(varchar,ProductId)\r\n    )) HASHROW, CustomerAccountId, ProductId, FinancialInstitutionId, SourceSystemCode\r\n    FROM BNKM.CustomerAccountFinancialProduct WHERE SourceSystemCode = 'CCD' \r\n),\r\n\r\nTEMP_BNKM_CustomerAccountFinancialProduct_DELTA\r\nAS(\r\nSELECT\r\n    SRC.HASHROW AS SRC_HR\r\n    ,TGT.HASHROW AS TGT_HR\r\n    ,ISNULL(SRC.CustomerAccountId,TGT.CustomerAccountId) AS CustomerAccountId\r\n    ,ISNULL(SRC.ProductId,TGT.ProductId) AS ProductId\r\n    ,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n    ,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\r\n    ,CASE\r\n        WHEN TGT.HASHROW IS NULL THEN 'INSERT'  \r\n        WHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n        ELSE NULL END AS RECORD_STATUS\r\n\r\nFROM TEMP_BNKM_CustomerAccountFinancialProduct_SRC SRC\r\nLEFT JOIN TEMP_BNKM_CustomerAccountFinancialProduct_TGT TGT\r\nON SRC.CustomerAccountId = TGT.CustomerAccountId\r\nAND SRC.ProductId = TGT.ProductId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL \r\n)\r\nSELECT * INTO #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA FROM TEMP_BNKM_CustomerAccountFinancialProduct_DELTA\r\n\r\n--UPDATE RECORDS TO BNKM\r\nUPDATE TGT\r\nSET\r\nPeriodEndDate =  CONVERT(DATE,DATEADD(day,-1,CONVERT(VARCHAR,SRC.PeriodStartDate)))\r\nFROM BNKM.CustomerAccountFinancialProduct TGT\r\nJOIN #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA DELTA\r\n ON DELTA.CustomerAccountId = TGT.CustomerAccountId \r\n AND DELTA.ProductId = TGT.ProductId \r\n AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId \r\n AND DELTA.SourceSystemCode = TGT.SourceSystemCode \r\n AND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CustomerAccountFinancialProduct SRC\r\n ON SRC.CustomerAccountId = TGT.CustomerAccountId\r\n  AND SRC.ProductId = TGT.ProductId\r\n   AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\n    AND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE TGT.PeriodEndDate = '9999-12-31';\r\n\r\n\r\n\r\n\r\n--INSERT RECORD TO BNKM\r\nINSERT INTO BNKM.CustomerAccountFinancialProduct(\r\n    CustomerAccountId\r\n    ,PeriodStartDate\r\n    ,PeriodEndDate\r\n    ,ProductId\r\n    ,IsoCurrencyCode\r\n    ,UsageCategoryId\r\n    ,CommitmentId\r\n    ,SourceSystemCode\r\n    ,FINANCIALINSTITUTIONId\r\n    ,WORKFLOWID\r\n    ,TASKRUNID\r\n    ,INSERTDTTM\r\n)\r\n\r\nSELECT\r\nSRC.CustomerAccountId as CustomerAccountId\r\n,CONVERT(DATE,CONVERT(VARCHAR,SRC.PeriodStartDate)) as PeriodStartDate\r\n,CONVERT(DATE,CONVERT(VARCHAR,SRC.PeriodEndDate)) as PeriodEndDate\r\n,SRC.ProductId as ProductId\r\n,'PHP' as IsoCurrencyCode\r\n,NULL as UsageCategoryId\r\n,NULL as CommitmentId\r\n,'CCD' AS SourceSystemCode\r\n,SRC.FinancialInstitutionId\r\n,0 AS WORKFLOWID\r\n,0 AS TASKRUNID\r\n,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS INSERTDTTM\r\nFROM #TEMP_BNKM_CustomerAccountFinancialProduct SRC\r\nJOIN #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA DELTA \r\nON DELTA.CustomerAccountId = SRC.CustomerAccountId\r\n AND DELTA.ProductId = SRC.ProductId\r\n  AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\r\n   AND DELTA.SourceSystemCode = SRC.SourceSystemCode\r\nWHERE DELTA.RECORD_STATUS IN ('UPDATE','INSERT');\r\n\r\nDROP TABLE #TEMP_BNKM_CustomerAccountFinancialProduct;\r\nDROP TABLE #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA;\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ALTER SP_CustomerAccountFinancialProduct_DEP",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CustomerAccountFinancialProduct_DEP] AS \r\nBEGIN\r\n\r\n--------------GET DELTA FROM BUSC\r\nWITH TEMP_BNKM_CustomerAccountFinancialProduct AS \r\n(\r\nSELECT\r\n\tBDG.FORACID AS CustomerAccountId\r\n\t,BDG.ACCT_OPN_DATE AS PeriodStartDate\r\n\t,BDG.ACCT_CLS_DATE AS PeriodEndDate\r\n\t,BDG.SCHM_CODE AS ProductId\r\n\t,BDG.ACCT_CRNCY_CODE AS IsoCurrencyCode\r\n\t,NULL AS UsageCategoryId\r\n\t,NULL AS CommitmentId\r\n\t,BDG.SCHM_TYPE AS FcbsApplication\r\n\t,'DEP' AS SourceSystemCode\r\n\t,BDG.BANK_ID AS FinancialInstitutionId\r\n\t,0 AS WorkFlowId\r\n\t,0 AS TaskRunId\r\n\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS [InsertDttm]\r\nFROM BUSC.DEP_GENERALACCOUNTMASTER BDG WHERE BDG.ISLATEST = 1 \r\n)\r\nSELECT * INTO #TEMP_BNKM_CustomerAccountFinancialProduct FROM TEMP_BNKM_CustomerAccountFinancialProduct;\r\n\r\n-------------CHECK IF THERE IS DELTA \r\nWITH\r\nTEMP_BNKM_CustomerAccountFinancialProduct_SRC\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nconvert(varchar,CustomerAccountId)\r\n,convert(date,PeriodStartDate)\r\n,convert(varchar,ProductId)\r\n,convert(varchar,IsoCurrencyCode)\r\n,convert(varchar,FcbsApplication)\r\n,convert(varchar,FinancialInstitutionId)\r\n,convert(varchar,SourceSystemCode)\r\n)) HASHROW, CustomerAccountId, ProductId, FinancialInstitutionId, SourceSystemCode\r\nFROM #TEMP_BNKM_CustomerAccountFinancialProduct \r\n)\r\n,\r\nTEMP_BNKM_CustomerAccountFinancialProduct_TGT\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nconvert(varchar,CustomerAccountId)\r\n,convert(date,PeriodStartDate)\r\n,convert(varchar,ProductId)\r\n,convert(varchar,IsoCurrencyCode)\r\n,convert(varchar,FcbsApplication)\r\n,convert(varchar,FinancialInstitutionId)\r\n,convert(varchar,SourceSystemCode)\r\n)) HASHROW, CustomerAccountId, ProductId, FinancialInstitutionId, SourceSystemCode\r\nFROM BNKM.CustomerAccountFinancialProduct WHERE SourceSystemCode = 'DEP'\t\r\n)\r\n,\r\nTEMP_BNKM_CustomerAccountFinancialProduct_DELTA\r\nAS\r\n(\r\nSELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n\t,ISNULL(SRC.CustomerAccountId,TGT.CustomerAccountId) AS CustomerAccountId\r\n    ,ISNULL(SRC.ProductId,TGT.ProductId) AS ProductId\r\n    ,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n    ,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\r\n\t,CASE\r\n\t\tWHEN TGT.HASHROW IS NULL THEN 'INSERT'\r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\t\tELSE NULL END AS RECORD_STATUS\r\n\t\r\nFROM TEMP_BNKM_CustomerAccountFinancialProduct_SRC\tSRC\r\nLEFT JOIN TEMP_BNKM_CustomerAccountFinancialProduct_TGT\tTGT\r\nON\tconvert(varchar,SRC.CustomerAccountId) = convert(varchar,TGT.CustomerAccountId)\r\nAND SRC.ProductId = TGT.ProductId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA FROM TEMP_BNKM_CustomerAccountFinancialProduct_DELTA;\r\n\r\n----UPDATE RECORDS to BNKM\r\nUPDATE TGT \r\nSET\r\nPeriodEndDate =  CONVERT(DATE,DATEADD(day,-1,CONVERT(VARCHAR,SRC.PeriodStartDate)))\r\nFROM BNKM.CustomerAccountFinancialProduct TGT\r\nJOIN #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA DELTA\r\n ON DELTA.CustomerAccountId = TGT.CustomerAccountId \r\n AND DELTA.ProductId = TGT.ProductId \r\n AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId \r\n AND DELTA.SourceSystemCode = TGT.SourceSystemCode \r\n\t  AND  DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CustomerAccountFinancialProduct SRC \r\n ON SRC.CustomerAccountId = TGT.CustomerAccountId\r\n  AND SRC.ProductId = TGT.ProductId\r\n   AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\n    AND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE TGT.PeriodEndDate = '9999-12-31'\r\n\r\n\r\n\r\n-------------INSERT RECORDS TO BNKM\r\nINSERT INTO BNKM.CustomerAccountFinancialProduct  ( \r\nCustomerAccountId\r\n,PeriodStartDate\r\n,PeriodEndDate\r\n,ProductId\r\n,IsoCurrencyCode\r\n,UsageCategoryId\r\n,CommitmentId\r\n,FcbsApplication\r\n,SourceSystemCode\r\n,FinancialInstitutionId\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm)\r\n\r\nSELECT \r\nSRC.CustomerAccountId AS CustomerAccountId\r\n,CONVERT(DATE,CONVERT(VARCHAR,SRC.PeriodStartDate)) AS PeriodStartDate\r\n,'9999-12-31' AS PeriodEndDate\r\n,SRC.ProductId AS ProductId\r\n,SRC.IsoCurrencyCode AS IsoCurrencyCode\r\n,NULL AS UsageCategoryId\r\n,NULL AS CommitmentId\r\n,SRC.FcbsApplication AS FcbsApplication\r\n,'DEP' AS SourceSystemCode\r\n,SRC.FinancialInstitutionId AS FinancialInstitutionId\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,SRC.InsertDttm AS InsertDttm\r\nFROM #TEMP_BNKM_CustomerAccountFinancialProduct SRC\r\nJOIN #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA DELTA\r\nON DELTA.CustomerAccountId = SRC.CustomerAccountId\r\n AND DELTA.ProductId = SRC.ProductId\r\n  AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\r\n   AND DELTA.SourceSystemCode = SRC.SourceSystemCode\r\nWHERE DELTA.RECORD_STATUS IN ('UPDATE','INSERT');\r\n\r\nDROP TABLE #TEMP_BNKM_CustomerAccountFinancialProduct;\r\nDROP TABLE #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA;\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ALTER SP_CUSTOMERACCOUNTFINANCIALPRODUCT_LNS",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CUSTOMERACCOUNTFINANCIALPRODUCT_LNS] AS\r\nBEGIN\r\n--GET DELTA FROM BUSC\r\nWITH TEMP_BNKM_CustomerAccountFinancialProduct\r\nAS(\r\nSELECT\r\nBLG.FORACID AS CustomerAccountId\r\n,BLG.ACCT_OPN_DATE AS PeriodStartDate\r\n,BLG.ACCT_CLS_DATE AS PeriodEndDate\r\n,BLG.SCHM_CODE AS ProductId\r\n,BLG.ACCT_CRNCY_CODE AS IsoCurrencyCode\r\n,BLG.SCHM_TYPE AS FcbsApplication\r\n,BLG.BANK_ID AS FinancialInstitutionId\r\n,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS [InsertDttm]\r\n,'LNS' AS SourceSystemCode\r\nFROM BUSC.LNS_GENERALACCTMAST BLG WHERE BLG.ISLATEST = '1'\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerAccountFinancialProduct FROM TEMP_BNKM_CustomerAccountFinancialProduct;\r\n\r\n--CHECK IF THERE IS DELTA\r\nWITH TEMP_BNKM_CustomerAccountFinancialProduct_SRC\r\nAS(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nconvert(varchar,CustomerAccountId)\r\n,convert(date,PeriodStartDate)\r\n,convert(varchar,ProductId)\r\n,convert(varchar,IsoCurrencyCode)\r\n,convert(varchar,FcbsApplication)\r\n,convert(varchar,FinancialInstitutionId)\r\n,convert(varchar,SourceSystemCode)\r\n)) HASHROW, CustomerAccountId, ProductId, FinancialInstitutionId, SourceSystemCode\r\nFROM #TEMP_BNKM_CustomerAccountFinancialProduct\r\n)\r\n,\r\n\r\nTEMP_BNKM_CustomerAccountFinancialProduct_TGT\r\nAS(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nconvert(varchar,CustomerAccountId)\r\n,convert(date,PeriodStartDate)\r\n,convert(varchar,ProductId)\r\n,convert(varchar,IsoCurrencyCode)\r\n,convert(varchar,FcbsApplication)\r\n,convert(varchar,FinancialInstitutionId)\r\n,convert(varchar,SourceSystemCode)\r\n))HASHROW, CustomerAccountId, ProductId, FinancialInstitutionId, SourceSystemCode\r\nFROM BNKM.CustomerAccountFinancialProduct WHERE  SourceSystemCode = 'LNS'\r\n)\r\n,\r\n\r\nTEMP_BNKM_CustomerAccountFinancialProduct_DELTA\r\nAS(\r\nSELECT\r\nSRC.HASHROW AS SRC_HR\r\n,TGT.HASHROW AS TGT_HR\r\n,ISNULL(SRC.CustomerAccountId,TGT.CustomerAccountId) AS CustomerAccountId\r\n    ,ISNULL(SRC.ProductId,TGT.ProductId) AS ProductId\r\n    ,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n    ,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\r\n,CASE\r\n\tWHEN TGT.HASHROW IS NULL THEN 'INSERT'  \r\n    WHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n    ELSE NULL END AS RECORD_STATUS\r\n\r\nFROM TEMP_BNKM_CustomerAccountFinancialProduct_SRC SRC\r\nLEFT JOIN TEMP_BNKM_CustomerAccountFinancialProduct_TGT TGT\r\nON SRC.CustomerAccountId = TGT.CustomerAccountId\r\nAND SRC.ProductId = TGT.ProductId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\r\n)\r\nSELECT * INTO #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA FROM TEMP_BNKM_CustomerAccountFinancialProduct_DELTA;\r\n\r\n--UPDATE RECORDS TO BNKM\r\n\r\nUPDATE TGT\r\nSET\r\nPeriodEndDate =  CONVERT(DATE,DATEADD(day,-1,CONVERT(VARCHAR,SRC.PeriodStartDate)))\r\nFROM BNKM.CustomerAccountFinancialProduct TGT\r\nJOIN #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA DELTA\r\n ON DELTA.CustomerAccountId = TGT.CustomerAccountId \r\n AND DELTA.ProductId = TGT.ProductId \r\n AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId \r\n AND DELTA.SourceSystemCode = TGT.SourceSystemCode \r\n  AND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CustomerAccountFinancialProduct SRC\r\n ON SRC.CustomerAccountId = TGT.CustomerAccountId\r\n  AND SRC.ProductId = TGT.ProductId\r\n   AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\n    AND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE TGT.PeriodEndDate = '9999-12-31T00:00:00.0000000'\r\n\r\n--INSERT RECORDS TO BNKM\r\nINSERT INTO BNKM.CustomerAccountFinancialProduct\r\n(\r\nCustomerAccountId\r\n,PeriodStartDate\r\n,PeriodEndDate\r\n,ProductId\r\n,IsoCurrencyCode\r\n,UsageCategoryId\r\n,CommitmentId\r\n,FcbsApplication\r\n,FinancialInstitutionId\r\n,SourceSystemCode\r\n,WORKFLOWID\r\n,TASKRUNID\r\n,INSERTDTTM\r\n)\r\n\r\nSELECT\r\nSRC.CustomerAccountId AS CustomerAccountId\r\n,SRC.PeriodStartDate AS PeriodStartDate\r\n,SRC.PeriodEndDate AS PeriodEndDate\r\n,SRC.ProductId AS ProductId\r\n,SRC.IsoCurrencyCode AS IsoCurrencyCode\r\n,NULL AS UsageCategoryId\r\n,NULL AS CommitmentId\r\n,SRC.FcbsApplication AS FcbsApplication\r\n,SRC.FinancialInstitutionId AS FinancialInstitutionId\r\n,'LNS' AS SourceSystemCode\r\n,0 AS WORKFLOWID\r\n,0 AS TASKRUNID\r\n,SRC.INSERT_DTTM AS INSERTDTTM\r\nFROM #TEMP_BNKM_CustomerAccountFinancialProduct SRC\r\nJOIN #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA DELTA\r\nON DELTA.CustomerAccountId = SRC.CustomerAccountId\r\n AND DELTA.ProductId = SRC.ProductId\r\n  AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\r\n   AND DELTA.SourceSystemCode = SRC.SourceSystemCode\r\nWHERE DELTA.RECORD_STATUS IN ('UPDATE','INSERT');\r\n\r\nDROP TABLE #TEMP_BNKM_CustomerAccountFinancialProduct;\r\nDROP TABLE #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA;\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ALTER SP_CUSTOMERACCOUNTFINANCIALPRODUCT_SEC",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CUSTOMERACCOUNTFINANCIALPRODUCT_SEC] AS\r\nBEGIN\r\n--GET DELTA FROM BUSC\r\n\r\nWITH TEMP_BNKM_CustomerAccountFinancialProduct\r\nAS(\r\n    SELECT\r\n     BST.ACCTCODE AS CustomerAccountId\r\n    ,BST.DATE_OPEN AS PeriodStartDate\r\n    ,BST.DATE_UPDATED AS PeriodEndDate\r\n    ,'Securities' AS ProductId\r\n    ,BST.CURRCODE AS IsoCurrencyCode\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS [InsertDttm]\r\n    ,'SEC' AS SourceSystemCode\r\n    ,BST.BNK_CODE AS FinancialInstitutionId\r\n    FROM BUSC.SEC_TBLACCOUNTS BST where BST.ISLATEST = '1'\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerAccountFinancialProduct FROM TEMP_BNKM_CustomerAccountFinancialProduct;\r\n\r\n--CHECK IF THERE IS DELTA\r\nWITH TEMP_BNKM_CustomerAccountFinancialProduct_SRC\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     convert(varchar,CustomerAccountId)\r\n    ,convert(date,PeriodStartDate)\r\n    ,convert(char,IsoCurrencyCode)\r\n    )) HASHROW, CustomerAccountId, ProductId, FinancialInstitutionId, SourceSystemCode\r\n    FROM #TEMP_BNKM_CustomerAccountFinancialProduct \r\n),\r\n\r\nTEMP_BNKM_CustomerAccountFinancialProduct_TGT\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     convert(varchar,CustomerAccountId)\r\n    ,convert(date,PeriodStartDate)\r\n    ,convert(char,IsoCurrencyCode)\r\n    )) HASHROW, CustomerAccountId, ProductId, FinancialInstitutionId, SourceSystemCode\r\n    FROM BNKM.CustomerAccountFinancialProduct\r\n    WHERE SourceSystemCode = 'SEC'\r\n),\r\n\r\nTEMP_BNKM_CustomerAccountFinancialProduct_DELTA\r\nAS(\r\n    SELECT\r\n    SRC.HASHROW AS SRC_HR\r\n    ,TGT.HASHROW AS TGT_HR\r\n    ,ISNULL(SRC.CustomerAccountId, TGT.CustomerAccountId) AS CustomerAccountId\r\n    ,ISNULL(SRC.ProductId, TGT.ProductId) AS ProductId\r\n    ,ISNULL(SRC.FinancialInstitutionId, TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n    ,ISNULL(SRC.SourceSystemCode, TGT.SourceSystemCode) AS SourceSystemCode\r\n    ,CASE\r\n         WHEN TGT.HASHROW IS NULL THEN 'INSERT'  \r\n        WHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n        ELSE NULL END AS RECORD_STATUS\r\n\r\n    FROM TEMP_BNKM_CustomerAccountFinancialProduct_SRC SRC\r\n    LEFT JOIN TEMP_BNKM_CustomerAccountFinancialProduct_TGT TGT\r\nON SRC.CustomerAccountId = TGT.CustomerAccountId\r\nAND SRC.ProductId = TGT.ProductId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL \r\n)\r\nSELECT * INTO #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA FROM TEMP_BNKM_CustomerAccountFinancialProduct_DELTA\r\n\r\n--UPDATE RECORDS TO BNKM\r\n\r\nUPDATE TGT\r\nSET\r\nPeriodEndDate =  CONVERT(DATE,DATEADD(day,-1,CONVERT(VARCHAR,SRC.PeriodStartDate)))\r\nFROM BNKM.CustomerAccountFinancialProduct TGT\r\nJOIN #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA DELTA\r\n  ON DELTA.CustomerAccountId = TGT.CustomerAccountId \r\n AND DELTA.ProductId = TGT.ProductId \r\n AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId \r\n AND DELTA.SourceSystemCode = TGT.SourceSystemCode \r\n AND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CustomerAccountFinancialProduct SRC \r\nON SRC.CustomerAccountId = TGT.CustomerAccountId\r\n  AND SRC.ProductId = TGT.ProductId\r\n   AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\n    AND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE TGT.PeriodEndDate = '9999-12-31';\r\n\r\n--INSERT RECORDS WITH UPDATE\r\n\r\n\r\n\r\n\r\n--INSERT RECORDS TO BNKM\r\n\r\nINSERT INTO BNKM.CustomerAccountFinancialProduct(\r\nCustomerAccountId\r\n,PeriodStartDate\r\n,PeriodEndDate\r\n,ProductId\r\n,IsoCurrencyCode\r\n,UsageCategoryId\r\n,CommitmentId\r\n,SourceSystemCode\r\n,FinancialInstitutionId\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\n\r\nSELECT \r\nSRC.CustomerAccountId AS CustomerAccountId\r\n,SRC.PeriodStartDate AS PeriodStartDate\r\n,SRC.PeriodEndDate AS PeriodEndDate\r\n,'Securities' AS ProductId\r\n,SRC.IsoCurrencyCode AS IsoCurrencyCode\r\n,NULL AS UsageCategoryId\r\n,NULL AS CommitmentId\r\n,'SEC' AS SourceSystemCode\r\n,SRC.FinancialInstitutionId\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,SRC.InsertDttm AS InsertDttm\r\nFROM #TEMP_BNKM_CustomerAccountFinancialProduct SRC\r\nJOIN #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA DELTA \r\nON DELTA.CustomerAccountId = SRC.CustomerAccountId\r\n AND DELTA.ProductId = SRC.ProductId\r\n  AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\r\n   AND DELTA.SourceSystemCode = SRC.SourceSystemCode\r\nWHERE DELTA.RECORD_STATUS IN ('UPDATE','INSERT');\r\n\r\nDROP TABLE #TEMP_BNKM_CustomerAccountFinancialProduct;\r\nDROP TABLE #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA;\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ALTER SP_CUSTOMERACCOUNTFINANCIALPRODUCT_TRU",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CUSTOMERACCOUNTFINANCIALPRODUCT_TRU] AS\r\nBEGIN\r\n--GET DELTA FROM BUSC\r\nWITH TEMP_BNKM_CustomerAccountFinancialProduct\r\nAS(\r\n    SELECT DISTINCT\r\n    BTP.PORTFOLIO_NO AS CustomerAccountId\r\n    ,BTP.AUTH_DATE AS PeriodStartDate\r\n    ,BTP.PROD_CODE AS ProductId\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS [InsertDttm]\r\n    ,BTP.BNK_CODE  AS FinancialInstitutionId\r\n    ,'TRU' AS SourceSystemCode\r\n    FROM BUSC.TRU_PORTFOLIO BTP\r\n    WHERE BTP.isLatest = '1'\r\n  )\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerAccountFinancialProduct FROM TEMP_BNKM_CustomerAccountFinancialProduct;\r\n\r\n--CHECK IF THERE IS DELTA\r\nWITH TEMP_BNKM_CustomerAccountFinancialProduct_SRC\r\nAS(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nconvert(varchar,CustomerAccountId)\r\n    ,convert(date,PeriodStartDate)\r\n    ,convert(varchar,ProductId)\r\n))  HASHROW, CustomerAccountId, ProductId, FinancialInstitutionId, SourceSystemCode\r\nFROM #TEMP_BNKM_CustomerAccountFinancialProduct\r\n)\r\n,\r\nTEMP_BNKM_CustomerAccountFinancialProduct_TGT\r\nAS(\r\n SELECT\r\n HASHBYTES('MD5',CONCAT(\r\n convert(varchar,CustomerAccountId)\r\n    ,convert(date,PeriodStartDate)\r\n    ,convert(varchar,ProductId)\r\n    )) HASHROW, CustomerAccountId, ProductId, FinancialInstitutionId, SourceSystemCode\r\n  FROM BNKM.CustomerAccountFinancialProduct\r\n   WHERE SourceSystemCode = 'TRU'\r\n),\r\n\r\nTEMP_BNKM_CustomerAccountFinancialProduct_DELTA\r\nAS(\r\nSELECT\r\nSRC.HASHROW AS SRC_HR\r\n,TGT.HASHROW AS TGT_HR\r\n,ISNULL(SRC.CustomerAccountId, TGT.CustomerAccountId) AS CustomerAccountId\r\n    ,ISNULL(SRC.ProductId, TGT.ProductId) AS ProductId\r\n    ,ISNULL(SRC.FinancialInstitutionId, TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n    ,ISNULL(SRC.SourceSystemCode, TGT.SourceSystemCode) AS SourceSystemCode\r\n,CASE\r\n   WHEN TGT.HASHROW IS NULL THEN 'INSERT'  \r\n    WHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n    ELSE NULL END AS RECORD_STATUS\r\n\r\nFROM TEMP_BNKM_CustomerAccountFinancialProduct_SRC SRC\r\nLEFT JOIN TEMP_BNKM_CustomerAccountFinancialProduct_TGT TGT\r\nON SRC.CustomerAccountId = TGT.CustomerAccountId\r\nAND SRC.ProductId = TGT.ProductId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL \r\n)\r\nSELECT * INTO #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA FROM TEMP_BNKM_CustomerAccountFinancialProduct_DELTA;\r\n\r\n--UPDATE RECORDS TO BNKM\r\n\r\nUPDATE TGT\r\nSET\r\nPeriodEndDate =  CONVERT(DATE,DATEADD(day,-1,CONVERT(VARCHAR,SRC.PeriodStartDate)))\r\nFROM BNKM.CustomerAccountFinancialProduct TGT\r\nJOIN #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA DELTA \r\nON DELTA.CustomerAccountId = TGT.CustomerAccountId \r\n AND DELTA.ProductId = TGT.ProductId \r\n AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId \r\n AND DELTA.SourceSystemCode = TGT.SourceSystemCode \r\nAND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CustomerAccountFinancialProduct SRC \r\n ON SRC.CustomerAccountId = TGT.CustomerAccountId\r\n  AND SRC.ProductId = TGT.ProductId\r\n   AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\n    AND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE TGT.PeriodEndDate = '9999-12-31'\r\n\r\n\r\n\r\n\r\n\r\n--INSERT RECORDS TO BNKM\r\nINSERT INTO BNKM.CustomerAccountFinancialProduct(\r\nCustomerAccountId\r\n,PeriodStartDate\r\n,PeriodEndDate\r\n,ProductId\r\n,IsoCurrencyCode\r\n,UsageCategoryId\r\n,CommitmentId\r\n,SourceSystemCode\r\n,FinancialInstitutionId\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\n\r\nSELECT\r\nSRC.CustomerAccountId AS CustomerAccountId\r\n,SRC.PeriodStartDate AS PeriodStartDate\r\n,'9999-12-31' AS PeriodEndDate\r\n,SRC.ProductId AS ProductId\r\n,NULL AS IsoCurrencyCode\r\n,NULL AS UsageCategoryId\r\n,NULL AS CommitmentId\r\n,'TRU' AS SourceSystemCode\r\n,SRC.FinancialInstitutionId\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,SRC.InsertDttm AS INSERTDTTM\r\nFROM #TEMP_BNKM_CustomerAccountFinancialProduct SRC\r\nJOIN #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA DELTA \r\nON DELTA.CustomerAccountId = SRC.CustomerAccountId\r\n AND DELTA.ProductId = SRC.ProductId\r\n  AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\r\n   AND DELTA.SourceSystemCode = SRC.SourceSystemCode\r\nWHERE DELTA.RECORD_STATUS IN ('UPDATE','INSERT');\r\n\r\nDROP TABLE #TEMP_BNKM_CustomerAccountFinancialProduct;\r\nDROP TABLE #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA;\r\n\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Execute Patch",
+				"type": "ExecutePipeline",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Patch",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"table": "BNKM.CustomerAccountFinancialProduct",
+						"col": "PeriodEndDate"
+					}
+				}
+			},
+			{
+				"name": "CCD_PATCH",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "ALTER SP_CUSTOMERACCOUNTFINANCIALPRODUCT_CCD",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Patch_SRC",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"table": "BNKM.CustomerAccountFinancialProduct",
+						"field": "PeriodEndDate",
+						"src_field": "SourceSystemCode",
+						"src": "CCD"
+					}
+				}
+			},
+			{
+				"name": "SEC_PATCH",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "ALTER SP_CUSTOMERACCOUNTFINANCIALPRODUCT_SEC",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Patch_SRC",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"table": "BNKM.CustomerAccountFinancialProduct",
+						"field": "PeriodEndDate",
+						"src_field": "SourceSystemCode",
+						"src": "SEC"
+					}
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-02-20T01:29:20Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

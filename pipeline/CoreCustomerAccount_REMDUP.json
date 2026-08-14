@@ -1,0 +1,351 @@
+{
+	"name": "CoreCustomerAccount_REMDUP",
+	"properties": {
+		"activities": [
+			{
+				"name": "Count SRC Dups",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT CustomerAccountId, FinancialInstitutionId,SourceSystemCode, count(1) cnt\nFROM bnkm.CoreCustomerAccount -- WHERE CUSTOMERACCOUNTID = ''\nGROUP BY CustomerAccountId, FinancialInstitutionId,SourceSystemCode\nHAVING count(1) > 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Create Temp",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Count SRC Dups",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT ROW_NUMBER() OVER(PARTITION BY  CustomerAccountId, FinancialInstitutionId,SourceSystemCode ORDER BY CustomerAccountId DESC, INSERTDTTM DESC ) RN , --define PKs in partition by\n* INTO Bnkm.CoreCustomerAccount_WITH_DUP_20240319  --Name of backup table to store duplicate records\nFROM bnkm.CoreCustomerAccount;\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Count Temp Dups",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Create Temp",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(*) CNT FROM Bnkm.CoreCustomerAccount_WITH_DUP_20240319 "
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Count Records",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Count Temp Dups",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(*) CNT FROM bnkm.CoreCustomerAccount"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Truncate",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "TRUNCATE TABLE bnkm.CoreCustomerAccount;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Insert",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Truncate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "INSERT INTO bnkm.CoreCustomerAccount --Target table to remove duplicate\nSELECT  \nCustomerAccountId\n,AccountNumber\n,AccountOwnershipId\n,AccountReportCode\n,ClosedAccountIndicator\n,ChequeAllowedIndicator\n,PassbookPassSheetCode\n,CollectServiceChargeIndicator\n,AccountTurnoverDetailsEnabledIndicator\n,NominationAvailableIndicator\n,AccountLocationCodeId\n,InterestPaidIndicator\n,InterestCollectedIndicator\n,AccountAmountInfo\n,LimitB2KId\n,DrawingPowerIndicator\n,DrawingPowerPercentage\n,MicrChequeChargeCollectionIndicator\n,LastTurnoverDate\n,NotionalRate\n,NotionalRateId\n,ForeignDepartmentReferenceNumber\n,AnywhereNonCustAllowedIndicator\n,AccountClassificationId\n,SystemOnlyAccountIndicator\n,SingleTransactionIndicator\n,InterBranchAccessIndicator\n,PurgeAllowedIndicator\n,MinimumValueDate\n,SwiftAllowedIndicator\n,DaccLimitPercentage\n,DaccAbsoluteLimitAmount\n,ChargeLevelCode\n,AccountClosureCharges\n,PartitionedIndicator\n,PdbDownloadIndicator\n,PbfDelinkDate\n,InterestAdjustmentForDeductionIndicator\n,NativeLanguageName\n,NativeLanguageTitleCode\n,LanguageId\n,PoolId\n,SweepFacilityAllowedIndicator\n,OrderOfUtilization\n,DsaPenalIndicator\n,ProductGroupId\n,AccountCreationModeId\n,DafaLimitPercentage\n,LoanAgainstColateralIndicator\n,PreferredCalendarBase\n,AdditionalCalendarBase\n,MudarabahPoolAccountIndicator\n,AlternativeAccountName\n,ExternalPricingId\n,AccountModIndicator\n,ChequeProvidedByBankIndicator\n,ChequeValidityPeriodMonths\n,ChequeValidityPeriodDays\n,AccountOwnershipTransferAge\n,CourtesyOverdraftIndicator\n,RequiredMinimumDistributionAmount\n,RequiredMinimumDistributionTenor\n,BlockedAmount\n,ConsolidatedBalanceIndicator\n,DebitInterestPrenotificationRequiredIndicator\n,DebitInterestPrenotificationPeriod\n,ChargePrenotificationIndicator\n,TargetBalanceForSweeps\n,CheckFundsAvailableSetId\n,ChequeReorderAllowedIndicator\n,DebitInterestMethodId\n,CollectChargesForSweepsRegularizationIndicator\n,SweepChargeCollectAccountIndicator\n,FinancialInstitutionId\n,SignatureMandate1\n,SignatureMandate3\n,SecuredExposurePercentage\n,DebtSeniorityTypeId\n,SecurityTypeId\n,InterestDebitAccountIndicator\n,InterestCreditAccountIndicator\n,PastDueIndicator\n,DemandPastDueCounter\n,DailyCompoundingInterestIndicator\n,CompoundingRestIndicator\n,RuleId\n,SecuredFacilityIndicator\n,MarkupInterestRateApplicableIndicator\n,AnnualPercentageYield\n,InterestCompoundingFrequencyId\n,InterestCompoundingRestIndicator\n,DiscountedRateIndicator\n,KonformnaIndicator\n,SOURCESYSTEMCODE\n,WORKFLOWID\n,TASKRUNID\n,INSERTDTTM\n\nFROM Bnkm.CoreCustomerAccount_WITH_DUP_20240319 -- Name of backup table to store duplicate records\nWHERE RN = 1;\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Check for dups",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Insert",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT CustomerAccountId, FinancialInstitutionId,SourceSystemCode, count(1) CNT\nFROM bnkm.CoreCustomerAccount -- WHERE CUSTOMERACCOUNTID = ''\nGROUP BY CustomerAccountId, FinancialInstitutionId,SourceSystemCode\nHAVING count(1) > 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Count records with dups",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Check for dups",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(*) CNT FROM Bnkm.CoreCustomerAccount_WITH_DUP_20240319"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Count new target",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Count records with dups",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(*) CNT FROM Bnkm.CoreCustomerAccount"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Create BU",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT  \nCustomerAccountId\n,AccountNumber\n,AccountOwnershipId\n,AccountReportCode\n,ClosedAccountIndicator\n,ChequeAllowedIndicator\n,PassbookPassSheetCode\n,CollectServiceChargeIndicator\n,AccountTurnoverDetailsEnabledIndicator\n,NominationAvailableIndicator\n,AccountLocationCodeId\n,InterestPaidIndicator\n,InterestCollectedIndicator\n,AccountAmountInfo\n,LimitB2KId\n,DrawingPowerIndicator\n,DrawingPowerPercentage\n,MicrChequeChargeCollectionIndicator\n,LastTurnoverDate\n,NotionalRate\n,NotionalRateId\n,ForeignDepartmentReferenceNumber\n,AnywhereNonCustAllowedIndicator\n,AccountClassificationId\n,SystemOnlyAccountIndicator\n,SingleTransactionIndicator\n,InterBranchAccessIndicator\n,PurgeAllowedIndicator\n,MinimumValueDate\n,SwiftAllowedIndicator\n,DaccLimitPercentage\n,DaccAbsoluteLimitAmount\n,ChargeLevelCode\n,AccountClosureCharges\n,PartitionedIndicator\n,PdbDownloadIndicator\n,PbfDelinkDate\n,InterestAdjustmentForDeductionIndicator\n,NativeLanguageName\n,NativeLanguageTitleCode\n,LanguageId\n,PoolId\n,SweepFacilityAllowedIndicator\n,OrderOfUtilization\n,DsaPenalIndicator\n,ProductGroupId\n,AccountCreationModeId\n,DafaLimitPercentage\n,LoanAgainstColateralIndicator\n,PreferredCalendarBase\n,AdditionalCalendarBase\n,MudarabahPoolAccountIndicator\n,AlternativeAccountName\n,ExternalPricingId\n,AccountModIndicator\n,ChequeProvidedByBankIndicator\n,ChequeValidityPeriodMonths\n,ChequeValidityPeriodDays\n,AccountOwnershipTransferAge\n,CourtesyOverdraftIndicator\n,RequiredMinimumDistributionAmount\n,RequiredMinimumDistributionTenor\n,BlockedAmount\n,ConsolidatedBalanceIndicator\n,DebitInterestPrenotificationRequiredIndicator\n,DebitInterestPrenotificationPeriod\n,ChargePrenotificationIndicator\n,TargetBalanceForSweeps\n,CheckFundsAvailableSetId\n,ChequeReorderAllowedIndicator\n,DebitInterestMethodId\n,CollectChargesForSweepsRegularizationIndicator\n,SweepChargeCollectAccountIndicator\n,FinancialInstitutionId\n,SignatureMandate1\n,SignatureMandate3\n,SecuredExposurePercentage\n,DebtSeniorityTypeId\n,SecurityTypeId\n,InterestDebitAccountIndicator\n,InterestCreditAccountIndicator\n,PastDueIndicator\n,DemandPastDueCounter\n,DailyCompoundingInterestIndicator\n,CompoundingRestIndicator\n,RuleId\n,SecuredFacilityIndicator\n,MarkupInterestRateApplicableIndicator\n,AnnualPercentageYield\n,InterestCompoundingFrequencyId\n,InterestCompoundingRestIndicator\n,DiscountedRateIndicator\n,KonformnaIndicator\n,SOURCESYSTEMCODE\n,WORKFLOWID\n,TASKRUNID\n,INSERTDTTM\nINTO bnkm.CoreCustomerAccount_BU_20240319 -- Name of backup table\nFROM Bnkm.CoreCustomerAccount \n;\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-03-19T13:44:36Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

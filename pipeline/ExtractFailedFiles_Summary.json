@@ -1,0 +1,66 @@
+{
+	"name": "ExtractFailedFiles_Summary",
+	"properties": {
+		"activities": [
+			{
+				"name": "List of File with Error - SUMMARY",
+				"type": "Copy",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlPoolSource",
+						"sqlReaderQuery": "WITH FILELIST AS (\r\nSELECT  \r\n    RunDate\r\n    ,StatusDescription\r\n    ,CASE \r\n        WHEN StatusDescription LIKE 'FAILED - ErrorCode=DelimitedTextMoreColumnsThanDefined%'\r\n        THEN NULLIF(SUBSTRING(ISNULL(StatusDescription,'')\r\n            ,CHARINDEX('CBC', ISNULL(StatusDescription,''))\r\n            ,CHARINDEX('.csv', ISNULL(StatusDescription,''))-CHARINDEX('CBC', ISNULL(StatusDescription,''))),'')\r\n        ELSE NULL\r\n    END as FileName\r\nFROM    d360.ExecutionLog_bu_20230120\r\nWHERE   StatusDescription <> 'SUCCESS')\r\n\r\nSELECT \r\n    RUNDATE\r\n    ,SUBSTRING(FILENAME,7,3) SOURCE_CODE\r\n    ,FILENAME\r\n    ,StatusDescription\r\nFROM FILELIST\r\nWHERE FILENAME IS NOT NULL",
+						"queryTimeout": "02:00:00"
+					},
+					"sink": {
+						"type": "DelimitedTextSink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"formatSettings": {
+							"type": "DelimitedTextWriteSettings",
+							"quoteAllText": true,
+							"fileExtension": ".txt"
+						}
+					},
+					"enableStaging": false,
+					"translator": {
+						"type": "TabularTranslator",
+						"typeConversion": true,
+						"typeConversionSettings": {
+							"allowDataTruncation": true,
+							"treatBooleanAsNumber": false
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "ExecutionLogTable",
+						"type": "DatasetReference"
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "ListOfFailedFile",
+						"type": "DatasetReference",
+						"parameters": {
+							"folderpath": "dev/BAD",
+							"filelist": "@concat('SUMMARY_OF_FAILED_FILES_',substring(replace(replace(replace(addHours(utcnow(),+8),'-',''),'T','_'),':',''),0,15),'.csv')"
+						}
+					}
+				]
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-01-24T10:07:55Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

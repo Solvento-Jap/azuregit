@@ -1,0 +1,542 @@
+{
+	"name": "GENERAL_LEDGER_FACT_EAB_LOADTOSTG",
+	"properties": {
+		"activities": [
+			{
+				"name": "GLD_EODACCTBALTABLE_getfile_CBC01",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('CBC01_GLD_EODACCTBALTABLE_*',pipeline().parameters.DateToProcess,'*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/GLD"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "File_Checking",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "GLD_EODACCTBALTABLE_getfile_CBC01",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "GLD_EODACCTBALTABLE_getfile_CBC02",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@empty(activity('GLD_EODACCTBALTABLE_getfile_CBC01').output.childItems)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "GLD_EODACCTBALTABLE",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@pipeline().TriggerTime",
+												"type": "Expression"
+											}
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/GLD",
+										"wildcardFileName": {
+											"value": "@concat('*GLD_EODACCTBALTABLE_*',pipeline().parameters.DateToProcess,'*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": "TRUNCATE TABLE D360.STG_EDS_GLD_EODACCTBALTABLE",
+									"allowCopyCommand": true,
+									"tableOption": "autoCreate",
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									},
+									"path": "data360/dev/stg_synapse",
+									"enableCompression": true
+								},
+								"enableSkipIncompatibleRow": true,
+								"logSettings": {
+									"enableCopyActivityLog": true,
+									"copyActivityLogSettings": {
+										"logLevel": "Warning",
+										"enableReliableLogging": true
+									},
+									"logLocationSettings": {
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+											"type": "LinkedServiceReference"
+										},
+										"path": {
+											"value": "@concat('data360/dev/Logging/GLD/GLD_EODACCTBALTABLE/',substring(replace(replace(replace(addHours(utcnow(),+8),'-',''),'T','_'),':',''),0,15))",
+											"type": "Expression"
+										}
+									}
+								},
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "H",
+												"type": "String"
+											},
+											"sink": {
+												"name": "H",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ACID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "EOD_DATE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "EOD_DATE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BANK_ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BANK_ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "TRAN_DATE_BAL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "TRAN_DATE_BAL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "TRAN_DATE_TOT_TRAN",
+												"type": "String"
+											},
+											"sink": {
+												"name": "TRAN_DATE_TOT_TRAN",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "VALUE_DATE_BAL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "VALUE_DATE_BAL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "VALUE_DATE_TOT_TRAN",
+												"type": "String"
+											},
+											"sink": {
+												"name": "VALUE_DATE_TOT_TRAN",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "END_EOD_DATE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "END_EOD_DATE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "LCHG_USER_ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "LCHG_USER_ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "LCHG_TIME",
+												"type": "DateTime",
+												"format": "yyyyMMddHHmmss"
+											},
+											"sink": {
+												"name": "LCHG_TIME",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "RCRE_USER_ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "RCRE_USER_ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "RCRE_TIME",
+												"type": "DateTime",
+												"format": "yyyyMMddHHmmss"
+											},
+											"sink": {
+												"name": "RCRE_TIME",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "TS_CNT",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "TS_CNT",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "EAB_CRNCY_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "EAB_CRNCY_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FILE_NAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm",
+												"type": "String"
+											},
+											"sink": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": " "
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_EDS_GLD_EODACCTBALTABLE"
+									}
+								}
+							]
+						},
+						{
+							"name": "SP_LOG_COPY_ACTIVITY_DTL",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "GLD_EODACCTBALTABLE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_LOG_COPY_ACTIVITY_DTL]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS_STG",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DatetoProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"dataread": {
+										"value": {
+											"value": "@activity('GLD_EODACCTBALTABLE').output.dataRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"datawritten": {
+										"value": {
+											"value": "@activity('GLD_EODACCTBALTABLE').output.dataWritten",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"filesread": {
+										"value": {
+											"value": "@activity('GLD_EODACCTBALTABLE').output.filesRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"sourcepeakconnections": {
+										"value": {
+											"value": "@activity('GLD_EODACCTBALTABLE').output.sourcePeakConnections",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsread": {
+										"value": {
+											"value": "@activity('GLD_EODACCTBALTABLE').output.rowsRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowscopied": {
+										"value": {
+											"value": "@activity('GLD_EODACCTBALTABLE').output.rowsCopied",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsskipped": {
+										"value": {
+											"value": "@activity('GLD_EODACCTBALTABLE').output.rowsSkipped",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"copyduration": {
+										"value": {
+											"value": "@activity('GLD_EODACCTBALTABLE').output.copyDuration",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"throughput": {
+										"value": {
+											"value": "@activity('GLD_EODACCTBALTABLE').output.throughput",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"redirectrowpath": {
+										"value": {
+											"value": "@activity('GLD_EODACCTBALTABLE').output.redirectRowPath",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"logfilepath": {
+										"value": {
+											"value": "@activity('GLD_EODACCTBALTABLE').output.logFilePath",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "File not found - GLD_EODACCTBALTABLE",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": {
+									"value": "File not found: GLD_EODACCTBALTABLE",
+									"type": "Expression"
+								},
+								"errorCode": {
+									"value": "404",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "GLD_EODACCTBALTABLE_getfile_CBC02",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('CBC01_GLD_EODACCTBALTABLEFULL_*',pipeline().parameters.DateToProcess,'*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/GLD"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			}
+		],
+		"parameters": {
+			"DateToProcess": {
+				"type": "string"
+			},
+			"tables": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-11-04T03:04:22Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

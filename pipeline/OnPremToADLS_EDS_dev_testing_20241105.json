@@ -1,0 +1,532 @@
+{
+	"name": "OnPremToADLS_EDS_dev_testing_20241105",
+	"properties": {
+		"activities": [
+			{
+				"name": "Set DateToProcess",
+				"type": "SetVariable",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "MovToArchive_EDS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_datetoprocessed",
+					"value": {
+						"value": "@pipeline().parameters.DatetoProcessed",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Set Tables",
+				"type": "SetVariable",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Set DateToProcess",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_tables",
+					"value": {
+						"value": "@concat('*',pipeline().parameters.tables)",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "MovToArchive_EDS",
+				"type": "ExecutePipeline",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "MovToArchive_EDS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"tables": {
+							"value": "@pipeline().parameters.tables",
+							"type": "Expression"
+						},
+						"src_sys": {
+							"value": "@pipeline().parameters.src_sys",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "CBC02",
+				"type": "Copy",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Failed",
+				"dependsOn": [
+					{
+						"activity": "Set Tables",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "BinarySource",
+						"storeSettings": {
+							"type": "SftpReadSettings",
+							"recursive": false,
+							"wildcardFolderPath": {
+								"value": "@concat('data360/uat/CBC02/',replace(pipeline().parameters.src_sys,'RIB','EBK'),'/encrypt')",
+								"type": "Expression"
+							},
+							"wildcardFileName": {
+								"value": "@concat(variables('v_tables'),'_*',variables('v_datetoprocessed'),'*')",
+								"type": "Expression"
+							},
+							"deleteFilesAfterCompletion": false,
+							"disableChunking": false
+						},
+						"formatSettings": {
+							"type": "BinaryReadSettings"
+						}
+					},
+					"sink": {
+						"type": "BinarySink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						}
+					},
+					"enableStaging": false,
+					"skipErrorFile": {
+						"fileMissing": false
+					},
+					"logSettings": {
+						"enableCopyActivityLog": true,
+						"copyActivityLogSettings": {
+							"logLevel": "Warning",
+							"enableReliableLogging": false
+						},
+						"logLocationSettings": {
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+								"type": "LinkedServiceReference"
+							},
+							"path": "data360/dev/Skip_logs"
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SFTP_OnPrem",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filepath": " ",
+							"Filename": " "
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SFTP_ADLS",
+						"type": "DatasetReference"
+					}
+				]
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_ARCHIVE",
+				"type": "SqlPoolStoredProcedure",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Set v_error_desc",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_STG_EDS_',replace(pipeline().parameters.tables,'''',''))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_STG",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@pipeline().parameters.DatetoProcessed",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Set v_error_desc",
+				"type": "SetVariable",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "MovToArchive_EDS",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_error_desc",
+					"value": {
+						"value": "@activity('MovToArchive_EDS').Error.message",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_COPYDATA_CBC01",
+				"type": "SqlPoolStoredProcedure",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Set v_error_desc_copy_data_CBC01",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_STG_EDS_',replace(pipeline().parameters.tables,'''',''))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_STG",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@pipeline().parameters.DatetoProcessed",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Set v_error_desc_copy_data_CBC01",
+				"type": "SetVariable",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "CBC01",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_error_desc",
+					"value": {
+						"value": "@activity('CBC01').Error.message",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_COPYDATA_CBC02",
+				"type": "SqlPoolStoredProcedure",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Set v_error_desc_copy_data_CBC02",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_STG_EDS_',replace(pipeline().parameters.tables,'''',''))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_STG",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@pipeline().parameters.DatetoProcessed",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Set v_error_desc_copy_data_CBC02",
+				"type": "SetVariable",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "CBC02",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_error_desc",
+					"value": {
+						"value": "@activity('CBC02').Error.message",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Pipeline Status",
+				"type": "IfCondition",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Set v_error_desc_copy_data_CBC01",
+						"dependencyConditions": [
+							"Completed",
+							"Skipped"
+						]
+					},
+					{
+						"activity": "Set v_error_desc_copy_data_CBC02",
+						"dependencyConditions": [
+							"Completed",
+							"Skipped"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(and(equals(activity('MovToArchive_EDS').Status,'Succeeded' ),equals(activity('CBC01').Status,'Succeeded' )),equals(activity('CBC02').Status,'Succeeded' ))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail1",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "Failed Onprem",
+								"errorCode": "1000"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "SUCCESS PIPELINE",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CBC01",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "Set Tables",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": "Error",
+					"errorCode": "1"
+				}
+			}
+		],
+		"parameters": {
+			"DatetoProcessed": {
+				"type": "string"
+			},
+			"tables": {
+				"type": "string"
+			},
+			"src_sys": {
+				"type": "string"
+			}
+		},
+		"variables": {
+			"v_datetoprocessed": {
+				"type": "String"
+			},
+			"v_tables": {
+				"type": "String"
+			},
+			"v_error_desc": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-11-06T08:08:51Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

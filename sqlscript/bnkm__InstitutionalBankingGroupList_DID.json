@@ -1,0 +1,20 @@
+{
+	"name": "bnkm__InstitutionalBankingGroupList_DID",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "ALTER PROCEDURE BNKM.SP_InstitutionalBankingGroupList_DID\nAS\nBEGIN\n\n\nWITH TEMP_BNKM_InstitutionalBankingGroupList AS\n(\n\tSELECT\n\t\tBDI.fcbs_customer_id AS CustomerId\n\t\t,'IBG' AS BusinessUnit\n\t\t,BDI.INSERT_DTTM AS PeriodStartDate\n\t\t,'9999-12-31' AS PeriodEndDate\n\t\t,'CRM' AS SourceCode\n\t\t,BDI.BNK_CODE AS FinancialInstitutionId \n\t\t,'DID' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDI.INSERT_DTTM AS InsertDttm\n\t\t--,'INSERT' AS RECORD_STATUS\n\t\tFROM BUSC.DID_IBGLIST BDI  \n\t\tWHERE BDI.ISLATEST = '1'\n)\n\nSELECT * INTO #TEMP_BNKM_InstitutionalBankingGroupList FROM TEMP_BNKM_InstitutionalBankingGroupList;\n\nWITH TEMP_BNKM_InstitutionalBankingGroupList_SRC AS\n(\n\tSELECT\n\t\tHASHBYTES('MD5',CONCAT(\n\t\t\tCustomerId\n\t\t\t,BusinessUnit\n\t\t\t--,PeriodStartDate\n\t\t\t--,PeriodEndDate\n\t\t\t,SourceCode\n\t\t\t,FinancialInstitutionId)) AS HASHROW\n\t\t\t,CustomerId --,RECORD_STATUS\n\tFROM #TEMP_BNKM_InstitutionalBankingGroupList --WHERE RECORD_STATUS = 'UPDATE'\n)\n\n,TEMP_BNKM_InstitutionalBankingGroupList_TGT AS\n(\n\tSELECT\n\t\tHASHBYTES('MD5',CONCAT(\n\t\t\tCustomerId\n\t\t\t,BusinessUnit\n\t\t\t--,PeriodStartDate\n\t\t\t--,PeriodEndDate\n\t\t\t,SourceCode\n\t\t\t,FinancialInstitutionId)) AS HASHROW\n\t\t\t,CustomerId\n\tFROM BNKM.InstitutionalBankingGroupList WHERE PeriodEndDate in ('9999-12-31')\n),\n\nTEMP_BNKM_InstitutionalBankingGroupList_DELTA AS\n(\n\tSELECT\t\n\t\tSRC.HASHROW AS SRC_HR\n\t\t,TGT.HASHROW AS TGT_HR\n\t\t,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\n\t\t,CASE\n\t\t\tWHEN TGT.CustomerId IS NULL THEN 'INSERT'\n\t\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n\t\t\tELSE NULL \n\t\tEND AS RECORD_STATUS\n\tFROM TEMP_BNKM_InstitutionalBankingGroupList_SRC SRC\n\tLEFT JOIN TEMP_BNKM_InstitutionalBankingGroupList_TGT TGT\n\t ON SRC.CustomerId = TGT.CustomerId\n\tWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\n)\n--SELECT COUNT(*) CNT, RECORD_STATUS  FROM TEMP_BNKM_InstitutionalBankingGroupList_DELTA\n--GROUP BY RECORD_STATUS;\n\nSELECT * INTO #TEMP_BNKM_InstitutionalBankingGroupList_DELTA FROM TEMP_BNKM_InstitutionalBankingGroupList_DELTA;\n\n----UPDATE RECORDS to BNKM\nUPDATE TGT \nSET\nPeriodEndDate = dateadd(dd,-1,getDate()) \nFROM BNKM.InstitutionalBankingGroupList TGT\nJOIN #TEMP_BNKM_InstitutionalBankingGroupList_DELTA DELTA ON DELTA.CustomerId = TGT.CustomerId AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_InstitutionalBankingGroupList SRC ON SRC.CustomerId = TGT.CustomerId \nWHERE TGT.PeriodEndDate in ('9999-12-31')\n\n\n\n-------------INSERT RECORDS TO BNKM\nINSERT INTO BNKM.InstitutionalBankingGroupList ( \nCustomerId\n,BusinessUnit\n,PeriodStartDate\n,PeriodEndDate\n,SourceCode\n,FinancialInstitutionId\n,SourceSystemCode\n,TaskRunId\n,WorkFlowId\n,InsertDttm)\n\nSELECT \n\t SRC.CustomerId AS CustomerId\n\t,SRC.BusinessUnit AS BusinessUnit\n\t,SRC.PeriodStartDate AS PeriodStartDate\n\t,SRC.PeriodEndDate AS PeriodEndDate\n\t,SRC.SourceCode AS SourceCode\n\t,SRC.FinancialInstitutionId AS FinancialInstitutionId\n\t,'DID' AS SourceSystemCode\n\t,0 AS TaskRunId\n\t,0 AS WorkFlowId\n\t,SRC.InsertDttm AS InsertDttm\n\t--,CONVERT(DATE,CONVERT(VARCHAR,PeriodStartDate)) AS PeriodStartDate\n\t--,STUFF(PeriodEndDate,1,27,'20991231') AS PeriodEndDate\nFROM #TEMP_BNKM_InstitutionalBankingGroupList SRC\nJOIN #TEMP_BNKM_InstitutionalBankingGroupList_DELTA DELTA ON  DELTA.CustomerId = SRC.CustomerId\nAND DELTA.RECORD_STATUS in ('INSERT', 'UPDATE');\n\nDROP TABLE #TEMP_BNKM_InstitutionalBankingGroupList;\nDROP TABLE #TEMP_BNKM_InstitutionalBankingGroupList_DELTA;\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

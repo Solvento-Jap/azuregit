@@ -1,0 +1,1161 @@
+{
+	"name": "DecToStg_EDS_ATM_CARD",
+	"properties": {
+		"activities": [
+			{
+				"name": "ATM_CARD_getfile_CBC01",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('CBC01_ATM_CARD_*',pipeline().parameters.DatetoProcessed,'*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/ATM"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "If Condition5",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "ATM_CARD_getfile_CBC01",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@empty(activity('ATM_CARD_getfile_CBC01').output.childItems)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "ATM_CARD",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/ATM",
+										"wildcardFileName": {
+											"value": "@concat('*ATM_CARD_*',pipeline().parameters.DatetoProcessed,'*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": "truncate TABLE D360.STG_EDS_ATM_CARD",
+									"allowCopyCommand": true,
+									"tableOption": "autoCreate",
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									},
+									"path": "data360/dev/stg_synapse",
+									"enableCompression": true
+								},
+								"enableSkipIncompatibleRow": true,
+								"logSettings": {
+									"enableCopyActivityLog": true,
+									"copyActivityLogSettings": {
+										"logLevel": "Warning",
+										"enableReliableLogging": true
+									},
+									"logLocationSettings": {
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+											"type": "LinkedServiceReference"
+										},
+										"path": {
+											"value": "@concat('data360/dev/Logging/ATM/ATM_CARD/',substring(replace(replace(replace(addHours(utcnow(),+8),'-',''),'T','_'),':',''),0,15))",
+											"type": "Expression"
+										}
+									}
+								},
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "H",
+												"type": "String"
+											},
+											"sink": {
+												"name": "H",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_ID",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_PAN",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_PAN",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_CARD_SEQUENCE_NBR",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_CARD_SEQUENCE_NBR",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_CPD_ID",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_CPD_ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_PURGE_DATE",
+												"type": "Date",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "CRD_PURGE_DATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_ISSUE_DATE_1",
+												"type": "Date",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "CRD_ISSUE_DATE_1",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_EXPIRY_DATE_1",
+												"type": "Date",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "CRD_EXPIRY_DATE_1",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_DISCRETIONARY_DATA_1",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_DISCRETIONARY_DATA_1",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_ISSUE_DATE_2",
+												"type": "Date",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "CRD_ISSUE_DATE_2",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_EXPIRY_DATE_2",
+												"type": "Date",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "CRD_EXPIRY_DATE_2",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_DISCRETIONARY_DATA_2",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_DISCRETIONARY_DATA_2",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_CARDHOLDER_NAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_CARDHOLDER_NAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_REGISTRATION_ADDR1",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_REGISTRATION_ADDR1",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_REGISTRATION_ADDR2",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_REGISTRATION_ADDR2",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_REGISTRATION_ADDR3",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_REGISTRATION_ADDR3",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_REGISTRATION_ADDR4",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_REGISTRATION_ADDR4",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_REGISTRATION_ADDR5",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_REGISTRATION_ADDR5",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_REGISTRATION_ZIP_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_REGISTRATION_ZIP_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_COMMENT",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_COMMENT",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_CREATION_DATE",
+												"type": "Date",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "CRD_CREATION_DATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_STATUS_1",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_STATUS_1",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_STATUS_1_DATE",
+												"type": "Date",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "CRD_STATUS_1_DATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_STATUS_2",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_STATUS_2",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_STATUS_2_DATE",
+												"type": "Date",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "CRD_STATUS_2_DATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_PVKI",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_PVKI",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_PREV_PIN_CHANGE_DATE",
+												"type": "Date",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "CRD_PREV_PIN_CHANGE_DATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_CURRENT_PVV",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_CURRENT_PVV",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_PREVIOUS_PVV",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_PREVIOUS_PVV",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_PIN_RETRY_COUNT",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_PIN_RETRY_COUNT",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_PRIMARY_ACN_ID",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_PRIMARY_ACN_ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_SECONDARY_ACN_ID",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_SECONDARY_ACN_ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_LAST_FEP_HOST_TRACE_NBR",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_LAST_FEP_HOST_TRACE_NBR",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_LAST_HOST_FEP_TRACE_NBR",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_LAST_HOST_FEP_TRACE_NBR",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_PART_NO",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_PART_NO",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_CUSTOM_DATA",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_CUSTOM_DATA",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_OPEN_ACCOUNT_IND",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_OPEN_ACCOUNT_IND",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_CURRENT_PIN_OFFSET",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_CURRENT_PIN_OFFSET",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_PREVIOUS_PIN_OFFSET",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_PREVIOUS_PIN_OFFSET",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_LAST_SOURCE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_LAST_SOURCE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_LAST_TERMINAL_ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_LAST_TERMINAL_ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_PIN_BLOCK",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_PIN_BLOCK",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_PREV_PIN_BLOCK",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_PREV_PIN_BLOCK",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_CUSTOM_INDEX_1",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_CUSTOM_INDEX_1",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_SEND_PIN_UNBLOCK_SCRIPT",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_SEND_PIN_UNBLOCK_SCRIPT",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_SEND_PIN_CHANGE_SCRIPT",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_SEND_PIN_CHANGE_SCRIPT",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_FUNCTIONS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_FUNCTIONS",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_OVERRIDE_PERMISSION",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_OVERRIDE_PERMISSION",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_ISS_ID",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_ISS_ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_BIN",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_BIN",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_EMV_LEVEL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_EMV_LEVEL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_LIMIT_CONFIG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_LIMIT_CONFIG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_MULTIPLE_ACCOUNTS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_MULTIPLE_ACCOUNTS",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_CUST_ID",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_CUST_ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_PIN_MAILER_CADD_ID_FK",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_PIN_MAILER_CADD_ID_FK",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_STMT_MAILER_CADD_ID_FK",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_STMT_MAILER_CADD_ID_FK",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_CARD_DELIVERY_CADD_ID_FK",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_CARD_DELIVERY_CADD_ID_FK",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_LAST_UPDATE_TS",
+												"type": "DateTime",
+												"format": "yyyyMMddHHmmss"
+											},
+											"sink": {
+												"name": "CRD_LAST_UPDATE_TS",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_PREVIOUS_PVV_EKY_ID",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_PREVIOUS_PVV_EKY_ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_CURRENT_PVV_EKY_ID",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_CURRENT_PVV_EKY_ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_DISCRETIONARY_D1_EKY_ID",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_DISCRETIONARY_D1_EKY_ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_DISCRETIONARY_D2_EKY_ID",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_DISCRETIONARY_D2_EKY_ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_PAN_EKY_ID",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRD_PAN_EKY_ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_PREVIOUS_PVN2",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_PREVIOUS_PVN2",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_CURRENT_PVN2",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_CURRENT_PVN2",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_CELL_PHONE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_CELL_PHONE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRD_EMAIL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CRD_EMAIL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FILE_NAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm",
+												"type": "String"
+											},
+											"sink": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": " "
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_EDS_ATM_CARD"
+									}
+								}
+							]
+						},
+						{
+							"name": "SP_LOG_COPY_ACTIVITY_DTL",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "ATM_CARD",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_LOG_COPY_ACTIVITY_DTL]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS_STG",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DatetoProcessed",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"dataread": {
+										"value": {
+											"value": "@activity('ATM_CARD').output.dataRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"datawritten": {
+										"value": {
+											"value": "@activity('ATM_CARD').output.dataWritten",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"filesread": {
+										"value": {
+											"value": "@activity('ATM_CARD').output.filesRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"sourcepeakconnections": {
+										"value": {
+											"value": "@activity('ATM_CARD').output.sourcePeakConnections",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsread": {
+										"value": {
+											"value": "@activity('ATM_CARD').output.rowsRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowscopied": {
+										"value": {
+											"value": "@activity('ATM_CARD').output.rowsCopied",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsskipped": {
+										"value": {
+											"value": "@activity('ATM_CARD').output.rowsSkipped",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"copyduration": {
+										"value": {
+											"value": "@activity('ATM_CARD').output.copyDuration",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"throughput": {
+										"value": {
+											"value": "@activity('ATM_CARD').output.throughput",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"redirectrowpath": {
+										"value": {
+											"value": "@activity('ATM_CARD').output.redirectRowPath",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"logfilepath": {
+										"value": {
+											"value": "@activity('ATM_CARD').output.logFilePath",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Set v_error_desc_get",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "ATM_CARD",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "@activity('ATM_CARD').Error.message",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Fail5",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "Set v_error_desc_get_nofile",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": {
+									"value": "File not found: ATM_CARD",
+									"type": "Expression"
+								},
+								"errorCode": {
+									"value": "404",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "Set v_error_desc_get_nofile",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "File not found: ATM_CARD",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_GET",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "If Condition5",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_STG_EDS_',replace(pipeline().parameters.tables,'''',''))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_STG",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@pipeline().parameters.DatetoProcessed",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_DectoStg",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "SP_LOG_TASK_ERROR_DTL_GET",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": {
+						"value": "@variables('v_error_desc')",
+						"type": "Expression"
+					},
+					"errorCode": "500"
+				}
+			}
+		],
+		"parameters": {
+			"DatetoProcessed": {
+				"type": "string"
+			},
+			"tables": {
+				"type": "string"
+			}
+		},
+		"variables": {
+			"v_error_desc": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-11-21T09:05:03Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

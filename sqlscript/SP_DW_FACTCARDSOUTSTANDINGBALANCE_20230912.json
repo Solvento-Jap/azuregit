@@ -1,0 +1,20 @@
+{
+	"name": "SP_DW_FACTCARDSOUTSTANDINGBALANCE_20230912",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nalter PROC [DW].[SP_DW_FACTCARDSOUTSTANDINGBALANCE] @Businessdate [VARCHAR](10) AS\nBEGIN\n\n\nWITH \nPaymentCardStatementSummary\nAS(\n      SELECT * FROM [BNKM].[PaymentCardStatementSummary] A\n      WHERE NOT EXISTS (\n        select * from DW.FactCardsOutstandingBalance b\n        where convert(varchar,a.PeriodStartDate,112) = b.[BusinessDateSK]\n        and A.CUSTOMERACCOUNTID = b.AccountId\n        )\n      AND A.SourceSystemCode = 'CCD'  \n)\n\nINSERT INTO DW.FactCardsOutstandingBalance\n(\nBusinessDateSK\n,BranchSK\n,BankSK\n,AccountSK\n,AccountID\n,StatementBalanceRetailAmount\n,StatementBalanceCashAmount\n,StatementBalance\n,SourceSystemCode\n,WorkFlowId\n,TaskRunId\n,InsertDttm\n)\n\nSELECT \n @Businessdate AS BusinessDateSK\n,DDB.BranchSK AS BranchSK\n,DDBK.BankSK AS BankSK\n,DDA.AccountSK AS AccountSK\n,DDA.AccountID AS AccountID\n,BPCS.RetailStatementBalanceAmount AS StatementBalanceRetailAmount\n,BPCS.CashStatementBalanceAmount AS StatementBalanceCashAmount\n,BPCS.RetailStatementBalanceAmount + BPCS.CashStatementBalanceAmount AS StatementBalance\n,BPCS.SourceSystemCode AS SourceSystemCode\n,0 AS WorkFlowId\n,0 AS TaskRunId\n,Getdate() AS InsertDttm\nFROM \nPaymentCardStatementSummary BPCS\nLEFT JOIN [BNKM].[CustomerAccount] BCA ON BPCS.CustomerAccountId = BCA.CustomerAccountId\nLEFT JOIN [DW].[DimBranch] DDB ON BCA.BranchId = DDB.BranchID AND DDB.CurrentIndicator = 1\nLEFT JOIN [DW].[DimBank] DDBK ON BPCS.FinancialInstitutionId = DDBK.BankID\nLEFT JOIN [DW].[DimAccount] DDA ON BPCS.CustomerAccountId = DDA.AccountID AND DDA.CurrentIndicator = 1\nwhere not exists (\n    select * from [DW].[FactCardsOutstandingBalance] b\n    where \n    convert(varchar,BPCS.PeriodStartDate) = convert(varchar,b.BusinessDateSK)\n    and DDA.AccountId = b.AccountId   \n    and DDBK.BankSK = b.BankSk\n)\n\nEND\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

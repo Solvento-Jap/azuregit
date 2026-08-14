@@ -1,0 +1,1486 @@
+{
+	"name": "Workflow_L1_CUSTOMER_SEGMENT_EXTRACT_ENHANCED",
+	"properties": {
+		"activities": [
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.date,'9999-12-31')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_date",
+								"value": {
+									"value": "@pipeline().parameters.date",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "SELECT\n\tPREVIOUS_MONTH_LAST_BUS_DAY fulldate\nFROM\n    EDS.DATE_DIM DD\nWHERE \n\tDD.DATESK=convert(varchar(8),GETDATE(),112)\n",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_date",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "SET_EXTRACT",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_extract",
+					"value": {
+						"value": "@pipeline().parameters.extract",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "If Condition1",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "SET_BANKID",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(variables('v_extract'), 'initial')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "OM_SRC_CHECK_SUCCEDING",
+							"type": "SqlPoolStoredProcedure",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@replace(substring(variables('v_date'),0,10),'-','')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "START_TASK_SUCCEEDING",
+							"type": "SqlPoolStoredProcedure",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [
+								{
+									"activity": "OM_SRC_CHECK_SUCCEDING",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_START]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@variables('v_date')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "L1_SEGMENT_EXTRACT_SUCCEEDING",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "START_TASK_SUCCEEDING",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('WITH CTL\nAS (\n\tSELECT \n\t\tMAX(FULLDATE) AS_OF_DATE\n\tFROM eds.DATE_DIM\n\tWHERE Business_Day_Flag = ''Y'' \n\t\tAND MONTH_END = ''Y'' \n\t\tAND FULLDATE <= CAST(''',variables('v_date'),''' AS DATE)\n\t)\n,MAIN\nAS (\nSELECT\nCIF AS [CIF ID]\n,CASE \n\tWHEN L1_SEGMENT_ID = ''001'' \n\tTHEN ''UHNW'' \n\tWHEN L1_SEGMENT_ID = ''002'' \n\tTHEN ''HNW'' \n\tWHEN L1_SEGMENT_ID = ''003'' \n\tTHEN ''MA'' \n\tWHEN L1_SEGMENT_ID = ''004'' \n\tTHEN ''EA'' \n\tWHEN L1_SEGMENT_ID = ''005'' \n\tTHEN ''UMR'' \n\tWHEN L1_SEGMENT_ID = ''006'' \n\tTHEN ''LMR'' \n\tEND AS [SEGMENT]\n,FORMAT(SCD_START_DATE, ''MM/dd/yyyy'') AS [SEGMENT AS OF DATE]\nFROM EDS.CUSTOMER_SEGMENT SEG\nINNER JOIN CTL ON CTL.AS_OF_DATE=SEG.SCD_START_DATE\nWHERE BANK_ID=''CBC01''\n)\nSELECT\n[CIF ID]\n,[SEGMENT]\n,[SEGMENT AS OF DATE]\nFROM MAIN\nWHERE [CIF ID] IS NOT NULL\nAND [SEGMENT] IS NOT NULL\n')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"sink": {
+									"type": "DelimitedTextSink",
+									"storeSettings": {
+										"type": "AzureBlobFSWriteSettings"
+									},
+									"formatSettings": {
+										"type": "DelimitedTextWriteSettings",
+										"maxRowsPerFile": 200000,
+										"fileNamePrefix": {
+											"value": "@concat(pipeline().parameters.BankID,'_','SEGMENT','_',formatDateTime(variables('v_date'),'MMddyyyy'))",
+											"type": "Expression"
+										},
+										"quoteAllText": true,
+										"fileExtension": ".csv"
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"typeConversion": true,
+									"typeConversionSettings": {
+										"allowDataTruncation": true,
+										"treatBooleanAsNumber": false
+									}
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "-"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "csv_gen_SEGMENT_copy1",
+									"type": "DatasetReference",
+									"parameters": {
+										"Source": "CUSTOMER_SEGMENT"
+									}
+								}
+							]
+						},
+						{
+							"name": "END_TASK_SUCCESSFUL_SUCCEDING",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "L1_SEGMENT_EXTRACT_SUCCEEDING",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "SUCCESSFUL",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "END_TASK_FAILED_SUCCEEDING",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "L1_SEGMENT_EXTRACT_SUCCEEDING",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "FAILED",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "SP_LOG_TASK_ERROR_DTL_GET_SUCCEDING",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Set v_error_desc_get_SUCCEDING",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@variables('v_date')",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"error_desc": {
+										"value": {
+											"value": "@variables('v_error_desc')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Failed_L1_SEGMENT_EXTRACT_SUCCEEDING",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "SP_LOG_TASK_ERROR_DTL_GET_SUCCEDING",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": {
+									"value": "@variables('v_error_desc')",
+									"type": "Expression"
+								},
+								"errorCode": "500"
+							}
+						},
+						{
+							"name": "Set v_error_desc_get_SUCCEDING",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "L1_SEGMENT_EXTRACT_SUCCEEDING",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "@activity('L1_SEGMENT_EXTRACT_SUCCEEDING').Error.message",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SP_LOG_COPY_ACTIVITY_DTL_SUCCEDING",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "L1_SEGMENT_EXTRACT_SUCCEEDING",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_LOG_COPY_ACTIVITY_DTL]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@variables('v_date')",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"dataread": {
+										"value": {
+											"value": "@activity('L1_SEGMENT_EXTRACT_SUCCEEDING').output.dataRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"datawritten": {
+										"value": {
+											"value": "@activity('L1_SEGMENT_EXTRACT_SUCCEEDING').output.dataWritten",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"sourcepeakconnections": {
+										"value": {
+											"value": "@activity('L1_SEGMENT_EXTRACT_SUCCEEDING').output.sourcePeakConnections",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsread": {
+										"value": {
+											"value": "@activity('L1_SEGMENT_EXTRACT_SUCCEEDING').output.rowsRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowscopied": {
+										"value": {
+											"value": "@activity('L1_SEGMENT_EXTRACT_SUCCEEDING').output.rowsCopied",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsskipped": {
+										"value": null,
+										"type": "String"
+									},
+									"copyduration": {
+										"value": {
+											"value": "@activity('L1_SEGMENT_EXTRACT_SUCCEEDING').output.copyDuration",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"throughput": {
+										"value": {
+											"value": "@activity('L1_SEGMENT_EXTRACT_SUCCEEDING').output.throughput",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"redirectrowpath": {
+										"value": null,
+										"type": "String"
+									},
+									"logfilepath": {
+										"value": null,
+										"type": "String"
+									},
+									"filesread": {
+										"value": null,
+										"type": "String"
+									}
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "OM_SRC_CHECK_INITIAL",
+							"type": "SqlPoolStoredProcedure",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@replace(substring(variables('v_date'),0,10),'-','')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "START_TASK_INITIAL",
+							"type": "SqlPoolStoredProcedure",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [
+								{
+									"activity": "OM_SRC_CHECK_INITIAL",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_START]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@variables('v_date')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "L1_SEGMENT_EXTRACT_INITIAL",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "START_TASK_INITIAL",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('\nSELECT\nCIF AS [CIF ID]\n,CASE \n\tWHEN L1_SEGMENT_ID = ''001'' \n\tTHEN ''UHNW'' \n\tWHEN L1_SEGMENT_ID = ''002'' \n\tTHEN ''HNW'' \n\tWHEN L1_SEGMENT_ID = ''003'' \n\tTHEN '' MA'' \n\tWHEN L1_SEGMENT_ID = ''004'' \n\tTHEN ''EA'' \n\tWHEN L1_SEGMENT_ID = ''005'' \n\tTHEN ''UMR'' \n\tWHEN L1_SEGMENT_ID = ''006'' \n\tTHEN ''LMR'' \n\tEND AS [SEGMENT]\n,FORMAT(SCD_START_DATE, ''MM/dd/yyyy'') AS [SEGMENT AS OF DATE]\nFROM EDS.CUSTOMER_SEGMENT\nWHERE CIF IS NOT NULL\nAND L1_SEGMENT_ID IS NOT NULL\nAND BANK_ID=''CBC01''\n')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"sink": {
+									"type": "DelimitedTextSink",
+									"storeSettings": {
+										"type": "AzureBlobFSWriteSettings"
+									},
+									"formatSettings": {
+										"type": "DelimitedTextWriteSettings",
+										"maxRowsPerFile": 200000,
+										"fileNamePrefix": {
+											"value": "@concat(pipeline().parameters.BankID,'_','SEGMENT','_',formatDateTime(variables('v_date'),'MMddyyyy'))",
+											"type": "Expression"
+										},
+										"quoteAllText": true,
+										"fileExtension": ".csv"
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"typeConversion": true,
+									"typeConversionSettings": {
+										"allowDataTruncation": true,
+										"treatBooleanAsNumber": false
+									}
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "-"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "csv_gen_SEGMENT_copy1",
+									"type": "DatasetReference",
+									"parameters": {
+										"Source": "CUSTOMER_SEGMENT"
+									}
+								}
+							]
+						},
+						{
+							"name": "END_TASK_SUCCESSFUL_INITIAL",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "L1_SEGMENT_EXTRACT_INITIAL",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "SUCCESSFUL",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "END_TASK_FAILED_INITIAL",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "L1_SEGMENT_EXTRACT_INITIAL",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "FAILED",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "SP_LOG_TASK_ERROR_DTL_GET_INITIAL",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Set v_error_desc_get_INITIAL",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@variables('v_date')",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"error_desc": {
+										"value": {
+											"value": "@variables('v_error_desc')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Failed_L1_SEGMENT_EXTRACT_INITIAL",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "SP_LOG_TASK_ERROR_DTL_GET_INITIAL",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": {
+									"value": "@variables('v_error_desc')",
+									"type": "Expression"
+								},
+								"errorCode": "500"
+							}
+						},
+						{
+							"name": "Set v_error_desc_get_INITIAL",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "L1_SEGMENT_EXTRACT_INITIAL",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "@activity('L1_SEGMENT_EXTRACT_INITIAL').Error.message",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SP_LOG_COPY_ACTIVITY_DTL_INITIAL",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "L1_SEGMENT_EXTRACT_INITIAL",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_LOG_COPY_ACTIVITY_DTL]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@variables('v_date')",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"dataread": {
+										"value": {
+											"value": "@activity('L1_SEGMENT_EXTRACT_INITIAL').output.dataRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"datawritten": {
+										"value": {
+											"value": "@activity('L1_SEGMENT_EXTRACT_INITIAL').output.dataWritten",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"sourcepeakconnections": {
+										"value": {
+											"value": "@activity('L1_SEGMENT_EXTRACT_INITIAL').output.sourcePeakConnections",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsread": {
+										"value": {
+											"value": "@activity('L1_SEGMENT_EXTRACT_INITIAL').output.rowsRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowscopied": {
+										"value": {
+											"value": "@activity('L1_SEGMENT_EXTRACT_INITIAL').output.rowsCopied",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsskipped": {
+										"value": null,
+										"type": "String"
+									},
+									"copyduration": {
+										"value": {
+											"value": "@activity('L1_SEGMENT_EXTRACT_INITIAL').output.copyDuration",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"throughput": {
+										"value": {
+											"value": "@activity('L1_SEGMENT_EXTRACT_INITIAL').output.throughput",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"redirectrowpath": {
+										"value": null,
+										"type": "String"
+									},
+									"logfilepath": {
+										"value": null,
+										"type": "String"
+									},
+									"filesread": {
+										"value": null,
+										"type": "String"
+									}
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "SET_BANKID",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "SET_EXTRACT",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_bankid",
+					"value": {
+						"value": "@pipeline().parameters.BankID",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Get Metadata",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "If Condition1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "adls_src_archive_bin",
+						"type": "DatasetReference",
+						"parameters": {
+							"source": "dev/CUSTOMER_SEGMENT/TEST/"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "BinaryReadSettings"
+					}
+				}
+			},
+			{
+				"name": "ForEach1",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Get Metadata",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Get Metadata').output.childItems",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "RENAME",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Loop counter",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "BinarySource",
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true
+									},
+									"formatSettings": {
+										"type": "BinaryReadSettings"
+									}
+								},
+								"sink": {
+									"type": "BinarySink",
+									"storeSettings": {
+										"type": "AzureBlobFSWriteSettings"
+									}
+								},
+								"enableStaging": false
+							},
+							"inputs": [
+								{
+									"referenceName": "adls_aml_binary_file",
+									"type": "DatasetReference",
+									"parameters": {
+										"FolderPath": "dev/CUSTOMER_SEGMENT/TEST/",
+										"FileName": {
+											"value": "@item().name",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "adls_aml_binary_file",
+									"type": "DatasetReference",
+									"parameters": {
+										"FolderPath": "dev/CUSTOMER_SEGMENT/SEQ/",
+										"FileName": {
+											"value": "@concat('CBC01','_','SEGMENT','_',formatDateTime(variables('v_date'),'MMddyyyy'),'_',substring(concat('00', variables('v_counter')), sub(add(length(variables('v_counter')),2),3), 3), '.csv')",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "Loop counter",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "Set Counter",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_counter",
+								"value": {
+									"value": "@variables('v_tempcounter')",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "Set Counter",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_tempcounter",
+								"value": {
+									"value": "@string(add(int(variables('v_counter')), 1))",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "Delete1",
+							"type": "Delete",
+							"dependsOn": [
+								{
+									"activity": "RENAME",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "adls_src_archive_bin",
+									"type": "DatasetReference",
+									"parameters": {
+										"source": "dev/CUSTOMER_SEGMENT/TEST/"
+									}
+								},
+								"enableLogging": false,
+								"storeSettings": {
+									"type": "AzureBlobFSReadSettings",
+									"recursive": false,
+									"wildcardFileName": {
+										"value": "@item().name",
+										"type": "Expression"
+									},
+									"enablePartitionDiscovery": false
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CopyFile_ADLS_to_SFTP",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "ForEach1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "BinarySource",
+						"storeSettings": {
+							"type": "AzureBlobFSReadSettings",
+							"recursive": true,
+							"wildcardFolderPath": "dev/CUSTOMER_SEGMENT/SEQ/",
+							"wildcardFileName": {
+								"value": "@concat('CBC01_SEGMENT_', formatDateTime(variables('v_date'),'MMddyyyy'),'_', '*','.csv')",
+								"type": "Expression"
+							},
+							"deleteFilesAfterCompletion": false
+						},
+						"formatSettings": {
+							"type": "BinaryReadSettings"
+						}
+					},
+					"sink": {
+						"type": "BinarySink",
+						"storeSettings": {
+							"type": "SftpWriteSettings",
+							"operationTimeout": "01:00:00",
+							"useTempFileRename": true
+						}
+					},
+					"enableStaging": false
+				},
+				"inputs": [
+					{
+						"referenceName": "adls_src_archive_bin",
+						"type": "DatasetReference",
+						"parameters": {
+							"source": "dev/CUSTOMER_SEGMENT/SEQ/"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SFTP_OnPrem_fromADLS_SEGMENT",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filepath": "data360/uat/CBC01/output/",
+							"Filename": "SEGMENT"
+						}
+					}
+				]
+			}
+		],
+		"parameters": {
+			"tables": {
+				"type": "string",
+				"defaultValue": "L1_CUSTOMER_SEGMENT_EXTRACT"
+			},
+			"date": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"extract": {
+				"type": "string"
+			},
+			"BankID": {
+				"type": "string",
+				"defaultValue": "CBC01"
+			}
+		},
+		"variables": {
+			"v_date": {
+				"type": "String"
+			},
+			"v_error_desc": {
+				"type": "String"
+			},
+			"v_extract": {
+				"type": "String"
+			},
+			"v_bankid": {
+				"type": "String"
+			},
+			"v_counter": {
+				"type": "String",
+				"defaultValue": "0"
+			},
+			"v_tempcounter": {
+				"type": "String",
+				"defaultValue": "0"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-08-14T01:12:10Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

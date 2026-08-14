@@ -1,0 +1,121 @@
+{
+	"name": "Patch_CustomerEmployment",
+	"properties": {
+		"activities": [
+			{
+				"name": "ALTER SP_CUSTOMEREMPLOYMENT_CCD",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CUSTOMEREMPLOYMENT_CCD] AS\r\nBEGIN\r\n\r\nWITH TEMP_BNKM_CustomerEmployment AS\r\n(\r\n\t   SELECT ROW_NUMBER() OVER(PARTITION BY CustomerId ORDER BY InsertDttm DESC ) RN, * FROM (\r\nSELECT\r\n    BCM.CUST_NBR AS CustomerId\r\n\t,HASHBYTES('MD5', BCM.CUST_EMP_NAME) AS EmployerId\r\n\t,BCM.CUST_OCC_CODE AS JobTitleId\r\n\t,BCM.CUST_DATE_MAINT AS PeriodStartDate\r\n\t,'9999-12-31' AS PeriodEndDate\r\n\t,NULL AS EmploymentPositionTypeId\r\n\t,BCM.CUST_ANN_SALARY AS AnnualSalaryAmount\r\n\t,BCM.CUST_EMP_TYPE AS EmploymentClassificationId\r\n\t,NULL AS EmployerRelationshipTypeId\r\n\t,NULL AS EmploymentStatusId\r\n\t,NULL AS EmploymentNote\r\n\t,NULL AS EmployeeId\r\n\t,NULL AS NatureOfIncome\r\n\t,BCM.CUST_OCC_PER AS PeriodOfOccupation\r\n\t,'CCD' AS SourceCode\r\n\t,BCM.BNK_CODE AS FinancialInstitutionId\r\n\t,0 AS WorkFlowId\r\n\t,0 AS TaskRunId\r\n\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\nFROM  BUSC.CCD_MCUSTOMER BCM\r\n\tWHERE BCM.isLatest = 1\r\n\r\nUNION\r\n\r\nSELECT\r\n    BCD.CUST_NBR AS CustomerId\r\n\t,HASHBYTES('MD5', BCD.CUST_EMP_NAME) AS EmployerId\r\n\t,BCD.CUST_OCC_CODE AS JobTitleId\r\n\t,BCD.CUST_DATE_MAINT AS PeriodStartDate\r\n\t,'9999-12-31' AS PeriodEndDate\r\n\t,NULL AS EmploymentPositionTypeId\r\n\t,BCD.CUST_ANN_SALARY AS AnnualSalaryAmount\r\n\t,BCD.CUST_EMP_TYPE AS EmploymentClassificationId\r\n\t,NULL AS EmployerRelationshipTypeId\r\n\t,NULL AS EmploymentStatusId\r\n\t,NULL AS EmploymentNote\r\n\t,NULL AS EmployeeId\r\n\t,NULL AS NatureOfIncome\r\n\t,BCD.CUST_OCC_PER AS PeriodOfOccupation\r\n\t,'CCD' AS SourceCode\r\n\t,BCD.BNK_CODE AS FinancialInstitutionId\r\n\t,0 AS WorkFlowId\r\n\t,0 AS TaskRunId\r\n\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\nFROM BUSC.CCD_DCUSTOMER BCD\r\n\tWHERE BCD.isLatest = 1\r\n\t   )A\r\n)\r\nSELECT * INTO #TEMP_BNKM_CustomerEmployment FROM TEMP_BNKM_CustomerEmployment WHERE RN = 1;\r\n\r\n-------------CHECK IF THERE IS DELTA \r\nWITH\r\nTEMP_BNKM_CustomerEmployment_SRC\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nCustomerId\r\n,EmployerId\r\n,JobTitleId\r\n,EmployerRelationshipTypeId\r\n,EmployeeId\r\n,convert(date,convert(varchar,PeriodStartDate))\r\n,AnnualSalaryAmount\r\n,EmploymentClassificationId\r\n,PeriodOfOccupation\r\n,FinancialInstitutionId\r\n)) HASHROW, CustomerId,EmployerId,JobTitleId,EmployerRelationshipTypeId,EmployeeId,FinancialInstitutionId,Sourcecode\r\nFROM #TEMP_BNKM_CustomerEmployment \r\n)\r\n,\r\nTEMP_BNKM_CustomerEmployment_TGT\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nCustomerId\r\n,EmployerId\r\n,JobTitleId\r\n,EmployerRelationshipTypeId\r\n,EmployeeId\r\n,convert(date,convert(varchar,PeriodStartDate))\r\n,convert(int,AnnualSalaryAmount)\r\n,EmploymentClassificationId\r\n,PeriodOfOccupation\r\n,FinancialInstitutionId\r\n)) HASHROW, CustomerId,EmployerId,JobTitleId,EmployerRelationshipTypeId,EmployeeId,FinancialInstitutionId,SourceCode\r\nFROM BNKM.CustomerEmployment WHERE SourceCode = 'CCD' AND PeriodEndDate = '9999-12-31'\r\n)\r\n,\r\nTEMP_BNKM_CustomerEmployment_DELTA\r\nAS\r\n(\r\nSELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n\t,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\r\n\t,ISNULL(SRC.EmployerId,TGT.EmployerId) AS EmployerId\r\n\t,ISNULL(SRC.JobTitleId,TGT.JobTitleId) AS JobTitleId\r\n\t,ISNULL(SRC.EmployerRelationshipTypeId,TGT.EmployerRelationshipTypeId) AS EmployerRelationshipTypeId\r\n\t,ISNULL(SRC.EmployeeId,TGT.EmployeeId) AS EmployeeId\r\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n\t,ISNULL(SRC.SOURCECODE,TGT.SOURCECODE) AS SOURCECODE\r\n\t,CASE\r\n\t\tWHEN TGT.HASHROW IS NULL THEN 'INSERT'\r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE' \r\n\tELSE NULL END AS RECORD_STATUS\r\n\t\r\nFROM TEMP_BNKM_CustomerEmployment_SRC\tSRC\r\nFULL OUTER JOIN TEMP_BNKM_CustomerEmployment_TGT\tTGT\r\nON\tSRC.CustomerId = TGT.CustomerId\r\nAND convert(varchar,SRC.EmployerId) = convert(varchar,TGT.EmployerId)\r\nAND SRC.JobTitleId = TGT.JobTitleId\r\nAND ISNULL(SRC.EmployerRelationshipTypeId,'') = ISNULL(TGT.EmployerRelationshipTypeId,'')\r\nAND ISNULL(SRC.EmployeeId,'') = ISNULL(TGT.EmployeeId,'')\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SOURCECODE = TGT.SOURCECODE\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL \r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerEmployment_DELTA FROM TEMP_BNKM_CustomerEmployment_DELTA;\r\n\r\n----UPDATE RECORDS to BNKM\r\nUPDATE TGT \r\nSET\r\nPeriodEndDate = convert(date, DATEADD(day, -1, SRC.PeriodStartDate))\r\nFROM BNKM.CustomerEmployment TGT\r\nJOIN #TEMP_BNKM_CustomerEmployment_DELTA DELTA \r\nON DELTA.CustomerId = TGT.CustomerId AND DELTA.EmployerId = TGT.EmployerId AND DELTA.JobTitleId = TGT.JobTitleId AND DELTA.EmployerRelationshipTypeId = TGT.EmployerRelationshipTypeId AND DELTA.EmployeeId = TGT.EmployeeId AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId AND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CustomerEmployment SRC \r\nON SRC.CustomerId = TGT.CustomerId AND SRC.EmployerId = TGT.EmployerId AND SRC.JobTitleId = TGT.JobTitleId AND SRC.EmployerRelationshipTypeId = TGT.EmployerRelationshipTypeId AND SRC.EmployeeId = TGT.EmployeeId AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nWHERE TGT.PeriodEndDate IS NULL\r\n\r\n\r\n---INSERT RECORDS WITH UPDATE\r\nINSERT INTO BNKM.CustomerEmployment  ( \r\n\tCustomerId\r\n\t,EmployerId\r\n\t,JobTitleId\r\n\t,PeriodStartDate\r\n\t,PeriodEndDate\r\n\t,EmploymentPositionTypeId\r\n\t,AnnualSalaryAmount\r\n\t,EmploymentClassificationId\r\n\t,EmployerRelationshipTypeId\r\n\t,EmploymentStatusId\r\n\t,EmploymentNote\r\n\t,EmployeeId\r\n\t,NatureOfIncome\r\n\t,PeriodOfOccupation\r\n\t,SourceCode\r\n\t,FinancialInstitutionId\r\n\t,WorkFlowId\r\n\t,TaskRunId\r\n\t,InsertDttm)\r\n\r\nSELECT \r\n\tSRC.CustomerId AS CustomerId\r\n\t,SRC.EmployerId AS EmployerId\r\n\t,SRC.JobTitleId AS JobTitleId\r\n\t,CONVERT(DATE,CONVERT(VARCHAR,PeriodStartDate)) AS PeriodStartDate\r\n\t,'9999-12-31' AS PeriodEndDate\r\n\t,NULL AS EmploymentPositionTypeId\r\n\t,SRC.AnnualSalaryAmount\r\n\t,SRC.EmploymentClassificationId\r\n\t,NULL AS EmployerRelationshipTypeId\r\n\t,NULL AS EmploymentStatusId\r\n\t,NULL AS EmploymentNote\r\n\t,NULL AS EmployeeId\r\n\t,NULL AS NatureOfIncome\r\n\t,SRC.PeriodOfOccupation AS PeriodOfOccupation\r\n\t,'CCD' AS SourceCode\r\n\t,SRC.FinancialInstitutionId AS FinancialInstitutionId\r\n\t,0 AS WorkFlowId\r\n\t,0 AS TaskRunId\r\n\t,SRC.InsertDttm AS InsertDttm\r\nFROM #TEMP_BNKM_CustomerEmployment SRC\r\nJOIN #TEMP_BNKM_CustomerEmployment_DELTA DELTA \r\nON DELTA.CustomerId = SRC.CustomerId AND DELTA.EmployerId = SRC.EmployerId AND DELTA.JobTitleId = SRC.JobTitleId AND DELTA.EmployerRelationshipTypeId = SRC.EmployerRelationshipTypeId AND DELTA.EmployeeId = SRC.EmployeeId AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\r\nWHERE DELTA.RECORD_STATUS IN ('UPDATE','INSERT')\r\n \r\n\r\nDROP TABLE #TEMP_BNKM_CustomerEmployment;\r\nDROP TABLE #TEMP_BNKM_CustomerEmployment_DELTA;\r\n\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ALTER SP_CUSTOMEREMPLOYMENT_CRM",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CUSTOMEREMPLOYMENT_CRM] AS\r\nBEGIN\r\n---------------GET DELTA FROM BUSC\r\nWITH TEMP_BNKM_CustomerEmployment AS (\r\n\tSELECT \r\n\t\tBCA.ORGKEY AS CustomerId\r\n\t\t,HASHBYTES('MD5',BCM.STRTEXT4)  AS EmployerId\r\n\t\t,BCM.STRTEXT2 AS JobTitleId\r\n\t\t,BCM.DTDATE1 AS PeriodStartDate\r\n\t\t,BCM.STRTEXT9 AS EmploymentPositionTypeId\r\n\t\t,NULL AS AnnualSalaryAmount\r\n\t\t,NULL AS EmploymentClassificationId\r\n\t\t,NULL AS EmployerRelationshipTypeId\r\n\t\t,BCD.EMPLOYMENT_STATUS AS EmploymentStatusId\r\n\t\t,NULL AS EmploymentNote\r\n\t\t,BCA.STAFFEMPLOYEEID AS EmployeeId\r\n\t\t,BCD.INCOME_NATURE AS NatureOfIncome\r\n\t\t,'CRM' AS SourceCode\r\n\t\t,BCA.BANK_ID AS FinancialInstitutionId\r\n\t\t,0 AS WorkFlowId\r\n\t\t,0 AS TaskRunId\r\n\t\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\n\tFROM BUSC.CRM_ACCOUNTS BCA\r\n\tLEFT JOIN (SELECT DISTINCT STRTEXT2,DTDATE1,STRTEXT9,STRTEXT4,ORGKEY,BANK_ID,TYPE,DEMOGRAPHICID,isLatest FROM  BUSC.CRM_MISCELLANEOUSINFO) BCM  ON BCM.ORGKEY = BCA.ORGKEY AND BCM.BANK_ID = BCA.BANK_ID  AND BCM.isLatest = 1  \r\n\tLEFT JOIN (SELECT DISTINCT EMPLOYMENT_STATUS,INCOME_NATURE,EMPLOYERID,ORGKEY,BANK_ID,DEMOGRAPHICID,ACCOUNTID,isLatest FROM  BUSC.CRM_DEMOGRAPHIC) BCD  ON BCD.ORGKEY = BCA.ORGKEY  AND BCD.BANK_ID = BCA.BANK_ID  AND BCD.isLatest = 1 AND BCD.DEMOGRAPHICID = BCM.DEMOGRAPHICID\r\n\tWHERE BCM.TYPE = 'CURRENT_EMPLOYMENT'   AND BCD.ACCOUNTID <> 0 and BCA.isLatest = 1\r\n\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerEmployment FROM TEMP_BNKM_CustomerEmployment;\r\n\r\n-------------CHECK IF THERE IS DELTA \r\nWITH\r\nTEMP_BNKM_CustomerEmployment_SRC AS (\r\n\tSELECT HASHBYTES('MD5',CONCAT(CONVERT(VARCHAR,CustomerId),\r\n\tCONVERT(VARCHAR,EmployerId),\r\n\tCONVERT(VARCHAR,JobTitleId),\r\n\tCONVERT(DATE,PeriodStartDate),\r\n\tCONVERT(VARCHAR,EmploymentPositionTypeId),\r\n\tCONVERT(VARCHAR,EmploymentStatusId),\r\n\tCONVERT(VARCHAR,EmployeeId),\r\n\tCONVERT(VARCHAR,NatureOfIncome),FinancialInstitutionId)) AS HASHROW\r\n\t\t,CustomerId\r\n\t\t,EmployerId\r\n\t\t,JobTitleId\r\n\t\t,EmploymentPositionTypeId\r\n\t\t,EmployeeId\r\n\t\t,FinancialInstitutionId\r\n\t\t,SourceCode\r\n\tFROM #TEMP_BNKM_CustomerEmployment \r\n)\r\n,\r\nTEMP_BNKM_CustomerEmployment_TGT AS (\r\n\tSELECT HASHBYTES('MD5',CONCAT(CONVERT(VARCHAR,CustomerId),\r\n\tCONVERT(VARCHAR,EmployerId),\r\n\tCONVERT(VARCHAR,JobTitleId), \r\n\tCONVERT(DATE,PeriodStartDate),\r\n\tCONVERT(VARCHAR,EmploymentPositionTypeId),\r\n\tCONVERT(VARCHAR,EmploymentStatusId),\r\n\tCONVERT(VARCHAR,EmployeeId),\r\n\tCONVERT(VARCHAR,NatureOfIncome),FinancialInstitutionId)) AS HASHROW\r\n\t\t,CustomerId\r\n\t\t,EmployerId\r\n\t\t,JobTitleId\r\n\t\t,EmploymentPositionTypeId\r\n\t\t,EmployeeId\r\n\t\t,FinancialInstitutionId\r\n\t\t,SourceCode\r\n\tFROM BNKM.CustomerEmployment \r\n\tWHERE SourceCode = 'CRM' AND (PeriodEndDate = '9999-12-31')\r\n)\r\n,\r\nTEMP_BNKM_CustomerEmployment_DELTA\r\nAS\r\n(\r\nSELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n\t,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\r\n\t,ISNULL(SRC.EmployerId,TGT.EmployerId) AS EmployerId\r\n\t,ISNULL(SRC.JobTitleId,TGT.JobTitleId) AS JobTitleId\r\n\t,ISNULL(SRC.EmploymentPositionTypeId,TGT.EmploymentPositionTypeId) AS EmploymentPositionTypeId\r\n\t,ISNULL(SRC.EmployeeId,TGT.EmployeeId) AS EmployeeId\r\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n\t,ISNULL(SRC.SourceCode,TGT.SourceCode) AS SourceCode\r\n\t,CASE\r\n\t\tWHEN TGT.HASHROW IS NULL THEN 'INSERT'\r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\tELSE NULL END AS RECORD_STATUS\r\nFROM TEMP_BNKM_CustomerEmployment_SRC\tSRC\r\nLEFT JOIN TEMP_BNKM_CustomerEmployment_TGT\tTGT\r\nON\tSRC.CustomerId = TGT.CustomerId\r\nAND SRC.EmployerId = TGT.EmployerId\r\nAND SRC.JobTitleId = TGT.JobTitleId\r\nAND ISNULL(SRC.EmploymentPositionTypeId,'') = ISNULL(TGT.EmploymentPositionTypeId,'')\r\nAND ISNULL(SRC.EmployeeId,'') = ISNULL(TGT.EmployeeId,'')\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceCode = TGT.SourceCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW  OR TGT.HASHROW IS NULL\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerEmployment_DELTA FROM TEMP_BNKM_CustomerEmployment_DELTA;\r\n\r\n----UPDATE RECORDS to BNKM\r\nUPDATE TGT \r\nSET\r\nPeriodEndDate = convert(date, DATEADD(day, -1, SRC.PeriodStartDate))\r\nFROM BNKM.CustomerEmployment TGT\r\nJOIN #TEMP_BNKM_CustomerEmployment_DELTA DELTA \r\nON DELTA.CustomerId = TGT.CustomerId\r\nAND DELTA.EmployerId = TGT.EmployerId\r\nAND DELTA.JobTitleId = TGT.JobTitleId\r\nAND ISNULL(DELTA.EmploymentPositionTypeId,'') = ISNULL(TGT.EmploymentPositionTypeId,'')\r\nAND ISNULL(DELTA.EmployeeId,'') = ISNULL(TGT.EmployeeId,'')\r\nAND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND DELTA.SourceCode = TGT.SourceCode\r\n AND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CustomerEmployment SRC \r\nON SRC.CustomerId = TGT.CustomerId \r\nAND SRC.EmployerId = TGT.EmployerId\r\nAND SRC.JobTitleId = TGT.JobTitleId\r\nAND ISNULL(SRC.EmploymentPositionTypeId,'') = ISNULL(TGT.EmploymentPositionTypeId,'')\r\nAND ISNULL(SRC.EmployeeId,'') = ISNULL(TGT.EmployeeId,'')\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceCode = TGT.SourceCode\r\nWHERE TGT.PeriodEndDate IS NULL or TGT.PeriodEndDate = '9999-12-31'\r\n\r\n\r\n\r\n---INSERT RECORDS WITH UPDATE\r\nINSERT INTO BNKM.CustomerEmployment(\r\n\t[CustomerId]\r\n\t,[EmployerId]\r\n\t,[JobTitleId]\r\n\t,[PeriodStartDate]\r\n\t,[PeriodEndDate]\r\n\t,[EmploymentPositionTypeId]\r\n\t,[AnnualSalaryAmount]\r\n\t,[EmploymentClassificationId]\r\n\t,[EmployerRelationshipTypeId]\r\n\t,[EmploymentStatusId]\r\n\t,[EmploymentNote]\r\n\t,[EmployeeId]\r\n\t,[NatureOfIncome]\r\n\t,[SourceCode]\r\n\t,[FinancialInstitutionId]\r\n\t,[WorkFlowId]\r\n\t,[TaskRunId]\r\n\t,[InsertDttm])\r\n\r\nSELECT\r\nDistinct\r\n     SRC.CustomerId AS CustomerId\r\n\t,SRC.EmployerId AS EmployerId\r\n\t,SRC.JobTitleId AS JobTitleId\r\n\t,CONVERT(DATE,CONVERT(VARCHAR,PeriodStartDate)) AS PeriodStartDate\r\n\t,'9999-12-31' AS PeriodEndDate\r\n\t,SRC.EmploymentPositionTypeId AS EmploymentPositionTypeId\r\n\t,NULL AS AnnualSalaryAmount\r\n\t,NULL AS EmploymentClassificationId\r\n\t,NULL AS EmployerRelationshipTypeId\r\n\t,SRC.EmploymentStatusId AS EmploymentStatusId\r\n\t,NULL AS EmploymentNote\r\n\t,SRC.EmployeeId AS EmployeeId\r\n\t,SRC.NatureOfIncome AS NatureOfIncome\r\n\t,'CRM' AS SourceCode\r\n\t,SRC.FinancialInstitutionId AS FinancialInstitutionId\r\n\t, 0 AS WorkFlowId\r\n\t, 0 AS TaskRunId\r\n\t,SRC.InsertDttm AS InsertDttm\r\nFROM #TEMP_BNKM_CustomerEmployment SRC\r\nJOIN #TEMP_BNKM_CustomerEmployment_DELTA DELTA\r\n ON DELTA.CustomerId = SRC.CustomerId\r\n AND DELTA.EmployerId = SRC.EmployerId\r\n AND DELTA.JobTitleId = SRC.JobTitleId\r\n AND ISNULL(DELTA.EmploymentPositionTypeId,'') = ISNULL(SRC.EmploymentPositionTypeId,'')\r\n AND ISNULL(DELTA.EmployeeId,'') = ISNULL(SRC.EmployeeId,'')\r\n AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\r\n AND DELTA.SourceCode = SRC.SourceCode\r\nWHERE DELTA.RECORD_STATUS IN ('UPDATE','INSERT')\r\n\r\n\r\nDROP TABLE #TEMP_BNKM_CustomerEmployment;\r\nDROP TABLE #TEMP_BNKM_CustomerEmployment_DELTA;\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Execute Patch",
+				"type": "ExecutePipeline",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Patch",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"table": "BNKM.CustomerEmployment",
+						"col": "PeriodEndDate"
+					}
+				}
+			},
+			{
+				"name": "CRM_PATCH",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "ALTER SP_CUSTOMEREMPLOYMENT_CRM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Patch_SRC",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"table": "BNKM.CustomerEmployment",
+						"field": "PeriodEndDate",
+						"src_field": "SourceCode",
+						"src": "CRM"
+					}
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-02-19T03:22:13Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

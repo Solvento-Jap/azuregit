@@ -1,0 +1,116 @@
+{
+	"name": "EDS_TRU_CUST",
+	"properties": {
+		"activities": [
+			{
+				"name": "TRU_CUST_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT COUNT(1) CNT FROM D360.STG_EDS_TRU_CUST WHERE H = 'D'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_EDS_TRU_CUST"
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "TRU_CUST_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('TRU_CUST_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "TRU_CUST",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"parameters": [
+											{
+												"name": "DATETOPROCESS",
+												"type": "Datetime",
+												"value": {
+													"value": "@pipeline().parameters.Datetoprocess",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											}
+										],
+										"type": "NonQuery",
+										"text": "TRUNCATE TABLE d360.STG_EDS_TRU_CUST_SELECT_SRC;\n\nINSERT INTO d360.STG_EDS_TRU_CUST_SELECT_SRC\n(\n                SUB_BR_CD,\n                CUST_NO,\n                RM_ID,\n                UNIQUE_ID,\n                ADVISOR_ID,\n                REF_UNIT,\n\t\t\t\tOMNI_CHANNEL_FLAG,--NEW\n                FILE_NAME,\n\t\t\t\tJSRC_FLG, \n\t\t\t\tJTAR_FLG \n)\n\n\nSELECT \n                SUB_BR_CD,\n                CUST_NO,\n                RM_ID,\n                UNIQUE_ID,\n                ADVISOR_ID,\n                REF_UNIT,\n\t\t\t\tOMNI_CHANNEL_FLAG,--NEW\n                FILE_NAME,\n\t\t\t\t1 AS JSRC_FLG, \n\t\t\t\t0 AS JTAR_FLG \n\t\t\tFROM [d360].[STG_EDS_TRU_CUST]\n            WHERE H = 'D';\n\n\nINSERT INTO d360.STG_EDS_TRU_CUST_SELECT_SRC\n(\n                SUB_BR_CD,\n                CUST_NO,\n                RM_ID,\n                UNIQUE_ID,\n                ADVISOR_ID,\n                REF_UNIT,\n\t\t\t\tOMNI_CHANNEL_FLAG,--NEW\n                FILE_NAME, \n\t\t\t\tJSRC_FLG, \n\t\t\t\tJTAR_FLG \n)\n\t\t\tSELECT \t\t\t\t\n                CC.SUB_BR_CD,\n                CC.CUST_NO,\n                CC.RM_ID,\n                CC.UNIQUE_ID,\n                CC.ADVISOR_ID,\n                CC.REF_UNIT,\n\t\t\t\tCC.OMNI_CHANNEL_FLAG,--NEW\n                CC.FILE_NAME,\n\t\t        0 AS JSRC_FLG, \n\t\t\t\t1 AS JTAR_FLG \n\t\t\tFROM EDS.TRU_CUST CC\n            JOIN [d360].[STG_EDS_TRU_CUST] B\n            ON CC.CUST_NO  = B.CUST_NO \n\t\t\tWHERE CC.ISLATEST = '1';\n\n\nTRUNCATE TABLE d360.STG_EDS_TRU_CUST_GROUP_SRC;\n\nINSERT INTO d360.STG_EDS_TRU_CUST_GROUP_SRC\n(\n                SUB_BR_CD,\n                CUST_NO,\n                RM_ID,\n                UNIQUE_ID,\n                ADVISOR_ID,\n                REF_UNIT,\n\t\t\t\tOMNI_CHANNEL_FLAG,--NEW\n                FILE_NAME, \n\t\t\t\tJSRC_FLG_CNT, \n\t\t\t\tJTAR_FLG_CNT, \n\t\t\t\tFILE_DATE\n)\n\nselect \n                SUB_BR_CD,\n                CUST_NO,\n                RM_ID,\n                UNIQUE_ID,\n                ADVISOR_ID,\n                REF_UNIT,\n\t\t\t\tOMNI_CHANNEL_FLAG,--NEW\n\t\t\t\tFILE_NAME, \n\t\t\t\tJSRC_FLG_CNT, \n\t\t\t\tJTAR_FLG_CNT,\n\t\t\t\tCAST(LEFT(RIGHT(FILE_NAME , 12), 8) AS DATE) FILE_DATE\nfrom \n(\n\tSELECT \t\t\t\t\n                SUB_BR_CD,\n                CUST_NO,\n                RM_ID,\n                UNIQUE_ID,\n                ADVISOR_ID,\n                REF_UNIT,\n\t\t\t\tOMNI_CHANNEL_FLAG,--NEW\n\t\t\t\tMAX(FILE_NAME) FILE_NAME, \n\t\t\t\tSUM(JSRC_FLG) AS JSRC_FLG_CNT, \n\t\t\t\tSUM(JTAR_FLG) AS JTAR_FLG_CNT\n\tFROM d360.STG_EDS_TRU_CUST_SELECT_SRC\n\tGROUP BY \t\t\t\t\t\n                SUB_BR_CD,\n                CUST_NO,\n                RM_ID,\n                UNIQUE_ID,\n                ADVISOR_ID,\n                REF_UNIT,\n\t\t\t\tOMNI_CHANNEL_FLAG\n\tHAVING ( SUM(JSRC_FLG) > 0 AND SUM(JTAR_FLG) = 0 ) OR ( SUM(JSRC_FLG) = 0 AND SUM(JTAR_FLG) = 1) \n) AS TEMP\n\n\nDECLARE @PREVIOUS_BUSINESS_DAY AS DATE\nSELECT @PREVIOUS_BUSINESS_DAY = PREVIOUS_BUSINESS_DAY FROM EDS.DATE_DIM \nWHERE FULLDATE = @DATETOPROCESS;\t\n\n\nUPDATE A\nSET\nSCD_END_DATE = @PREVIOUS_BUSINESS_DAY\n, ISLATEST = 0\nFROM EDS.TRU_CUST A \nINNER JOIN d360.STG_EDS_TRU_CUST_GROUP_SRC B ON\nCOALESCE(A.CUST_NO,'-1') = COALESCE(B.CUST_NO,'-1')\nAND A.ISLATEST = 1\nAND B.JTAR_FLG_CNT = 1\n\n\nINSERT INTO EDS.TRU_CUST\n(\n                SUB_BR_CD,\n                CUST_NO,\n                RM_ID,\n                UNIQUE_ID,\n                ADVISOR_ID,\n                REF_UNIT,\n\t\t\t\tSCD_START_DATE, \n\t\t\t\tSCD_END_DATE, \n\t\t\t\tISACTIVE, \n\t\t\t\tISLATEST, \n\t\t\t\tBNK_CODE, \n\t\t\t\tSOURCE_CODE, \n\t\t\t\tFILE_NAME, \n\t\t\t\tinsert_dttm,\n\t\t\t\tOMNI_CHANNEL_FLAG\n)\nSELECT\n                SRC.SUB_BR_CD,\n                SRC.CUST_NO,\n                SRC.RM_ID,\n                SRC.UNIQUE_ID,\n                SRC.ADVISOR_ID,\n                SRC.REF_UNIT,\n\t\t\t\t@DATETOPROCESS,\n\t\t\t\t'9999-12-31',\n\t\t\t\t1,\n\t\t\t\t1,\n\t\t\t\tLEFT(SRC.FILE_NAME,5),\n\t\t\t\t'TRU',\n\t\t\t\tSRC.FILE_NAME,\n\t\t\t\tCAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime),\n\t\t\t\tSRC.OMNI_CHANNEL_FLAG\nFROM d360.STG_EDS_TRU_CUST_GROUP_SRC SRC\nWHERE JSRC_FLG_CNT > 0"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"Datetoprocess": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-06-17T04:40:01Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,17 @@
+{
+	"name": "SQL script 832",
+	"properties": {
+		"content": {
+			"query": "\nSELECT\n    TXN.*\n    ,CCD.CUST_CIF_NBR AS FCBSCIF\n    ,ROW_NUMBER() OVER(ORDER BY TXN_ACCT_NBR) SK\n/*\n    Remove the duplicates using ROW_NUMBER() window function\n*/\nFROM (\nSELECT\n    *\n    ,ROW_NUMBER() OVER(PARTITION BY TXN_ACCT_NBR, TXN_CARD_NBR, TXN_CODE, TXN_POSTING_DTE, TXN_AUTH_CODE, TXN_ACQ_REF, TXN_BATCH_SEQ\n        ORDER BY LEFT(RIGHT(FILE_NAME,12),8) DESC) RN\n    FROM eds.CCD_CBCEXCTDBP TXN\n    WHERE CAST(TXN_DTE AS date) >= '2023-04-01'\n) TXN\n/*\n    Link all customers associated to the account of the transaction using AAS\n    Fetch the ORGKEY in CUSTOMER_DIM\n*/\nINNER JOIN\n    (SELECT AS_OF_DATE, CUST_CIF_NBR, CRDACCT_NBR, CARD_NBR FROM eds.CCD_CREDIT_CARDS_FACT GROUP BY AS_OF_DATE, CUST_CIF_NBR, CRDACCT_NBR, CARD_NBR) CCD\n    ON TXN.TXN_ACCT_NBR = CCD.CRDACCT_NBR\n    AND TXN.TXN_CARD_NBR = CCD.CARD_NBR\n    AND CAST(TXN_DTE AS date) = CAST(CCD.AS_OF_DATE AS DATE)\nWHERE RN = 1 AND CCD.CUST_CIF_NBR IS NOT NULL",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

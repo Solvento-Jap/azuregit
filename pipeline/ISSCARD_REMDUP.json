@@ -1,0 +1,409 @@
+{
+	"name": "ISSCARD_REMDUP",
+	"properties": {
+		"activities": [
+			{
+				"name": "CHECK DUPLICATE",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT CRD_ID, COUNT(1) CNT FROM BUSC.ATM_ISSCARD\nWHERE ISLATEST = 1\nGROUP BY CRD_ID\nHAVING COUNT(1) > 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "TAGGED DUPLICATE",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "CHECK DUPLICATE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT ROW_NUMBER() OVER(PARTITION BY CRD_ID ORDER BY [FILE_NAME] DESC, INSERT_DTTM DESC ) RN , --define PKs in partition by\nCRD_ID\n,CRD_UUID\n,CRD_BCR_ID\n,CRD_PRS_ID\n,CRD_INS_ID\n,CRD_BRN_ID\n,CRD_NUMBER\n,CRD_ISSUE_DATE\n,CRD_EXPIRY_DATE\n,CRD_PREVIOUS_CRD_ID\n,CRD_CARDHOLDER_NAME\n,CRD_CREATION_DATE\n,CRD_STS_ID\n,CRD_STATUS_DATE\n,CRD_CREATED_BY\n,CRD_CREATED_TS\n,CRD_UPDATED_BY\n,CRD_UPDATED_TS\n,CAST(CRD_AUDIT_LOG AS NVARCHAR(4000)) AS CRD_AUDIT_LOG\n,CRD_PARENT_CRD_ID\n,CRD_ALLOW_RENEWAL\n,CRD_IS_PRIMARY\n,CRD_KIT_NUMBER\n,CRD_IS_LINKED\n,CRD_CTS_ID\n,CRD_EMB_ID\n,CRD_BRN_ID_ORIGINAL\n,CRD_NUMBER_ENC\n,CRD_NUMBER_MASKED\n,CRD_CCL_ID\n,CRD_IS_CARD_POSTED\n,CRD_SEQUENCE_NUMBER\n,CRD_LIFE_CYCLE\n,CRD_PIN_OFFSET\n,CRD_PIN_OFFSET_TS\n,CRD_IS_CORPORATE\n,CRD_CORPORATE_CIF\n,CRD_CORPORATE_NAME\n,CRD_KEY_ROTATION_NUMBER\n,CRD_EMBOSSING_NAME\n,CRD_PIN_GENERATED\n,isActive\n,isLatest\n,BNK_CODE\n,SOURCE_CODE\n,FILE_NAME\n,insert_dttm\ninto BUSC.ATM_ISSCARD_WITH_DUP_20240321\nFROM BUSC.ATM_ISSCARD; --Target table to remove duplicate"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CHECK COUNT MAIN",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "TAGGED DUPLICATE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.ATM_ISSCARD;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CHECK COUNT DUP TABLE",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "CHECK COUNT MAIN",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.ATM_ISSCARD_WITH_DUP_20240321;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "UPDATE ISLATEST",
+				"description": "",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CREATE BU TABLE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "UPDATE BUSC.ATM_ISSCARD_WITH_DUP_20240321 SET ISLATEST = 0 WHERE RN > 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CLEAN DUP",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "UPDATE ISLATEST",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "TRUNCATE TABLE BUSC.ATM_ISSCARD; -- Truncate target table to remove duplicate"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CREATE BU TABLE",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CHECK COUNT DUP TABLE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT \nCRD_ID\n,CRD_UUID\n,CRD_BCR_ID\n,CRD_PRS_ID\n,CRD_INS_ID\n,CRD_BRN_ID\n,CRD_NUMBER\n,CRD_ISSUE_DATE\n,CRD_EXPIRY_DATE\n,CRD_PREVIOUS_CRD_ID\n,CRD_CARDHOLDER_NAME\n,CRD_CREATION_DATE\n,CRD_STS_ID\n,CRD_STATUS_DATE\n,CRD_CREATED_BY\n,CRD_CREATED_TS\n,CRD_UPDATED_BY\n,CRD_UPDATED_TS\n,CAST(CRD_AUDIT_LOG AS NVARCHAR(4000)) AS CRD_AUDIT_LOG\n,CRD_PARENT_CRD_ID\n,CRD_ALLOW_RENEWAL\n,CRD_IS_PRIMARY\n,CRD_KIT_NUMBER\n,CRD_IS_LINKED\n,CRD_CTS_ID\n,CRD_EMB_ID\n,CRD_BRN_ID_ORIGINAL\n,CRD_NUMBER_ENC\n,CRD_NUMBER_MASKED\n,CRD_CCL_ID\n,CRD_IS_CARD_POSTED\n,CRD_SEQUENCE_NUMBER\n,CRD_LIFE_CYCLE\n,CRD_PIN_OFFSET\n,CRD_PIN_OFFSET_TS\n,CRD_IS_CORPORATE\n,CRD_CORPORATE_CIF\n,CRD_CORPORATE_NAME\n,CRD_KEY_ROTATION_NUMBER\n,CRD_EMBOSSING_NAME\n,CRD_PIN_GENERATED\n,isActive\n,isLatest\n,BNK_CODE\n,SOURCE_CODE\n,FILE_NAME\n,insert_dttm \nINTO BUSC.ATM_ISSCARD_BU_20240321\nFROM BUSC.ATM_ISSCARD;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "INSERT",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CLEAN DUP",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "INSERT INTO BUSC.ATM_ISSCARD --Target table to remove duplicate\n(CRD_ID\n,CRD_UUID\n,CRD_BCR_ID\n,CRD_PRS_ID\n,CRD_INS_ID\n,CRD_BRN_ID\n,CRD_NUMBER\n,CRD_ISSUE_DATE\n,CRD_EXPIRY_DATE\n,CRD_PREVIOUS_CRD_ID\n,CRD_CARDHOLDER_NAME\n,CRD_CREATION_DATE\n,CRD_STS_ID\n,CRD_STATUS_DATE\n,CRD_CREATED_BY\n,CRD_CREATED_TS\n,CRD_UPDATED_BY\n,CRD_UPDATED_TS\n,CRD_AUDIT_LOG\n,CRD_PARENT_CRD_ID\n,CRD_ALLOW_RENEWAL\n,CRD_IS_PRIMARY\n,CRD_KIT_NUMBER\n,CRD_IS_LINKED\n,CRD_CTS_ID\n,CRD_EMB_ID\n,CRD_BRN_ID_ORIGINAL\n,CRD_NUMBER_ENC\n,CRD_NUMBER_MASKED\n,CRD_CCL_ID\n,CRD_IS_CARD_POSTED\n,CRD_SEQUENCE_NUMBER\n,CRD_LIFE_CYCLE\n,CRD_PIN_OFFSET\n,CRD_PIN_OFFSET_TS\n,CRD_IS_CORPORATE\n,CRD_CORPORATE_CIF\n,CRD_CORPORATE_NAME\n,CRD_KEY_ROTATION_NUMBER\n,CRD_EMBOSSING_NAME\n,CRD_PIN_GENERATED\n,isActive\n,isLatest\n,BNK_CODE\n,SOURCE_CODE\n,FILE_NAME\n,insert_dttm)\nSELECT\nCRD_ID\n,CRD_UUID\n,CRD_BCR_ID\n,CRD_PRS_ID\n,CRD_INS_ID\n,CRD_BRN_ID\n,CRD_NUMBER\n,CRD_ISSUE_DATE\n,CRD_EXPIRY_DATE\n,CRD_PREVIOUS_CRD_ID\n,CRD_CARDHOLDER_NAME\n,CRD_CREATION_DATE\n,CRD_STS_ID\n,CRD_STATUS_DATE\n,CRD_CREATED_BY\n,CRD_CREATED_TS\n,CRD_UPDATED_BY\n,CRD_UPDATED_TS\n,CRD_AUDIT_LOG\n,CRD_PARENT_CRD_ID\n,CRD_ALLOW_RENEWAL\n,CRD_IS_PRIMARY\n,CRD_KIT_NUMBER\n,CRD_IS_LINKED\n,CRD_CTS_ID\n,CRD_EMB_ID\n,CRD_BRN_ID_ORIGINAL\n,CRD_NUMBER_ENC\n,CRD_NUMBER_MASKED\n,CRD_CCL_ID\n,CRD_IS_CARD_POSTED\n,CRD_SEQUENCE_NUMBER\n,CRD_LIFE_CYCLE\n,CRD_PIN_OFFSET\n,CRD_PIN_OFFSET_TS\n,CRD_IS_CORPORATE\n,CRD_CORPORATE_CIF\n,CRD_CORPORATE_NAME\n,CRD_KEY_ROTATION_NUMBER\n,CRD_EMBOSSING_NAME\n,CRD_PIN_GENERATED\n,isActive\n,isLatest\n,BNK_CODE\n,SOURCE_CODE\n,FILE_NAME\n,insert_dttm\n FROM BUSC.ATM_ISSCARD_WITH_DUP_20240321; -- Name of backup table to store duplicate records"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CHECK IF STILL HAVE DUP",
+				"description": "",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "INSERT",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT CRD_ID, COUNT(1) CNT FROM BUSC.ATM_ISSCARD\nWHERE ISLATEST = 1\nGROUP BY CRD_ID\nHAVING COUNT(1) > 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "COUNT TARGET",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CHECK IF STILL HAVE DUP",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.ATM_ISSCARD;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "COUNT DUPS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "COUNT TARGET",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.ATM_ISSCARD_WITH_DUP_20240321"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-03-22T13:12:02Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

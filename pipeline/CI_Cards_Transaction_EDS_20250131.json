@@ -1,0 +1,234 @@
+{
+	"name": "CI_Cards_Transaction_EDS_20250131",
+	"properties": {
+		"description": "Sources data from EDS tables",
+		"activities": [
+			{
+				"name": "Card Transaction Retail",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "START_TASK_CI_EDS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "\r\nSELECT\r\n    TXN.*\r\n    ,CCD.CUST_CIF_NBR AS FCBSCIF\r\n    ,ROW_NUMBER() OVER(ORDER BY TXN_ACCT_NBR) SK\r\n/*\r\n    Remove the duplicates using ROW_NUMBER() window function\r\n*/\r\nFROM (\r\nSELECT\r\n    *\r\n    ,ROW_NUMBER() OVER(PARTITION BY TXN_ACCT_NBR, TXN_CARD_NBR, TXN_CODE, TXN_POSTING_DTE, TXN_AUTH_CODE, TXN_ACQ_REF, TXN_BATCH_SEQ\r\n        ORDER BY LEFT(RIGHT(FILE_NAME,12),8) DESC) RN\r\n    FROM eds.CCD_CBCEXCTDBP TXN\r\n    WHERE CAST(TXN_DTE AS date) >= '2024-04-01'\r\n) TXN\r\n/*\r\n    Link all customers associated to the account of the transaction using AAS\r\n    Fetch the ORGKEY in CUSTOMER_DIM\r\n*/\r\nINNER JOIN\r\n    (SELECT AS_OF_DATE, CUST_CIF_NBR, CRDACCT_NBR, CARD_NBR FROM eds.CCD_CREDIT_CARDS_FACT GROUP BY AS_OF_DATE, CUST_CIF_NBR, CRDACCT_NBR, CARD_NBR) CCD\r\n    ON TXN.TXN_ACCT_NBR = CCD.CRDACCT_NBR\r\n    AND TXN.TXN_CARD_NBR = CCD.CARD_NBR\r\n    AND CAST(TXN_DTE AS date) = CAST(CCD.AS_OF_DATE AS DATE)\r\nWHERE RN = 1 AND CCD.CUST_CIF_NBR IS NOT NULL",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "DelimitedTextSink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"formatSettings": {
+							"type": "DelimitedTextWriteSettings",
+							"quoteAllText": true,
+							"fileExtension": ".txt"
+						}
+					},
+					"enableStaging": false,
+					"translator": {
+						"type": "TabularTranslator",
+						"typeConversion": true,
+						"typeConversionSettings": {
+							"allowDataTruncation": true,
+							"treatBooleanAsNumber": false
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_EDS",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "-"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "CI_csv_gen",
+						"type": "DatasetReference",
+						"parameters": {
+							"Table": {
+								"value": "@toUpper(variables('tables'))",
+								"type": "Expression"
+							},
+							"Source": "TRANSACTION",
+							"Types": "Retail"
+						}
+					}
+				]
+			},
+			{
+				"name": "START_TASK_CI_EDS",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_START]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_CI_EDS_',toUpper(variables('tables')))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": null,
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_EDS_SUCCESSFUL",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Card Transaction Retail",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_CI_EDS_',toUpper(variables('tables')))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "SUCCESSFUL",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_EDS_FAILED",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Card Transaction Retail",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_CI_EDS_',toUpper(variables('tables')))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "FAILED",
+							"type": "String"
+						}
+					}
+				}
+			}
+		],
+		"variables": {
+			"tables": {
+				"type": "String",
+				"defaultValue": "CI_Ccd_Tran_Retail"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-01-31T06:26:23Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

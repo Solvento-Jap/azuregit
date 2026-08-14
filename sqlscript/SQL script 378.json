@@ -1,0 +1,20 @@
+{
+	"name": "SQL script 378",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SELECT DISTINCT CustomerAccountId,ProductID,SourceSystemCode,FinancialInstitutionId FROM BNKM.CustomerAccountFinancialProduct \nWHERE SourceSystemCode = 'DEP' \nAND (PERIODENDDATE IS NULL OR  PERIODENDDATE = '1900-01-01') AND ProductId NOT LIKE ('09%') \nGROUP BY CustomerAccountId,ProductID,SourceSystemCode,FinancialInstitutionId\nHAVING COUNT(1) > 1\n\nSELECT BranchId,CustomerAccountId,FinancialInstitutionId,SourceSystemCode FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'DEP'\nGROUP BY BranchId,CustomerAccountId,FinancialInstitutionId,SourceSystemCode\nHAVING COUNT(1)> 1\n\nSELECT AccountID,BankSK,SourceSystemCode FROM DW.DimAccount WHERE SourceSystemCode = 'DEP' AND CURRENTINDICATOR = 1\nGROUP BY AccountID,BankSK,SourceSystemCode\nHAVING COUNT(1) > 1\n\n\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'ACCTPROD_DEP') \nBEGIN\n   DROP TABLE DW.ACCTPROD_DEP;\nEND;\n\nWITH\nAccountProductSK AS (\n     SELECT ISNULL(MAX(AccountProductSK),0) RN FROM DW.DimAccountProduct\n)\n\n\nSELECT \n--ROW_NUMBER() OVER(ORDER BY (SELECT NULL)) + (SELECT RN FROM AccountProductSK) AS AccountProductSK\nDDA.AccountSK AS AccountSK\n,BCAFP.CustomerAccountId AS AccountID\n,DDP.ProductSK AS ProductSK\n,CONVERT(VARCHAR,BCAFP.ProductID) AS ProductID\n,DDB.BankSK AS BankSK\n,DDBCH.BranchSK AS BranchSK\n,1 AS CurrentIndicator\n,GETDATE() AS ValidStartDate\n,'9999-01-01' AS ValidEndDate\n,BCAFP.SourceSystemCode AS SourceSystemCode\n,0 AS WorkFlowId\n,0 AS TaskRunId\n,GETDATE() AS InsertDttm    \n--INTO DW.ACCTPROD_DEP             \nFROM (SELECT CustomerAccountId,ProductID,SourceSystemCode,FinancialInstitutionId FROM BNKM.CustomerAccountFinancialProduct WHERE SourceSystemCode = 'DEP' AND (PERIODENDDATE IS NULL OR  PERIODENDDATE = '1900-01-01') AND ProductId NOT LIKE ('09%') GROUP BY CustomerAccountId,ProductID,SourceSystemCode,FinancialInstitutionId ) BCAFP\nJOIN DW.FINLPRODUCTAPP FPA ON CONVERT(VARCHAR,BCAFP.ProductId) = CONVERT(VARCHAR,FPA.FinancialProductId) AND BCAFP.FinancialInstitutionID = FPA.FinancialInstitutionId\nJOIN (SELECT BranchId,CustomerAccountId,FinancialInstitutionId,SourceSystemCode FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'DEP' GROUP BY BranchId,CustomerAccountId,FinancialInstitutionId,SourceSystemCode) BCA ON BCAFP.CustomerAccountId = BCA.CustomerAccountId AND BCAFP.FinancialInstitutionId = BCA.FinancialInstitutionId AND BCA.SourceSystemCode = BCAFP.SourceSystemCode\nLEFT JOIN DW.DimBank DDB ON CONVERT(VARCHAR,BCAFP.FinancialInstitutionId) = DDB.BankID\nLEFT JOIN (SELECT DISTINCT AccountSK,AccountID,BankSK,SourceSystemCode FROM DW.DimAccount WHERE CURRENTINDICATOR = 1) DDA ON BCAFP.CustomerAccountId = DDA.AccountID AND DDB.BankSK = DDA.BankSK AND BCAFP.SourceSystemCode = DDA.SourceSystemCode \nLEFT JOIN (SELECT DISTINCT ProductSK,ProductID,BANKSK,SourceSystemCode FROM DW.DimProduct WHERE CURRENTINDICATOR = 1) DDP ON BCAFP.ProductID = DDP.ProductID AND DDP.BANKSK = DDB.BankSK AND BCAFP.SourceSystemCode = DDP.SourceSystemCode  \nLEFT JOIN DW.DimBranch DDBCH ON BCA.BranchId = DDBCH.BranchID AND DDBCH.CURRENTINDICATOR = 1\nwhere BCAFP.SourceSystemCode = 'DEP'\nAND FPA.FcbsApplicationId IN ('CAA', 'SBA', 'TDA')",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

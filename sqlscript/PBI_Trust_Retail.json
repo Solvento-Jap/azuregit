@@ -1,0 +1,20 @@
+{
+	"name": "PBI_Trust_Retail",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "ALTER PROC [DW].[SP_PBI_Trust_Retail]\nAS\nBEGIN\n\n\n\nDROP TABLE DW.PBI_Trust_Retail;\n\nWITH DimCustomerAccount_TRU\nAS(\n    SELECT AccountID,AccountSK,CustomerID,CustomerSK,BranchSK,DCA.SourceSystemCode,DCA.ValidStartDate,DCA.BankSK\n    FROM DW.DimCustomerAccount DCA\n    WHERE DCA.SourceSystemCode = 'TRU' AND DCA.CurrentIndicator = '1'\n)\n\nSELECT\n    DCA.AccountID\n    ,DCA.CustomerID\n    ,CASE WHEN DC.GlobalCIF IS NOT NULL THEN REPLACE(DC.GlobalCIF,'Global_CIF_','Entity_CIF_')\n      ELSE CONCAT('Entity_CIF_', DC.SourceSystemCode, '_', DC.CustomerID) END AS EntityCIF\n    ,DB.BankID AS Bank_Code\n    ,DBCH.BranchID AS Branch_Code\n    ,DBCH.BranchName\n    ,DBCH.Area\n    ,DBCH.Region\n    ,DCA.SourceSystemCode AS Source\n    ,DP.ProductGroup AS ProductGrouping\n    ,DP.ProductName AS ProductType\n    ,CONCAT(DP.ProductGroup,'-',DP.ProductName) AS ProductDetails\n    ,DA.AccountOpenedDate AS OpenedDate\n    ,DFTFV.AUMAmountFull * .85 AS AssetsUnderManagementBalance_Full\n    ,DFTFV.AUMAmountProrated * .85 AS AssetsUnderManagementBalance_Prorated\n    ,DFTFV.BusinessDateSK AS BusinessDate\n    ,DCA.ValidStartDate AS LastUpdatedDate\n    ,CONCAT(DCA.AccountId,DCA.CustomerID,DB.BankID,DCA.SourceSystemCode) as AccountKey \n    INTO DW.PBI_Trust_Retail\nFROM DimCustomerAccount_TRU DCA\nJOIN (SELECT CustomerSK ,GlobalCIF,SourceSystemCode,CustomerID FROM DW.DimCustomer WHERE CustomerType = 'Retail') DC ON DCA.CustomerSK = DC.CustomerSK\nLEFT JOIN (SELECT BranchSK,BranchID,BranchName,Area,Region FROM DW.DimBranch) DBCH ON DCA.BranchSK = DBCH.BranchSK\nLEFT JOIN (SELECT BankSK ,BankID FROM DW.DimBank) DB ON DCA.BankSK = DB.BankSK \nLEFT JOIN (SELECT AccountSK,ProductSK FROM DW.DimAccountProduct) DAP ON DCA.AccountSK = DAP.AccountSK\nLEFT JOIN (SELECT ProductSK,ProductGroup,ProductName FROM DW.DimProduct) DP ON DAP.ProductSK = DP.ProductSK\nLEFT JOIN (SELECT AccountOpenedDate,AccountSK FROM DW.DimAccount) DA ON DCA.AccountSK = DA.AccountSK\nLEFT JOIN (SELECT AccountSK,AUMAmountFull,AUMAmountProrated,BusinessDateSK FROM DW.FactTrustFundValue) DFTFV ON DCA.AccountSK = DFTFV.AccountSK\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

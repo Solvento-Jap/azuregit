@@ -1,0 +1,20 @@
+{
+	"name": "SQL script 604",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nCREATE PROC [OM].[SP_SRC_CHECK] @task_name [varchar](30),@process_date [datetime] AS\nBEGIN\n\n    DECLARE @FLAG_CNT [NUMERIC](15,0)\n\tDECLARE @FLAG_DUP_CNT [NUMERIC](15,0)\n\n    SELECT\n\t@FLAG_CNT=(CASE WHEN COUNT(*) <> SUM(COALESCE((CASE WHEN OS.STATUS = 'SUCCESSFUL' THEN 1 ELSE 0 END),0)) THEN 0 ELSE 1 END)\n\tFROM \n\t\t[OM].[OM_TASK_DEPENDENCY] OTD\n\tLEFT JOIN\n\t\t[OM].[OM_TASK_RUN] OTR\n\t\tON\n\t\tOTD.TASK_NAME =  OTR.TASK_NAME AND\n\t\tOTR.PROCESS_DATE = @process_date\n\tLEFT JOIN   \n\t\t[OM].[OM_STATUS] OS\n\t\tON\n\t\tOTR.STATUS_ID =  OS.STATUS_ID\n\tWHERE\n\t\tOTD.DEPENDENT_TASK_NAME = UPPER(@task_name)\n\tGROUP BY\n\t\tOTD.DEPENDENT_TASK_NAME\n\t\t\n\t\t\n\tSELECT\n\t@FLAG_DUP_CNT = COUNT(*)\n\tFROM \n\t\t[OM].[OM_TASK_DEPENDENCY] OTD\n\tINNER JOIN\n\t\t[OM].[OM_TASK_RUN_DUP_COUNT] OTRDC\n\t\tON\n\t\tOTD.TASK_NAME =  OTRDC.TASK_NAME AND\n\t\tOTRDC.PROCESS_DATE = @process_date\n\tWHERE\n\t\tOTD.DEPENDENT_TASK_NAME = UPPER(@task_name)\n\tGROUP BY\n\t\tOTD.DEPENDENT_TASK_NAME\n\n\tIF(@FLAG_CNT<>1)\n\t   BEGIN\n\t\t   RAISERROR('JOB %s SOURCES ARE NOT YET AVAILABLE, PLEASE CHECK OM.OM_TASK_RUN TABLE FOR LIST OF SOURCES THAT ARE NOT YET AVAILABLE', 16,1,@task_name)\n\t   END\n\t   \n\n\n\tIF(@FLAG_DUP_CNT>0)\n\t   BEGIN\n\t\t   RAISERROR('DUPLICATE RECORDS FOUND IN SOURCE TABLES, PLEASE CHECK OM.OM_TASK_RUN_DUP_COUNT FOR LIST OF TABLES WITH DUPLICATE RECORDS', 16,1)\n\t   END\n\n\n\nEND\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

@@ -1,0 +1,147 @@
+{
+	"name": "CTAS_EDS_DIGITAL_FIN_TXN_FACT",
+	"properties": {
+		"activities": [
+			{
+				"name": "DIGITAL_FIN_TXN_FACT_MBK",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DROP AND CREATE FIN",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "INSERT INTO EDS.DIGITAL_FIN_TXN_FACT \r\nSELECT \r\n\t BANK_ID\r\n\t,EOM_DATE\r\n\t,TXN_DATE\r\n\t,CIF_ID\r\n\t,BILLER_ID\r\n\t,TXN_COUNT\r\n\t,TXN_STATUS\r\n\t,CRNCY_CODE\r\n\t,TXN_AMT_ORIG\r\n\t,TXN_AMT_PHP\r\n\t,TXN_TYPE\r\n\t,RECEIVING_BANK\r\n\t,GROSS_TXN_FEE\r\n\t,NET_TXN_FEE\r\n\t,SUM(TXN_COUNT * GROSS_TXN_FEE) AS GROSS_FEE_INCOME\r\n\t,SUM(TXN_COUNT * NET_TXN_FEE) AS NET_FEE_INCOME\r\n\t,SOURCE_CODE\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS INSERT_DTTM\r\nFROM \r\n(\r\n\tSELECT \r\n\t\tCTRAN.BNK_CODE AS BANK_ID,\r\n\t\t--DTE.CURRENT_MONTH_END AS TXN_DATE, \r\n\t\tEOMONTH(CAST(CTRAN.TXN_DATE AS DATE))  AS EOM_DATE, \r\n\t\tCAST(CTRAN.TXN_DATE AS DATE)  AS TXN_DATE, \r\n\t\tCTRAN.CIF_NO AS CIF_ID, \r\n\t\tCTRAN.BILLER_ID, \r\n\t\tCOUNT(CTRAN.TXN_ID) AS TXN_COUNT, \r\n\t\tCTRAN.[STATUS] AS TXN_STATUS,\r\n\t\tCTRAN.FROM_ACCT_CCY AS CRNCY_CODE,\t\r\n\t\tSUM(CTRAN.TXN_AMT) AS TXN_AMT_ORIG, \r\n\t\tSUM(CTRAN.TXN_AMT_PHP) TXN_AMT_PHP,\r\n\t\tCTRAN.TXN_TYPE, \r\n\t\tCTRAN.TO_BANK_NAME AS RECEIVING_BANK, \r\n\t\t(CASE WHEN CTRAN.TO_BANK_NAME='CHINABANK SAVINGS' THEN 0 ELSE COALESCE(DBD2.GROSS_TXN_FEE,DBD1.GROSS_TXN_FEE,DBD2.D_FEE,DBD1.D_FEE) END) AS GROSS_TXN_FEE,\r\n\t\t(CASE WHEN CTRAN.TO_BANK_NAME='CHINABANK SAVINGS' THEN 0 ELSE COALESCE(DBD2.NET_TXN_FEE,DBD1.NET_TXN_FEE,DBD2.D_FEE,DBD1.D_FEE) END) AS NET_TXN_FEE,\r\n\t\tCTRAN.SOURCE_CODE AS SOURCE_CODE\r\n\tFROM (\r\n\t\t\t\t\tSELECT \r\n\t\t\t\t\t\tCUST.CIF_NO, \r\n\t\t\t\t\t\tMBKTRAN.BNK_CODE, \r\n\t\t\t\t\t\tMBKTRAN.SOURCE_CODE, \r\n\t\t\t\t\t\tMBKTRAN.TXN_DATE, \r\n\t\t\t\t\t\tMBKTRAN.TXN_ID, \r\n\t\t\t\t\t\tMBKTRAN.TXN_TYPE, \r\n\t\t\t\t\t\tMBKTRAN.[STATUS], \r\n\t\t\t\t\t\tMBKTRAN.BILLER_ID, \r\n\t\t\t\t\t\tMBKTRAN.TO_BANK_NAME, \r\n\t\t\t\t\t\tMBKTRAN.TXN_AMT, \r\n\t\t\t\t\t\tMBKTRAN.TXN_AMT_PHP,\r\n\t\t\t\t\t\tMBKTRAN.FROM_ACCT_CCY\r\n\t\t\t\t\tFROM \r\n\t\t\t\t\t\t(  \r\n\t\t\t\t\t\t\t\tSELECT \r\n\t\t\t\t\t\t\t\t\tDISTINCT\r\n\t\t\t\t\t\t\t\t\tCIF_NO,\r\n\t\t\t\t\t\t\t\t\tCUST_ID\r\n\t\t\t\t\t\t\t\tFROM \r\n\t\t\t\t\t\t\t\t\tEDS.MBK_RTBKCUSTOMERMTB \r\n\t\t\t\t\t\t\t\tWHERE \r\n\t\t\t\t\t\t\t\t\tBNK_CODE = 'CBC01'\r\n\t\t\t\t\t\t) CUST\r\n\t\t\t\t\t\tINNER JOIN\t\r\n\t\t\t\t\t\t(\r\n\t\t\t\t\t\t\t\tSELECT \r\n\t\t\t\t\t\t\t\tBNK_CODE,\r\n\t\t\t\t\t\t\t\tSOURCE_CODE,\r\n\t\t\t\t\t\t\t\tTXN_DATE, \r\n\t\t\t\t\t\t\t\tTXN_ID, \r\n\t\t\t\t\t\t\t\tTXN_TYPE, \r\n\t\t\t\t\t\t\t\t[STATUS], \r\n\t\t\t\t\t\t\t\tCUST_ID, \r\n\t\t\t\t\t\t\t\tTXN_FIELD1 BILLER_ID, \r\n\t\t\t\t\t\t\t\tFROM_ACCT_CCY, \r\n\t\t\t\t\t\t\t\tTO_BANK_NAME, \r\n\t\t\t\t\t\t\t\tTXN_AMT, \r\n\t\t\t\t\t\t\t\tCASE WHEN FROM_ACCT_CCY <> 'PHP' THEN TXN_AMT *  ConversionRate ELSE TXN_AMT END  TXN_AMT_PHP\r\n\t\t\t\t\t\t\t\tFROM \r\n\t\t\t\t\t\t\t\t\tEDS.MBK_RTBKTRANSACTIONMTB A\r\n\t\t\t\t\t\t\t\t\tLEFT JOIN \r\n\t\t\t\t\t\t\t\t\t(    \r\n\t\t\t\t\t\t\t\t\t\tSELECT \r\n\t\t\t\t\t\t\t\t\t\t\tDD.DateSk,\r\n\t\t\t\t\t\t\t\t\t\t\tCONVERT(varchar(12), CurrencyConversionTimestamp, 112) CurrencyConversionTimestamp, \r\n\t\t\t\t\t\t\t\t\t\t\tConvertFromCurrencyId, \r\n\t\t\t\t\t\t\t\t\t\t\tConversionRate \r\n\t\t\t\t\t\t\t\t\t\tFROM \r\n\t\t\t\t\t\t\t\t\t\t\tEDS.DATE_DIM DD\r\n\t\t\t\t\t\t\t\t\t\tLEFT JOIN\r\n\t\t\t\t\t\t\t\t\t\t\tBNKM.CurrencyConversion CC\r\n\t\t\t\t\t\t\t\t\t\t\tON\r\n\t\t\t\t\t\t\t\t\t\t\t(CASE WHEN BUSINESS_DAY_FLAG ='N' THEN CONVERT(varchar(12),DD.Previous_Business_Day, 112) ELSE DD.DateSk END)=CONVERT(varchar(12), CurrencyConversionTimestamp, 112)\r\n\r\n\t\t\t\t\t\t\t\t\t\tWHERE \r\n\t\t\t\t\t\t\t\t\t\t\tConvertToCurrencyId = 'PHP' \r\n\t\t\t\t\t\t\t\t\t\t\tAND RateId = 'REV' \r\n\t\t\t\t\t\t\t\t\t\t\tAND FinancialInstitutionId = 'CBC01'\r\n\t\t\t\t\t\t\t\t\t) RATE \r\n\t\t\t\t\t\t\t\t\tON RATE.DateSk = CONVERT(varchar(8), A.TXN_DATE, 112) \r\n\t\t\t\t\t\t\t\t\tAND Rate.ConvertFromCurrencyId = A.FROM_ACCT_CCY\r\n\r\n\t\t\t\t\t\t\t\tWHERE \r\n\t\t\t\t\t\t\t\t\tBNK_CODE = 'CBC01' \r\n\t\t\t\t\t\t) MBKTRAN \r\n\t\t\t\t\t\tON CUST.CUST_ID = MBKTRAN.CUST_ID \r\n\t\t) CTRAN\r\n\tLEFT JOIN (SELECT \r\n\t\t\t\tCASE \r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NOT NULL THEN EBK_BP \r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NOT NULL THEN P2B_BP\r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NULL THEN DEFAULT_FEE_BP\r\n\t\t\t\tEND D_FEE\r\n\t\t\t\t,\r\n\t\t\t\t*\r\n\t\t\t\tFROM EDS.DIGITAL_BILLERS_DIM \r\n\t\t\t  ) DBD1\r\n\t\tON CTRAN.TXN_TYPE = DBD1.TXN_TYPE\r\n\t\tAND CTRAN.TXN_TYPE NOT IN ('BP', 'BPQ')\r\n\tLEFT JOIN (SELECT \r\n\t\t\t\tCASE \r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NOT NULL THEN EBK_BP \r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NOT NULL THEN P2B_BP\r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NULL THEN DEFAULT_FEE_BP\r\n\t\t\t\tEND D_FEE\r\n\t\t\t\t,\r\n\t\t\t\t*\r\n\t\t\t\tFROM EDS.DIGITAL_BILLERS_DIM \r\n\t\t\t  ) DBD2\r\n\t\tON DBD2.BILLER_ID = CTRAN.BILLER_ID\r\n\t\tAND COALESCE(CTRAN.BILLER_ID,'') <> ''\r\n\t\tAND CTRAN.TXN_TYPE IN ('BP', 'BPQ')\t\r\n\t--WHERE\r\n\t\t--CAST(CTRAN.[TXN_DATE] AS DATE) > '2024-12-31'\r\n\tGROUP BY \r\n\t\tCTRAN.BNK_CODE,\r\n\t\t--DTE.CURRENT_MONTH_END AS TXN_DATE, \r\n\t\tEOMONTH(CAST(CTRAN.TXN_DATE AS DATE)), \r\n\t\tCAST(CTRAN.TXN_DATE AS DATE), \r\n\t\tCTRAN.CIF_NO, \r\n\t\tCTRAN.BILLER_ID, \r\n\t\tCTRAN.[STATUS],\r\n\t\tCTRAN.FROM_ACCT_CCY,\t\r\n\t\tCTRAN.TXN_TYPE, \r\n\t\tCTRAN.TO_BANK_NAME, \r\n\t\t(CASE WHEN CTRAN.TO_BANK_NAME='CHINABANK SAVINGS' THEN 0 ELSE COALESCE(DBD2.GROSS_TXN_FEE,DBD1.GROSS_TXN_FEE,DBD2.D_FEE,DBD1.D_FEE) END),\r\n\t\t(CASE WHEN CTRAN.TO_BANK_NAME='CHINABANK SAVINGS' THEN 0 ELSE COALESCE(DBD2.NET_TXN_FEE,DBD1.NET_TXN_FEE,DBD2.D_FEE,DBD1.D_FEE) END),\r\n\t\tCTRAN.SOURCE_CODE\r\n\t\t\r\n) TMP_MBK_AGG_TXN\r\nGROUP BY\r\n\t BANK_ID\r\n\t,EOM_DATE\r\n\t,TXN_DATE\r\n\t,CIF_ID\r\n\t,BILLER_ID\r\n\t,TXN_COUNT\r\n\t,TXN_STATUS\r\n\t,CRNCY_CODE\r\n\t,TXN_AMT_ORIG\r\n\t,TXN_AMT_PHP\r\n\t,TXN_TYPE\r\n\t,RECEIVING_BANK\r\n\t,GROSS_TXN_FEE\r\n\t,NET_TXN_FEE\r\n\t,SOURCE_CODE\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DIGITAL_FIN_TXN_FACT_RIB",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DIGITAL_FIN_TXN_FACT_MBK",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "INSERT INTO EDS.DIGITAL_FIN_TXN_FACT\r\n\r\nSELECT \r\n\t BANK_ID\r\n\t,EOM_DATE\r\n\t,TXN_DATE\r\n\t,CIF_ID\r\n\t,BILLER_ID\r\n\t,TXN_COUNT\r\n\t,TXN_STATUS\r\n\t,CRNCY_CODE\r\n\t,TXN_AMT_ORIG\r\n\t,TXN_AMT_PHP\r\n\t,TXN_TYPE\r\n\t,RECEIVING_BANK\r\n\t,GROSS_TXN_FEE\r\n\t,NET_TXN_FEE\r\n\t,(TXN_COUNT * GROSS_TXN_FEE) AS GROSS_FEE_INCOME\r\n\t,(TXN_COUNT * NET_TXN_FEE) AS NET_FEE_INCOME\r\n\t,SOURCE_CODE\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS INSERT_DTTM\r\nFROM \r\n( \r\n\tSELECT  \r\n\t\tA.BANK_ID AS BANK_ID,\r\n\t\tEOMONTH(CAST(A.TXN_DATE AS DATE))  AS EOM_DATE, \t\t\r\n\t\tCAST(A.TXN_DATE AS DATE)  AS TXN_DATE, \t\t\r\n\t\tB.CUST_ID AS CIF_ID,\r\n\t\tCOALESCE(DBD2.BILLER_ID,DBD3.BILLER_ID,DBD1.BILLER_ID) AS BILLER_ID,\r\n\t\tCOUNT(A.TXN_ID) AS TXN_COUNT,\r\n\t\tBB.TXN_ENTRY_STATUS AS TXN_STATUS,\r\n\t\tA.TXN_CRN AS CRNCY_CODE,\r\n\t\tSUM(A.TOTAL_TXN_AMT) AS TXN_AMT_ORIG,\r\n\t\tSUM(A.TOTAL_TXN_AMT_IN_HOMECRN) AS TXN_AMT_PHP,\r\n\t\tA.TXN_TYPE AS TXN_TYPE,\r\n\t\tD.BANK_IDENTIFIER AS RECEIVING_BANK, --NULL AS RECEIVING_BANK,\r\n\t\t(CASE WHEN D.BANK_IDENTIFIER IN ('0112','112') THEN 0 ELSE COALESCE(DBD2.GROSS_TXN_FEE,DBD3.GROSS_TXN_FEE,DBD1.GROSS_TXN_FEE,DBD2.D_FEE,DBD3.D_FEE,DBD1.D_FEE) END)  AS GROSS_TXN_FEE,\r\n\t\t(CASE WHEN D.BANK_IDENTIFIER IN ('0112','112') THEN 0 ELSE COALESCE(DBD2.NET_TXN_FEE,DBD3.NET_TXN_FEE,DBD1.NET_TXN_FEE,DBD2.D_FEE,DBD3.D_FEE,DBD1.D_FEE) END)  AS NET_TXN_FEE,\r\n\t\tA.SOURCE_CODE AS SOURCE_CODE\r\n\tFROM \r\n\t\tEDS.RIB_TRANSACTIONHEADER A \r\n\tINNER JOIN \r\n\t\t(\r\n\t\t\tSELECT \r\n\t\t\t\tROW_NUMBER() over(PARTITION by TRIM(CORP_USER), BNK_CODE ORDER BY SCD_START_DATE) RN ,\r\n\t\t\t\tCUST_ID,\r\n\t\t\t\tTRIM(CORP_USER) CORP_USER,\r\n\t\t\t\tDEL_FLG,\r\n\t\t\t\tR_CRE_TIME,\r\n\t\t\t\tSCD_START_DATE,\r\n\t\t\t\tSCD_END_DATE,\r\n\t\t\t\tBNK_CODE \r\n\t\t\tFROM \r\n\t\t\t\tEDS.RIB_CORPORATEUSER\r\n\t\t) B \r\n\t\tON B.BNK_CODE = A.BNK_CODE \r\n\t\tAND A.CORP_USER = B.CORP_USER \r\n\t\tAND CAST(A.TXN_DATE AS DATE) BETWEEN (CASE WHEN B.RN = 1 THEN B.R_CRE_TIME ELSE B.SCD_START_DATE END)  AND B.SCD_END_DATE\r\n\t\tLEFT JOIN \r\n\t\t(   \r\n\t\t\tSELECT \r\n                DD.DateSk,\r\n\t\t\t\tCONVERT(varchar(12), CurrencyConversionTimestamp, 112) CurrencyConversionTimestamp, \r\n\t\t\t\tConvertFromCurrencyId, \r\n\t\t\t\tConversionRate \r\n\t\t\tFROM \r\n                EDS.DATE_DIM DD\r\n            LEFT JOIN\r\n\t\t\t\tBNKM.CurrencyConversion CC\r\n                ON\r\n                (CASE WHEN BUSINESS_DAY_FLAG ='N' THEN CONVERT(varchar(12),DD.Previous_Business_Day, 112) ELSE DD.DateSk END)=CONVERT(varchar(12), CurrencyConversionTimestamp, 112)\r\n\r\n\t\t\tWHERE \r\n                ConvertToCurrencyId = 'PHP' \r\n\t\t\t\tAND RateId = 'REV' \r\n\t\t\t\tAND FinancialInstitutionId = 'CBC01'\r\n\t\t) RATE \r\n\t\tON RATE.DateSk = CONVERT(varchar(8), A.TXN_DATE, 112) \r\n\t\tAND Rate.ConvertFromCurrencyId = A.TXN_CRN\r\n\r\n\tLEFT JOIN eds.RIB_TRANSACTIONDETAILS BB \r\n\t\tON BB.TXN_ID = A.TXN_ID \r\n\t\tAND BB.TXN_ENTRY_STATUS = (CASE WHEN A.TXN_STATUS = 'PRO' THEN 'PEN' ELSE A.TXN_STATUS END) \r\n\t\tAND BB.BANK_ID = A.BANK_ID\r\n\tLEFT JOIN  \r\n\t\t(\r\n\t\t\tSELECT \r\n\t\t\t\tROW_NUMBER() over(PARTITION by PAYEE_LIST_ID, BNK_CODE ORDER BY SCD_START_DATE) RN ,\r\n\t\t\t\tPAYEE_LIST_ID,\r\n\t\t\t\tBNF_ID,\r\n\t\t\t\tR_CRE_TIME,\r\n\t\t\t\tSCD_START_DATE,\r\n\t\t\t\tSCD_END_DATE,\r\n\t\t\t\tBNK_CODE \r\n\t\t\tFROM \r\n\t\t\t\teds.RIB_CUSTOMERPAYEE\r\n\t\t) C \r\n\t\r\n\t\tON  CAST(C.PAYEE_LIST_ID as varchar(35)) = BB.CP_ENTITY_ID \r\n\t\tAND C.BNK_CODE = BB.BNK_CODE\r\n\t\tAND CAST(A.TXN_DATE AS DATE) BETWEEN (CASE WHEN C.RN = 1 THEN C.R_CRE_TIME ELSE C.SCD_START_DATE END)  AND C.SCD_END_DATE\r\n\tLEFT JOIN \r\n\t\t(\r\n\t\t\tSELECT \r\n\t\t\t\tROW_NUMBER() over(PARTITION by BNF_ID, BNK_CODE ORDER BY SCD_START_DATE) RN ,\r\n\t\t\t\tBNF_ID,\r\n\t\t\t\tBNF_NAME,\r\n\t\t\t\tBANK_IDENTIFIER,\r\n\t\t\t\tR_CRE_TIME,\r\n\t\t\t\tSCD_START_DATE,\r\n\t\t\t\tSCD_END_DATE,\r\n\t\t\t\tBNK_CODE \r\n\t\t\tFROM \r\n\t\t\t\teds.RIB_PAYEEMASTER\r\n\t\t) D \r\n\t\tON D.BNF_ID = C.BNF_ID \r\n\t\tAND D.BNK_CODE = C.BNK_CODE \r\n\t\tAND CAST(A.TXN_DATE AS DATE) BETWEEN (CASE WHEN D.RN = 1 THEN D.R_CRE_TIME ELSE D.SCD_START_DATE END)  AND D.SCD_END_DATE\t \r\n\tLEFT JOIN (SELECT \r\n\t\t\t\tCASE \r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NOT NULL THEN EBK_BP \r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NOT NULL THEN P2B_BP\r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NULL THEN DEFAULT_FEE_BP\r\n\t\t\t\tEND D_FEE\r\n\t\t\t\t,\r\n\t\t\t\t*\r\n\t\t\t\tFROM EDS.DIGITAL_BILLERS_DIM \r\n\t\t\t  ) DBD1\r\n\t\tON A.TXN_TYPE = DBD1.TXN_TYPE\r\n\t\tAND A.TXN_TYPE NOT IN ('BPR', 'QPT')\r\n\r\n\t\t\r\n\tLEFT JOIN (SELECT \r\n\t\t\t\tCASE \r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NOT NULL THEN EBK_BP \r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NOT NULL THEN P2B_BP\r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NULL THEN DEFAULT_FEE_BP\r\n\t\t\t\tEND D_FEE\r\n\t\t\t\t,\r\n\t\t\t\t*\r\n\t\t\t\tFROM EDS.DIGITAL_BILLERS_DIM \r\n\t\t\t  ) DBD2\r\n\t\tON  BB.CP_ENTITY_EXTN1 = DBD2.BILLER_NAME\r\n\t\tAND A.TXN_TYPE IN ('BPR', 'QPT')\t\r\n\t\tAND COALESCE(BB.CP_ENTITY_EXTN1,'') <> ''\r\n\t\t\r\n\t\t\r\n\tLEFT JOIN (SELECT \r\n\t\t\t\tCASE \r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NOT NULL THEN EBK_BP \r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NOT NULL THEN P2B_BP\r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NULL THEN DEFAULT_FEE_BP\r\n\t\t\t\tEND D_FEE\r\n\t\t\t\t,\r\n\t\t\t\t*\r\n\t\t\t\tFROM EDS.DIGITAL_BILLERS_DIM \r\n\t\t\t  ) DBD3\r\n\t\tON  D.BNF_NAME = DBD3.BILLER_NAME\r\n\t\tAND A.TXN_TYPE IN ('BPR', 'QPT') \r\n\t\tAND COALESCE(BB.CP_ENTITY_EXTN1,'') = ''\r\n\t\t\r\n\t\t\r\n\t\t\r\n\tWHERE \r\n\t\tA.BNK_CODE = 'CBC01' \r\n\t\tAND  LEFT(B.CUST_ID,1) = 'R' \r\n\t\tAND A.DEL_FLG = 'N' \r\n\t\tAND B.DEL_FLG = 'N'\r\n\t\t--AND  CAST(A.[TXN_DATE] AS DATE) > '2024-12-31'\r\n\tGROUP BY \r\n\t\tA.BANK_ID,\r\n\t\t--DTE.CURRENT_MONTH_END, \r\n\t\tEOMONTH(CAST(A.TXN_DATE AS DATE)),\r\n\t\tCAST(A.TXN_DATE AS DATE),\r\n\t\tB.CUST_ID,\r\n\t\tCOALESCE(DBD2.BILLER_ID,DBD3.BILLER_ID,DBD1.BILLER_ID),\r\n\t\tBB.TXN_ENTRY_STATUS,\r\n\t\tA.TXN_CRN,\r\n\t\tA.TXN_TYPE,\r\n\t\tD.BANK_IDENTIFIER,\r\n\t\t(CASE WHEN D.BANK_IDENTIFIER IN ('0112','112') THEN 0 ELSE COALESCE(DBD2.GROSS_TXN_FEE,DBD3.GROSS_TXN_FEE,DBD1.GROSS_TXN_FEE,DBD2.D_FEE,DBD3.D_FEE,DBD1.D_FEE) END),\r\n\t\t(CASE WHEN D.BANK_IDENTIFIER IN ('0112','112') THEN 0 ELSE COALESCE(DBD2.NET_TXN_FEE,DBD3.NET_TXN_FEE,DBD1.NET_TXN_FEE,DBD2.D_FEE,DBD3.D_FEE,DBD1.D_FEE) END),\r\n\t\tA.SOURCE_CODE\r\n\t\r\n) TMP_RIB_AGG_TXN\t"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DIGITAL_FIN_TXN_FACT_D30",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DIGITAL_FIN_TXN_FACT_RIB",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "INSERT INTO EDS.DIGITAL_FIN_TXN_FACT\r\n\r\nSELECT \r\n\t BANK_ID\r\n\t,EOM_DATE\r\n\t,TXN_DATE\r\n\t,CIF_ID\r\n\t,BILLER_ID\r\n\t,TXN_COUNT\r\n\t,TXN_STATUS\r\n\t,CRNCY_CODE\r\n\t,TXN_AMT_ORIG\r\n\t,TXN_AMT_PHP\r\n\t,TXN_TYPE\r\n\t,RECEIVING_BANK\r\n\t,GROSS_TXN_FEE\r\n\t,NET_TXN_FEE\r\n\t,SUM(TXN_COUNT * GROSS_TXN_FEE) AS GROSS_FEE_INCOME\r\n\t,SUM(TXN_COUNT * NET_TXN_FEE) AS NET_FEE_INCOME\r\n\t,SOURCE_CODE\r\n\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS INSERT_DTTM\r\nFROM \r\n(\r\n\tSELECT \r\n\t\t'CBC01' AS BANK_ID,\r\n\t\tEOMONTH(CASE WHEN ISDATE(A.[Transaction Date])=1 THEN CAST(A.[Transaction Date] AS DATE) END)  AS EOM_DATE, \r\n\t\t(CASE WHEN ISDATE(A.[Transaction Date])=1 THEN CAST(A.[Transaction Date] AS DATE) END)  AS TXN_DATE, \r\n\t\tB.CIF_ID AS CIF_ID, \r\n\t\tA.[Biller Mnemonic] AS BILLER_ID, \r\n\t\tCOUNT(*) AS TXN_COUNT, \r\n\t\tA.[Status] AS TXN_STATUS,\r\n\t\tA.[Transaction Currency] AS CRNCY_CODE,\t\r\n\t\tSUM(CASE WHEN ISNUMERIC(REPLACE(A.[TRANSACTION AMOUNT],',',''))=1 THEN CAST(REPLACE(A.[TRANSACTION AMOUNT],',','') AS NUMERIC(15,4)) END) AS TXN_AMT_ORIG, \r\n\t\tSUM(CASE WHEN ISNUMERIC(REPLACE(A.[TRANSACTION AMOUNT],',',''))=1 THEN CAST(REPLACE(A.[TRANSACTION AMOUNT],',','') AS NUMERIC(15,4)) END) AS TXN_AMT_PHP,\r\n\t\tA.[Transaction Type] AS TXN_TYPE, \r\n\t\tA.[Transferee Bank] AS RECEIVING_BANK, \r\n\t\t(CASE WHEN A.[Transferee Bank]='China Bank Savings' THEN 0 ELSE COALESCE(DBD2.GROSS_TXN_FEE,DBD1.GROSS_TXN_FEE,DBD2.D_FEE,DBD1.D_FEE) END) AS GROSS_TXN_FEE,\r\n\t\t(CASE WHEN A.[Transferee Bank]='China Bank Savings' THEN 0 ELSE COALESCE(DBD2.NET_TXN_FEE,DBD1.NET_TXN_FEE,DBD2.D_FEE,DBD1.D_FEE) END) AS NET_TXN_FEE,\r\n\t\t'D30' AS SOURCE_CODE\r\n\tFROM \r\n\t\teds.d30_TransactionReport A\r\n\tINNER JOIN \r\n\t\teds.d30_Customer B \r\n\t\tON B.USERNAME = A.UserName\r\n\tLEFT JOIN (SELECT \r\n\t\t\t\tCASE \r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NOT NULL THEN EBK_BP \r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NOT NULL THEN P2B_BP\r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NULL THEN DEFAULT_FEE_BP\r\n\t\t\t\tEND D_FEE\r\n\t\t\t\t,\r\n\t\t\t\t*\r\n\t\t\t\tFROM EDS.DIGITAL_BILLERS_DIM \r\n\t\t\t  ) DBD1\r\n\t\tON A.[Transaction Type] = DBD1.TXN_TYPE \r\n\t\tAND A.[Transaction Type] NOT IN ('BillPay')\t\r\n\tLEFT JOIN (SELECT \r\n\t\t\t\tCASE \r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NOT NULL THEN EBK_BP \r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NOT NULL THEN P2B_BP\r\n\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NULL THEN DEFAULT_FEE_BP\r\n\t\t\t\tEND D_FEE\r\n\t\t\t\t,\r\n\t\t\t\t*\r\n\t\t\t\tFROM EDS.DIGITAL_BILLERS_DIM \r\n\t\t\t  ) DBD2\r\n\t\tON A.[Biller Mnemonic] = DBD2.BILLER_ID \r\n\t\tAND A.[Transaction Type] IN ('BillPay')\r\n\tWHERE \r\n\t\t[Transaction Category] = 'Financial'\r\n\t\tAND ISDATE(A.[Transaction Date])=1\r\n\t\tAND ISNUMERIC(REPLACE(A.[TRANSACTION AMOUNT],',',''))=1\r\n\tGROUP BY \r\n\t\tEOMONTH(CASE WHEN ISDATE(A.[Transaction Date])=1 THEN CAST(A.[Transaction Date] AS DATE) END) ,\r\n\t\t(CASE WHEN ISDATE(A.[Transaction Date])=1 THEN CAST(A.[Transaction Date] AS DATE) END) ,\r\n\t\tB.CIF_ID, \r\n\t\tA.[Biller Mnemonic], \r\n\t\tA.[Status],\r\n\t\tA.[Transaction Currency],\t\r\n\t\tA.[Transaction Type],\r\n\t\tA.[Transferee Bank], \r\n\t\t(CASE WHEN A.[Transferee Bank]='China Bank Savings' THEN 0 ELSE COALESCE(DBD2.GROSS_TXN_FEE,DBD1.GROSS_TXN_FEE,DBD2.D_FEE,DBD1.D_FEE) END),\r\n\t\t(CASE WHEN A.[Transferee Bank]='China Bank Savings' THEN 0 ELSE COALESCE(DBD2.NET_TXN_FEE,DBD1.NET_TXN_FEE,DBD2.D_FEE,DBD1.D_FEE) END)\r\n) TMP_D30_AGG_TXN\r\nGROUP BY\r\n\t BANK_ID\r\n\t,EOM_DATE\r\n\t,TXN_DATE\r\n\t,CIF_ID\r\n\t,BILLER_ID\r\n\t,TXN_COUNT\r\n\t,TXN_STATUS\r\n\t,CRNCY_CODE\r\n\t,TXN_AMT_ORIG\r\n\t,TXN_AMT_PHP\r\n\t,TXN_TYPE\r\n\t,RECEIVING_BANK\r\n\t,GROSS_TXN_FEE\r\n\t,NET_TXN_FEE\r\n\t,SOURCE_CODE"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DROP AND CREATE FIN",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "IF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'DIGITAL_FIN_TXN_FACT' and table_schema = 'EDS')\r\nBEGIN\r\n   DROP TABLE EDS.DIGITAL_FIN_TXN_FACT;\r\nEND;\r\n\r\n\r\nIF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.VIEWS where table_name = 'DIGITAL_FIN_TXN_FACT' and table_schema = 'EDS')\r\nBEGIN\r\n   DROP VIEW EDS.DIGITAL_FIN_TXN_FACT;\r\nEND;\r\n\r\nCREATE TABLE EDS.DIGITAL_FIN_TXN_FACT \r\n(\r\n\t BANK_ID varchar(8) \r\n\t,EOM_DATE date\r\n\t,TXN_DATE date\r\n\t,CIF_ID varchar(20) \r\n\t,BILLER_ID varchar(120)\r\n\t,TXN_COUNT bigint\r\n\t,TXN_STATUS varchar(40)\r\n\t,CRNCY_CODE varchar(3)\r\n\t,TXN_AMT_ORIG numeric(15,5)\r\n\t,TXN_AMT_PHP numeric(15,5)\r\n\t,TXN_TYPE varchar(120)\r\n\t,RECEIVING_BANK varchar(100)\r\n\t,GROSS_TXN_FEE numeric(5,2)\r\n\t,NET_TXN_FEE numeric(5,2)\r\n\t,GROSS_FEE_INCOME numeric(15,5)\r\n\t,NET_FEE_INCOME numeric(15,5)\r\n\t,SOURCE_CODE varchar(20)\r\n\t,INSERT_DTTM datetime\r\n)\r\nwith (distribution=hash(CIF_ID),heap)\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2025-07-15T07:04:06Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,631 @@
+{
+	"name": "CI_Demographics_Retail_EDS",
+	"properties": {
+		"description": "Sources data from EDS tables",
+		"activities": [
+			{
+				"name": "Demographics Retail",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "START_TASK_CI",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": {
+							"value": "@concat('WITH DEP AS\n(\n     SELECT \n         EDA.AS_OF_DATE\t\n        ,ECD.ORGKEY\n        ,SUM(EDF.OUTSTANDING_BALANCE_PHP) AS OUTSTANDING_BALANCE_PHP\n        ,SUM(EDF.YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP) YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP \n   \tFROM EDS.DEP_ACCOUNTRELATIONSHIP EDA\n\tLEFT JOIN EDS.DEPOSIT_FACT EDF\n\t\tON EDA.ACID = EDF.GAM_ACID\n\t\tAND EDA.BANK_ID = EDF.GAM_BANK_ID\n\t\tAND EDA.AS_OF_DATE = EDF.AS_OF_DATE\n\tLEFT JOIN EDS.CUSTOMER_DIM ECD\n\t\tON EDA.CUST_ID = ECD.CORE_CUST_ID\n\t\tAND EDA.BANK_ID = ECD.BANK_ID\n\t\tAND EDA.AS_OF_DATE BETWEEN ECD.SCD_START_DATE AND ECD.SCD_END_DATE\n\tWHERE \n        DEP_Account_Status <> ''C'' AND EDA.AS_OF_DATE = CAST(''',variables('v_date'),''' AS DATE) AND GAM_ACID IS NOT NULL AND EDA.DEL_FLG = ''N'' AND EDA.ENTITY_CRE_FLG = ''Y'' AND EDA.BANK_ID = ''CBC01''\n\tAND EDA.ACCT_POA_AS_REC_TYPE IN (''M'', ''J'')\n    GROUP BY \n         EDA.AS_OF_DATE\t\n        ,ECD.ORGKEY\n)\n\n\n, LNS AS\n(\n    SELECT \n        A.AS_OF_DATE AS AS_OF_DATE\n        ,C.ORGKEY\n        ,SUM(RELATIONSHIP_EXPOSURE_PHP) AS RELATIONSHIP_EXPOSURE_PHP\n        ,SUM(BILLED_AMOUNT_PHP) AS BILLED_AMOUNT_PHP\n        ,SUM(CREDIT_LIMIT_PHP) AS CREDIT_LIMIT_PHP\nFROM EDS.LNS_ACCTAUTHSIGN A\n        LEFT JOIN EDS.LOAN_FACT B\n            ON A.AS_OF_DATE = B.AS_OF_DATE\n            AND A.ACID = B.GAM_ACID\n            AND A.BANK_ID = B.GAM_BANK_ID\n        LEFT JOIN EDS.CUSTOMER_DIM C\n            ON A.AS_OF_DATE BETWEEN C.SCD_START_DATE AND C.SCD_END_DATE\n            AND A.CUST_ID = C.CORE_CUST_ID\n            AND A.BANK_ID = C.BANK_ID\n        LEFT JOIN EDS.BRANCH_DIM D\n            ON B.SOL_ID = D.SOL_ID\n            AND B.GAM_BANK_ID = D.BANK_ID\n    WHERE A.DEL_FLG = ''N''\n        AND A.ENTITY_CRE_FLG = ''Y''\n        AND B.GAM_ACID IS NOT NULL\n        AND LNS_ACCOUNT_STATUS <> ''C''\n        AND A.BANK_ID = ''CBC01''\n\t\tAND A.AS_OF_DATE = CAST(''',variables('v_date'),''' AS DATE)\n\t\tAND A.ACCT_POA_AS_REC_TYPE IN (''M'', ''J'')\n\t\tAND B.LNS_ACCOUNT_STATUS <> ''C''\n    GROUP BY A.AS_OF_DATE, C.ORGKEY\n)\n\n\n, CI_CUSTOMER_BALANCES AS\n(\nSELECT \n    B.AS_OF_DATE AS AS_OF_DATE\n    ,A.ORGKEY AS FCBS_CIF\n    ,SUM(B.TOTAL_OUTSTANDING_BALANCE_PHP) AS TOTAL_DEPOSIT_OUTSTANDING_BALANCE_PHP\n    ,SUM(B.TOTAL_YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP) AS TOTAL_DEPOSIT_YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP\n    ,SUM(B.TOTAL_RELATIONSHIP_EXPOSURE_PHP) AS TOTAL_LOAN_RELATIONSHIP_EXPOSURE_PHP\n    ,SUM(B.TOTAL_BILLED_AMOUNT_PHP) AS TOTAL_LOAN_BILLED_AMOUNT_PHP\n    ,SUM(B.TOTAL_CREDIT_LIMIT_PHP) AS TOTAL_LOAN_CREDIT_LIMIT_PHP\n    ,A.BANK_ID\n    ,A.SOURCE_CODE\nFROM eds.CUSTOMER_DIM A\n\n    INNER JOIN\n    (\n    SELECT \n        AS_OF_DATE\n        ,ORGKEY\n        ,OUTSTANDING_BALANCE_PHP AS TOTAL_OUTSTANDING_BALANCE_PHP\n        ,YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP AS TOTAL_YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP\n        ,0 AS TOTAL_RELATIONSHIP_EXPOSURE_PHP\n        ,0 AS TOTAL_BILLED_AMOUNT_PHP\n        ,0 AS TOTAL_CREDIT_LIMIT_PHP\n    FROM DEP\n    UNION\n    SELECT \n        AS_OF_DATE\n        ,ORGKEY\n        ,0 AS TOTAL_OUTSTANDING_BALANCE_PHP\n        ,0 AS TOTAL_YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP\n        ,RELATIONSHIP_EXPOSURE_PHP AS TOTAL_RELATIONSHIP_EXPOSURE_PHP\n        ,BILLED_AMOUNT_PHP AS TOTAL_BILLED_AMOUNT_PHP\n        ,CREDIT_LIMIT_PHP AS TOTAL_CREDIT_LIMIT_PHP\n    FROM LNS\n    ) B\n        ON A.ORGKEY = B.ORGKEY\n        AND B.AS_OF_DATE BETWEEN A.SCD_START_DATE AND A.SCD_END_DATE\nWHERE A.BANK_ID = ''CBC01''\nGROUP BY B.AS_OF_DATE, A.ORGKEY, A.BANK_ID, A.SOURCE_CODE\n)\n\nSELECT TOP 1100000\nCUST.ORGKEY\tAS\tCustomerID\n,CUST.NAME\tAS\tCustomerName\n,NULL\tAS\tGlobalCIF\n,CUST.ORGKEY\tAS\tEntityCIF\n,CUST.ORGKEY\tAS\tFCBSCIF\n,CUST.CUSTOMER_TYPE\tAS\tCustomerType\n,CUST.CUST_DOB\tAS\tBirthdate\n,LEFT(CUST_DOB,4) as Birthdate_Masked\n,CUST.MARITAL_STATUS\tAS\tMaritalStatus\n,CUST.GENDER_DESCRIPTION\tAS\tGender\n,CUST.MOBILE_NUMBER\tAS\tMobileNumber\n,CASE WHEN MOBILE_NUMBER IS NULL THEN NULL ELSE CONCAT(SUBSTRING(MOBILE_NUMBER,1,CHARINDEX('')'',MOBILE_NUMBER)),''*******'') END as MobileNumber_Masked\n,CUST.EMAIL_ADDRESS\tAS\tEmailAddress\n,CASE WHEN EMAIL_ADDRESS IS NULL THEN NULL\n      WHEN EMAIL_ADDRESS LIKE ''%@%'' THEN TRIM(SUBSTRING(EMAIL_ADDRESS,CHARINDEX(''@'',EMAIL_ADDRESS),LEN(EMAIL_ADDRESS))) ELSE ''*******'' END as EmailAddress_Masked\n,CUST.ADDRESS_LINE1\tAS\tAddressLine1\n,CUST.ADDRESS_LINE2\tAS\tAddressLine2\n,MV_CITY.DESCRIPTION\tAS\tCity\n,MV_STATE.DESCRIPTION\tAS\tProvince\n,CUST.ZIP\tAS\tZipCode\n,MV_COUNTRY.DESCRIPTION\tAS\tCountry\n,NULL\tAS\tNationality\n,NULL\tAS\tEmployerName\n,NULL\tAS\tOfficeAddressLine1\n,NULL\tAS\tOfficeAddressLine2\n,NULL\tAS\tOfficeCity\n,NULL\tAS\tOfficeProvince\n,NULL\tAS\tOfficeZipCode\n,NULL\tAS\tOfficeCountry\n,NULL\tAS\tIndustry\n,CUST.OCCUPATION_DESCRIPTION\tAS\tOccupation\n,DATEDIFF(yy, CUST.RELATIONSHIPOPENINGDATE, DATEADD (hh , 8 , getdate()))\tAS\tTenure\n,AGG_BAL.TOTAL_DEPOSIT_YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP\tAS\tTotalRelationshipBalance_Full\n,NULL\tAS\tTotalRelationshipBalance_Prorated\n,NULL\tAS\tTotalMTDADBPHPDeposits_Full\n,NULL\tAS\tTotalMTDADBPHPDeposits_Prorated\n,AGG_BAL.TOTAL_DEPOSIT_YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP\tAS\tTotalYTDADBPHPDeposits_Full\n,NULL\tAS\tTotalYTDADBPHPDeposits_Prorated\n,AGG_BAL.TOTAL_DEPOSIT_OUTSTANDING_BALANCE_PHP\tAS\tTotalOutBalPHPDeposits_Full\n,NULL\tAS\tTotalOutBalPHPDeposits_Prorated\n,AGG_BAL.TOTAL_LOAN_RELATIONSHIP_EXPOSURE_PHP\tAS\tTotalRelationshipExposureLoans_Full\n,NULL\tAS\tTotalRelationshipExposureLoans_Prorated\n,AGG_BAL.TOTAL_LOAN_BILLED_AMOUNT_PHP\tAS\tTotalOutBalPHPLoans_Full\n,NULL\tAS\tTotalOutBalPHPLoans_Prorated\n,AGG_BAL.TOTAL_LOAN_CREDIT_LIMIT_PHP\tAS\tTotalCreditLimitLoans_Full\n,NULL\tAS\tTotalCreditLimitLoans_Prorated\n,NULL\tAS\tTotalOutBalPHPCards\n,NULL\tAS\tTotalOutstandingBalanceCards\n,NULL\tAS\tTotalCreditLimitCards\n,NULL\tAS\tTotalRelationshipExposureLoansCards_Full\n,NULL\tAS\tTotalRelationshipExposureLoansCards_Prorated\n,NULL\tAS\tTotalSecuritiesPortfolioSizeCBSEC_Full\n,NULL\tAS\tTotalSecuritiesPortfolioSizeCBSEC_Prorated\n,NULL\tAS\tTotalFundValueTrust_Full\n,NULL\tAS\tTotalFundValueTrust_Prorated\n,NULL\tAS\tTotalOutstandingInvestmentTRY_Full\n,NULL\tAS\tTotalOutstandingInvestmentTRY_Prorated\n,CUST.DATA_PRIVACY_CONSENT\tAS\tDataPrivacyConsent\n,CUST.LAST_KYC_DATE\tAS\tLastKYCDate\n,CUST.RISK_RATING_TYPE\tAS\tRiskRatingType\n,CUST.RISK_RATING_NAME\tAS\tRiskRating\n,NULL\tAS\tSuspendedIndicator\n,CUST.ATM_ENROLLMENT\tAS\tATMEnrollmentIndicator\n,CUST.MOBILE_BANKING_ENROLLMENT\tAS\tMBKEnrollmentIndicator\n,CUST.ONLINE_BANKING_ENROLLMENT\tAS\tRIBBOBEnrollmentIndicator\n,NULL\tAS\tPayrollIndicator\n,NULL\tAS\tGenerationalCohort\n,NULL\tAS\tMarketSegment\n,AS_OF_DATE\tAS\tLastUpdatedDate\n,AS_OF_DATE\tAS\tBusinessDate\n,''CRM''\tAS\tSourceSystemCode\n,''CBC01''\tAS\tBankCode\nFROM eds.CUSTOMER_DIM CUST\n    LEFT JOIN eds.MV_CITY_DIM AS MV_CITY\n        ON CUST.CITY = MV_CITY.VALUE\n        AND CUST.BANK_ID = MV_CITY.BANK_ID\n    LEFT JOIN eds.MV_STATE_DIM AS MV_STATE\n        ON CUST.STATE = MV_STATE.VALUE\n        AND CUST.BANK_ID = MV_STATE.BANK_ID\n    LEFT JOIN eds.MV_COUNTRY_DIM AS MV_COUNTRY\n        ON CUST.COUNTRY = MV_COUNTRY.VALUE\n        AND CUST.BANK_ID = MV_COUNTRY.BANK_ID\n    LEFT JOIN CI_CUSTOMER_BALANCES AGG_BAL\n        ON CUST.ORGKEY = AGG_BAL.FCBS_CIF\n        AND CUST.BANK_ID = AGG_BAL.BANK_ID\nWHERE CUST.BANK_ID = ''CBC01''\nAND LEFT(CUST.ORGKEY, 1) = ''R''\nAND ''',variables('v_date'),''' BETWEEN CUST.SCD_START_DATE AND CUST.SCD_END_DATE\nORDER BY AGG_BAL.TOTAL_DEPOSIT_YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP DESC')",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "DelimitedTextSink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"formatSettings": {
+							"type": "DelimitedTextWriteSettings",
+							"quoteAllText": true,
+							"fileExtension": ".txt"
+						}
+					},
+					"enableStaging": false,
+					"translator": {
+						"type": "TabularTranslator",
+						"typeConversion": true,
+						"typeConversionSettings": {
+							"allowDataTruncation": true,
+							"treatBooleanAsNumber": false
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_EDS",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "-"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "CI_csv_gen",
+						"type": "DatasetReference",
+						"parameters": {
+							"Table": {
+								"value": "Demographics_Retail",
+								"type": "Expression"
+							},
+							"Source": "DEMOGRAPHICS",
+							"Types": "Retail"
+						}
+					}
+				]
+			},
+			{
+				"name": "START_TASK_CI",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "OM_SRC_CHECK",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_START]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@variables('v_date')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_SUCCESSFUL",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Demographics Retail",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "SUCCESSFUL",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_FAILED",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Demographics Retail",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "FAILED",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.date,'9999-12-31')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_date",
+								"value": {
+									"value": "@pipeline().parameters.date",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "select least(crm_date,deposits_date,loans_date) fulldate from eds.eds_ctl",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_date",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_GET",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Set v_error_desc_get",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@variables('v_date')",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_CI_Demographics_Retail",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "SP_LOG_TASK_ERROR_DTL_GET",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": {
+						"value": "@variables('v_error_desc')",
+						"type": "Expression"
+					},
+					"errorCode": "500"
+				}
+			},
+			{
+				"name": "Set v_error_desc_get",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Demographics Retail",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_error_desc",
+					"value": {
+						"value": "@activity('Demographics Retail').Error.message",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "SP_LOG_COPY_ACTIVITY_DTL",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Demographics Retail",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_COPY_ACTIVITY_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@variables('v_date')",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"dataread": {
+							"value": {
+								"value": "@activity('Demographics Retail').output.dataRead",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"datawritten": {
+							"value": {
+								"value": "@activity('Demographics Retail').output.dataWritten",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"sourcepeakconnections": {
+							"value": {
+								"value": "@activity('Demographics Retail').output.sourcePeakConnections",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowsread": {
+							"value": {
+								"value": "@activity('Demographics Retail').output.rowsRead",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowscopied": {
+							"value": {
+								"value": "@activity('Demographics Retail').output.rowsCopied",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowsskipped": {
+							"value": null,
+							"type": "String"
+						},
+						"copyduration": {
+							"value": {
+								"value": "@activity('Demographics Retail').output.copyDuration",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"throughput": {
+							"value": {
+								"value": "@activity('Demographics Retail').output.throughput",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"redirectrowpath": {
+							"value": null,
+							"type": "String"
+						},
+						"logfilepath": {
+							"value": null,
+							"type": "String"
+						},
+						"filesread": {
+							"value": null,
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "OM_SRC_CHECK",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@replace(substring(variables('v_date'),0,10),'-','')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			}
+		],
+		"parameters": {
+			"tables": {
+				"type": "string",
+				"defaultValue": "CI_DEMOGRAPHICS_RETAIL"
+			},
+			"date": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			}
+		},
+		"variables": {
+			"v_date": {
+				"type": "String"
+			},
+			"v_error_desc": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-05-13T06:10:51Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

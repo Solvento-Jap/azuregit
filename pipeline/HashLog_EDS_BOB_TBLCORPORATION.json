@@ -1,0 +1,39 @@
+{
+	"name": "HashLog_EDS_BOB_TBLCORPORATION",
+	"properties": {
+		"activities": [
+			{
+				"name": "HashLog_EDS_BOB_TBLCORPORATION",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "CREATE TABLE #tbl\r\nWITH\r\n( DISTRIBUTION = ROUND_ROBIN\r\n)\r\nAS\r\nSELECT  ROW_NUMBER() OVER(ORDER BY (SELECT NULL)) AS Sequence\r\n,       [TABLE_NAME]\r\n,       'WITH CTE1 \r\nAS(\r\nSELECT COUNT(*) COUNT_TGT, FILE_NAME, INSERT_DTTM FROM d360.'+TABLE_NAME+' WHERE H = ''D''\r\nGROUP BY FILE_NAME, INSERT_DTTM\r\n)\r\n,\r\nCTE2 AS (\r\nSELECT REPLACE(H,''F-'','''') COUNT_SRC, FILE_NAME, INSERT_DTTM FROM d360.'+TABLE_NAME+' WHERE H <> ''D''\r\n)\r\n,\r\nCTE12 as (\r\nSELECT COUNT_SRC, COUNT_TGT, A.FILE_NAME, A.INSERT_DTTM, CONVERT(DATE,(left(right(A.FILE_NAME, 12),8))) DATE FROM CTE1 A\r\nJOIN CTE2 B ON A.FILE_NAME = B.FILE_NAME AND A.INSERT_DTTM = B.INSERT_DTTM\r\n)\r\n\r\nINSERT INTO [EDS].[EDS_HASH_LOG_TBL]\r\nSELECT \r\nFILE_NAME\r\n,DATE\r\n,insert_dttm\r\n,REPLACE(METRICS,''_SRC'','''') METRICS\r\n,SRC\r\n,TGT \r\n\r\nFROM\r\n(\r\nSELECT *\r\nFROM CTE12\r\n) src\r\n\r\nUNPIVOT\r\n(\r\nSRC FOR METRICS IN (COUNT_SRC )\r\n) pvt1\r\n\r\nUNPIVOT\r\n(\r\nTGT For METRICS2 IN (COUNT_TGT )\r\n) pvt2' \r\n AS sql_code\r\nFROM    INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'D360' AND TABLE_NAME in (\r\n'STG_EDS_BOB_TBLCORPORATION'\r\n\r\n)\r\n;\r\n\r\n\r\nDECLARE @nbr_statements INT = (SELECT COUNT(*) FROM #tbl)\r\n,       @i INT = 1\r\n;\r\n\r\nWHILE   @i <= @nbr_statements\r\nBEGIN\r\n    DECLARE @sql_code NVARCHAR(4000) = (SELECT sql_code FROM #tbl WHERE Sequence = @i);\r\n    EXEC    sp_executesql @sql_code;\r\n    SET     @i +=1;\r\nEND\r\n\r\nDROP TABLE #tbl;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-06-24T04:20:57Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

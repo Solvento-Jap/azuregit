@@ -1,0 +1,446 @@
+{
+	"name": "Workflow_Start_Task",
+	"properties": {
+		"activities": [
+			{
+				"name": "START_TASK_CRMCUSTOMERACCOUNTS",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_START]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@pipeline().parameters.task_name",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().parameters.pipeline_runid",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": {
+								"value": "@pipeline().parameters.data_layer",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@pipeline().parameters.process_date",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "If Condition1",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "START_TASK_CRMCUSTOMERACCOUNTS",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@contains(activity('START_TASK_CRMCUSTOMERACCOUNTS').error.message,'SKIPPING EXECUTION')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Failed_Workflow1",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Onprem",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Failed_Workflow",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true
+							}
+						},
+						{
+							"name": "Failed_Workflow3",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "PGP Decrypt Accounts",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Failed_Workflow",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true
+							}
+						},
+						{
+							"name": "Failed_Workflow4",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "DecToStg_CRM",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Failed_Workflow",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true
+							}
+						},
+						{
+							"name": "Onprem",
+							"type": "ExecutePipeline",
+							"dependsOn": [],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "OnPremToADLS_CRM_EDS",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"DatetoProcessed": {
+										"value": "@pipeline().parameters.process_date",
+										"type": "Expression"
+									},
+									"tables": {
+										"value": "@pipeline().parameters.tables",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "PGP Decrypt Accounts",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Onprem",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "PGPDecrypt_EDS_CRM_Accounts",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true
+							}
+						},
+						{
+							"name": "DecToStg_CRM",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Truncate Staging Table",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "DecToStg_CRM_EDS",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"DateToProcess": {
+										"value": "@pipeline().parameters.process_date",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "MovToArchive_EDS_CRM",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "DecToStg_CRM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "MovToArchive_EDS_CRM",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true
+							}
+						},
+						{
+							"name": "Failed_Workflow8",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "MovToArchive_EDS_CRM",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Failed_Workflow",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true
+							}
+						},
+						{
+							"name": "Truncate Staging Table",
+							"type": "Script",
+							"dependsOn": [
+								{
+									"activity": "PGP Decrypt Accounts",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 60,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"type": "NonQuery",
+										"text": "TRUNCATE TABLE D360.STG_EDS_CRM_ACCOUNTS;\n"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						},
+						{
+							"name": "HashLog_CRM",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "DecToStg_CRM",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "HashLog_CRM",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true
+							}
+						},
+						{
+							"name": "END_TASK_STG_EDS_CRM_CUSTOMER_ACCOUNTS_SUCCESSFUL",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "DecToStg_CRM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_EDS_CRM_CUSTOMER_ACCOUNTS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS_STG",
+										"type": "String"
+									},
+									"status": {
+										"value": "SUCCESSFUL",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "END_TASK_STG_EDS_CRM_CUSTOMER_ACCOUNTS_FAILED",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "DecToStg_CRM",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_EDS_CRM_CUSTOMER_ACCOUNTS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS_STG",
+										"type": "String"
+									},
+									"status": {
+										"value": "FAILED",
+										"type": "String"
+									}
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"task_name": {
+				"type": "string"
+			},
+			"pipeline_runid": {
+				"type": "string"
+			},
+			"data_layer": {
+				"type": "string"
+			},
+			"process_date": {
+				"type": "string"
+			},
+			"tables": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-05-03T03:32:57Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

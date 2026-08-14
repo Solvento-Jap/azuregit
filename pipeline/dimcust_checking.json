@@ -1,0 +1,265 @@
+{
+	"name": "dimcust_checking",
+	"properties": {
+		"activities": [
+			{
+				"name": "Script1",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "select customerid, customertype, banksk, sourcesystemcode,validstartdate, count(1) cnt, 'dimcustomer' tables from dw.dimcustomer\ngroup by customerid, customertype, banksk, sourcesystemcode,validstartdate\nhaving count(1)>1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script2",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Script1",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "select accountid, banksk, sourcesystemcode,validstartdate, count(1) cnt, 'dimaccount' tables from dw.dimaccount\ngroup by accountid, banksk, sourcesystemcode,validstartdate\nhaving count(1)>1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script3",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Script2",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "\nWith Customer as(\n\tSELECT CUSTOMERID,SourceSystemCode,FinancialInstitutionId,SuspendedIndicator FROM BNKM.Customer WHERE SourceSystemCode = 'CRM' and CUSTOMERID in  (select customerid from dw.dimcustomer group by customerid, customertype, banksk, sourcesystemcode,validstartdate\nhaving count(1)>1)\n),\nCustomerTelephoneNumber as(\nSELECT ROW_NUMBER() OVER(PARTITION BY CustomerId ORDER BY PeriodStartTimestamp desc  ) rn, CustomerId,TelephoneNumber,FinancialInstitutionId FROM BNKM.CustomerTelephoneNumber WHERE PreferenceId = 'Y' AND PeriodEndTimestamp = '1900-01-01T00:00:00.0000000'\n),\nCustomerConsent as(\n\tSELECT ROW_NUMBER() OVER(PARTITION BY CustomerId ORDER BY ConsentId  ) rn, CustomerId,ConsentId,FinancialInstitutionId FROM  BNKM.CustomerConsent\n),\nConsent as(\n\tSELECT DISTINCT ConsentId,ConsentName,FinancialInstitutionId FROM BNKM.Consent\n),\nCustomerAction as(\n\t SELECT distinct A.* FROM BNKM.CustomerAction A\n\t JOIN (SELECT CustomerId ,CustomerActionTypeId, FinancialInstitutionId,SourceCode, MAX(CustomerActionTimestamp) CustomerActionTimestamp FROM BNKM.CustomerAction GROUP BY CustomerId ,CustomerActionTypeId, FinancialInstitutionId,SourceCode ) B\n\t\tON A.CustomerId = B.CustomerId AND A.CustomerActionTypeId = B.CustomerActionTypeId AND A.FinancialInstitutionId = B.FinancialInstitutionId\n\t\tAND A.SourceCode = B.SourceCode AND A.CustomerActionTimestamp = B.CustomerActionTimestamp\n\tWHERE A.SourceCode = 'CRM'\n),\nCustomerLocation as(\n\tSELECT ROW_NUMBER() OVER(PARTITION BY CustomerId ORDER BY PeriodStartTimestamp desc ) rn, CustomerId,LocationId,FinancialInstitutionId FROM BNKM.CustomerLocation WHERE PreferenceId = 'Y' AND PeriodEndTimestamp = '2099-12-31T00:00:00.0000000' \n),\nLocation as(\n\tSELECT LocationId,LocationAddressLine1,LocationAddressLine2,LocationZipCode,CountryId ,LocationCity,LocationStateId,FinancialInstitutionId  FROM BNKM.Location\n),\nCustomerEmail as(\n\tSELECT ROW_NUMBER() OVER(PARTITION BY CustomerId ORDER BY PeriodStartTimestamp desc ) rn, CustomerId,EmailTypeId,EmailAddress,FinancialInstitutionId FROM BNKM.CustomerEmail WHERE PreferenceId = 'Y' AND PeriodEndTimestamp = '1900-01-01'\n),\nCity as(\n\tSELECT CityId,CityName,FinancialInstitutionId FROM BNKM.City\n),\nSTATE as(\n\tSELECT StateId,StateName,FinancialInstitutionId FROM BNKM.[STATE]\n),\nCustomerEmployment as(\n\tSELECT row_number() over(partition by customerid,FinancialInstitutionId order by customerid,JobTitleId) rn, CustomerId,CONVERT(VARCHAR(64),EmployerId,1) EmployerId,JobTitleId,FinancialInstitutionId FROM BNKM.CustomerEmployment WHERE PeriodEndDate IS NULL\n),\nEmployer as(\n\tSELECT row_number() over(partition by EmployerId,FinancialInstitutionId order by EmployerId,EmployerName) rn, EmployerId,EmployerName,EmployerAddressLine1,EmployerAddressLine2,CityId,StateId,ZipCode,Country,AnzsicClassCode,FinancialInstitutionId FROM BNKM.Employer\n),\nCountry  as(\n\tSELECT CountryId,IsoCountryName, FinancialInstitutionId FROM BNKM.Country\n),\nAnzsicClass as(\n\tSELECT AnzsicClassCode,AnzsicClassName,FinancialInstitutionId FROM BNKM.AnzsicClass\n),\nJobTitle as(\n\tSELECT JobTitleId,JobTitleName,FinancialInstitutionId FROM BNKM.JobTitle \n),\nCustomerCountryOfCitizenship as(\n\tSELECT ROW_NUMBER() OVER (PARTITION BY CustomerId ORDER BY PeriodStartDate DESC) AS RN, NationalityId, CustomerId, FinancialInstitutionId FROM BNKM.CustomerCountryOfCitizenship\n),\nCustomerCountryOfCitizenshipRN as(\n\tSELECT CCC.NationalityId, CCC.CustomerId ,CCC.FinancialInstitutionId FROM CustomerCountryOfCitizenship CCC\n    WHERE CCC.RN = 1\n\t),\nNationality as(\n\tSELECT NationalityId, NationalityName,FinancialInstitutionId FROM BNKM.Nationality)\n\n\n\n SELECT DISTINCT \n     BC.CUSTOMERID \n    ,BCTN.TelephoneNumber               AS MobileNumber\n    ,BCE.EmailAddress                   AS Email\n    ,BLOC.LocationAddressLine1          AS AddressLine1\n    ,BLOC.LocationAddressLine2          AS AddressLine2\n    ,BCTY.CityName                      AS City\n    ,BSTT.StateName                     AS Province\n    ,BLOC.LocationZipCode               AS ZipCode\n    ,BLOC.CountryId                     AS Country\n\t,BN.NationalityName                 AS Nationality\n    ,BCST.ConsentName                   AS DataPrivacyConsent\n    ,BACT.CustomerActionTimestamp       AS LastKYCDate\n    ,BC.SuspendedIndicator              AS SuspendedIndicator\n    ,BEMP.EmployerName                  AS EmployerName\n    ,BEMP.EmployerAddressLine1          AS OfficeAddressLine1\n    ,BEMP.EmployerAddressLine2          AS OfficeAddressLine2\n    ,BCTY2.CityName                     AS OfficeCity\n    ,BSTT2.StateName                    AS OfficeProvince\n    ,BEMP.ZipCode                       AS OfficeZipCode\n    ,BCTRY.IsoCountryName               AS OfficeCountry\n    ,BAZC.AnzsicClassName               AS Industry\n    ,BJT.JobTitleName                   AS Occupation\n    ,BC.SourceSystemCode                AS SourceSystemCode\n    ,BC.FinancialInstitutionId          AS FinancialInstitutionId\n    ,count(1) cnt\n    ,'DIMCUST_CRM' script1\n\t--into DW.DimCustomer_CRM\nFROM Customer BC\n    LEFT JOIN CustomerTelephoneNumber BCTN ON BC.CustomerId = BCTN.CustomerId  AND BC.FinancialInstitutionId = BCTN.FinancialInstitutionId AND BCTN.RN = 1\n    LEFT JOIN CustomerConsent BCC ON BC.CustomerId = BCC.CustomerId  AND BC.FinancialInstitutionId = BCC.FinancialInstitutionId AND BCC.RN = 1--WITH ISSUE PK ON CONSENTID\n    LEFT JOIN Consent BCST ON BCC.ConsentId = BCST.ConsentId  AND BCC.FinancialInstitutionId = BCST.FinancialInstitutionId\n    LEFT JOIN (SELECT CustomerId ,CustomerActionTypeId, MAX(CustomerActionTimestamp) AS CustomerActionTimestamp, FinancialInstitutionId,SourceCode FROM CustomerAction GROUP BY CustomerId ,CustomerActionTypeId, FinancialInstitutionId,SourceCode) BACT ON BC.CustomerId = BACT.CustomerId AND BC.FinancialInstitutionId = BACT.FinancialInstitutionId\n    LEFT JOIN CustomerLocation BCL ON BC.CustomerId = BCL.CustomerId AND BC.FinancialInstitutionId = BCL.FinancialInstitutionId AND BCL.RN = 1--duplicates\n    LEFT JOIN Location BLOC ON BCL.LocationId = BLOC.LocationId AND BCL.FinancialInstitutionId = BLOC.FinancialInstitutionId\n    LEFT JOIN CustomerEmail BCE ON BC.CustomerId = BCE.CustomerId AND BC.FinancialInstitutionId = BCE.FinancialInstitutionId AND BCE.RN = 1\n    LEFT JOIN City BCTY ON BLOC.LocationCity = BCTY.CityId AND BC.FinancialInstitutionId = BCTY.FinancialInstitutionId\n    LEFT JOIN STATE BSTT   ON BLOC.LocationStateId = BSTT.StateId AND BC.FinancialInstitutionId = BSTT.FinancialInstitutionId\n    LEFT JOIN CustomerEmployment BCEMP ON BC.CustomerId = BCEMP.CustomerId AND BC.FinancialInstitutionId = BCEMP.FinancialInstitutionId  AND BCEMP.RN = 1\n    LEFT JOIN Employer BEMP ON BCEMP.EmployerId = BEMP.EmployerId AND BCEMP.FinancialInstitutionId = BEMP.FinancialInstitutionId AND BEMP.RN = 1\n    LEFT JOIN City BCTY2 ON CONVERT(VARCHAR,BEMP.CityId) = CONVERT(VARCHAR,BCTY2.CityId) AND BCTY2.FinancialInstitutionId = BEMP.FinancialInstitutionId    \n    LEFT JOIN STATE BSTT2   ON CONVERT(VARCHAR,BEMP.StateId) = convert(varchar,BSTT2.StateId) AND BEMP.FinancialInstitutionId = BSTT2.FinancialInstitutionId\n    LEFT JOIN Country BCTRY ON  BEMP.Country = convert(varchar,BCTRY.CountryId) and BEMP.FinancialInstitutionId = BCTRY.FinancialInstitutionId\n    LEFT JOIN AnzsicClass BAZC ON BEMP.AnzsicClassCode = BAZC.AnzsicClassCode  AND BEMP.FinancialInstitutionId = BAZC.FinancialInstitutionId\n    LEFT JOIN JobTitle  BJT ON BCEMP.JobTitleId = BJT.JobTitleId AND BC.FinancialInstitutionId = BJT.FinancialInstitutionId\n    LEFT JOIN CustomerCountryOfCitizenshipRN BCCC ON BC.CustomerId = BCCC.CustomerId AND BC.FinancialInstitutionId = BCCC.FinancialInstitutionId\n    LEFT JOIN Nationality BN ON BCCC.NationalityId = BN.NationalityId AND BCCC.FinancialInstitutionId = BN.FinancialInstitutionId\n    WHERE BC.SourceSystemCode = 'CRM'\ngroup by \n BC.CUSTOMERID\n,BCTN.TelephoneNumber\n,BCE.EmailAddress\n,BLOC.LocationAddressLine1\n,BLOC.LocationAddressLine2\n,BCTY.CityName\n,BSTT.StateName\n,BLOC.LocationZipCode\n,BLOC.CountryId\n,BN.NationalityName\n,BCST.ConsentName\n,BACT.CustomerActionTimestamp\n,BC.SuspendedIndicator\n,BEMP.EmployerName\n,BEMP.EmployerAddressLine1\n,BEMP.EmployerAddressLine2\n,BCTY2.CityName\n,BSTT2.StateName\n,BEMP.ZipCode\n,BCTRY.IsoCountryName\n,BAZC.AnzsicClassName\n,BJT.JobTitleName\n,BC.SourceSystemCode\n,BC.FinancialInstitutionId\nhaving count(1)>1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script4",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Script3",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "select *, 'dimcustomer' tables from dw.dimcustomer\nwhere customerid in (\n'R02887765'\n,'R02887809'\n,'C00186930'\n,'R02887895'\n,'R02887876')"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script5",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Script4",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "\r\nWith Customer as(\r\n\tSELECT CUSTOMERID,SourceSystemCode,FinancialInstitutionId,SuspendedIndicator FROM BNKM.Customer WHERE SourceSystemCode = 'CRM' and CUSTOMERID in  ('R02887765')\r\n),\r\nCustomerTelephoneNumber as(\r\nSELECT ROW_NUMBER() OVER(PARTITION BY CustomerId ORDER BY PeriodStartTimestamp desc  ) rn, CustomerId,TelephoneNumber,FinancialInstitutionId FROM BNKM.CustomerTelephoneNumber WHERE PreferenceId = 'Y' AND PeriodEndTimestamp = '1900-01-01T00:00:00.0000000'\r\n),\r\nCustomerConsent as(\r\n\tSELECT ROW_NUMBER() OVER(PARTITION BY CustomerId ORDER BY ConsentId  ) rn, CustomerId,ConsentId,FinancialInstitutionId FROM  BNKM.CustomerConsent\r\n),\r\nConsent as(\r\n\tSELECT DISTINCT ConsentId,ConsentName,FinancialInstitutionId FROM BNKM.Consent\r\n),\r\nCustomerAction as(\r\n\t SELECT distinct A.* FROM BNKM.CustomerAction A\r\n\t JOIN (SELECT CustomerId ,CustomerActionTypeId, FinancialInstitutionId,SourceCode, MAX(CustomerActionTimestamp) CustomerActionTimestamp FROM BNKM.CustomerAction GROUP BY CustomerId ,CustomerActionTypeId, FinancialInstitutionId,SourceCode ) B\r\n\t\tON A.CustomerId = B.CustomerId AND A.CustomerActionTypeId = B.CustomerActionTypeId AND A.FinancialInstitutionId = B.FinancialInstitutionId\r\n\t\tAND A.SourceCode = B.SourceCode AND A.CustomerActionTimestamp = B.CustomerActionTimestamp\r\n\tWHERE A.SourceCode = 'CRM'\r\n),\r\nCustomerLocation as(\r\n\tSELECT ROW_NUMBER() OVER(PARTITION BY CustomerId ORDER BY PeriodStartTimestamp desc ) rn, CustomerId,LocationId,FinancialInstitutionId FROM BNKM.CustomerLocation WHERE PreferenceId = 'Y' AND PeriodEndTimestamp = '2099-12-31T00:00:00.0000000' \r\n),\r\nLocation as(\r\n\tSELECT LocationId,LocationAddressLine1,LocationAddressLine2,LocationZipCode,CountryId ,LocationCity,LocationStateId,FinancialInstitutionId  FROM BNKM.Location\r\n),\r\nCustomerEmail as(\r\n\tSELECT ROW_NUMBER() OVER(PARTITION BY CustomerId ORDER BY PeriodStartTimestamp desc ) rn, CustomerId,EmailTypeId,EmailAddress,FinancialInstitutionId FROM BNKM.CustomerEmail WHERE PreferenceId = 'Y' AND PeriodEndTimestamp = '1900-01-01'\r\n),\r\nCity as(\r\n\tSELECT CityId,CityName,FinancialInstitutionId FROM BNKM.City\r\n),\r\nSTATE as(\r\n\tSELECT StateId,StateName,FinancialInstitutionId FROM BNKM.[STATE]\r\n),\r\nCustomerEmployment as(\r\n\tSELECT row_number() over(partition by customerid,FinancialInstitutionId order by customerid,JobTitleId) rn, CustomerId,CONVERT(VARCHAR(64),EmployerId,1) EmployerId,JobTitleId,FinancialInstitutionId FROM BNKM.CustomerEmployment WHERE PeriodEndDate IS NULL\r\n),\r\nEmployer as(\r\n\tSELECT row_number() over(partition by EmployerId,FinancialInstitutionId order by EmployerId,EmployerName) rn, EmployerId,EmployerName,EmployerAddressLine1,EmployerAddressLine2,CityId,StateId,ZipCode,Country,AnzsicClassCode,FinancialInstitutionId FROM BNKM.Employer\r\n),\r\nCountry  as(\r\n\tSELECT CountryId,IsoCountryName, FinancialInstitutionId FROM BNKM.Country\r\n),\r\nAnzsicClass as(\r\n\tSELECT AnzsicClassCode,AnzsicClassName,FinancialInstitutionId FROM BNKM.AnzsicClass\r\n),\r\nJobTitle as(\r\n\tSELECT JobTitleId,JobTitleName,FinancialInstitutionId FROM BNKM.JobTitle \r\n),\r\nCustomerCountryOfCitizenship as(\r\n\tSELECT ROW_NUMBER() OVER (PARTITION BY CustomerId ORDER BY PeriodStartDate DESC) AS RN, NationalityId, CustomerId, FinancialInstitutionId FROM BNKM.CustomerCountryOfCitizenship\r\n),\r\nCustomerCountryOfCitizenshipRN as(\r\n\tSELECT CCC.NationalityId, CCC.CustomerId ,CCC.FinancialInstitutionId FROM CustomerCountryOfCitizenship CCC\r\n    WHERE CCC.RN = 1\r\n\t),\r\nNationality as(\r\n\tSELECT NationalityId, NationalityName,FinancialInstitutionId FROM BNKM.Nationality)\r\n\r\n\r\n\r\n SELECT DISTINCT \r\n    *\r\n    ,'DIMCUST_CRM' script1\r\n\t--into DW.DimCustomer_CRM\r\nFROM Customer BC\r\n    LEFT JOIN CustomerTelephoneNumber BCTN ON BC.CustomerId = BCTN.CustomerId  AND BC.FinancialInstitutionId = BCTN.FinancialInstitutionId AND BCTN.RN = 1\r\n    LEFT JOIN CustomerConsent BCC ON BC.CustomerId = BCC.CustomerId  AND BC.FinancialInstitutionId = BCC.FinancialInstitutionId AND BCC.RN = 1--WITH ISSUE PK ON CONSENTID\r\n    LEFT JOIN Consent BCST ON BCC.ConsentId = BCST.ConsentId  AND BCC.FinancialInstitutionId = BCST.FinancialInstitutionId\r\n    LEFT JOIN (SELECT CustomerId ,CustomerActionTypeId, MAX(CustomerActionTimestamp) AS CustomerActionTimestamp, FinancialInstitutionId,SourceCode FROM CustomerAction GROUP BY CustomerId ,CustomerActionTypeId, FinancialInstitutionId,SourceCode) BACT ON BC.CustomerId = BACT.CustomerId AND BC.FinancialInstitutionId = BACT.FinancialInstitutionId\r\n    LEFT JOIN CustomerLocation BCL ON BC.CustomerId = BCL.CustomerId AND BC.FinancialInstitutionId = BCL.FinancialInstitutionId AND BCL.RN = 1--duplicates\r\n    LEFT JOIN Location BLOC ON BCL.LocationId = BLOC.LocationId AND BCL.FinancialInstitutionId = BLOC.FinancialInstitutionId\r\n    LEFT JOIN CustomerEmail BCE ON BC.CustomerId = BCE.CustomerId AND BC.FinancialInstitutionId = BCE.FinancialInstitutionId AND BCE.RN = 1\r\n    LEFT JOIN City BCTY ON BLOC.LocationCity = BCTY.CityId AND BC.FinancialInstitutionId = BCTY.FinancialInstitutionId\r\n    LEFT JOIN STATE BSTT   ON BLOC.LocationStateId = BSTT.StateId AND BC.FinancialInstitutionId = BSTT.FinancialInstitutionId\r\n    LEFT JOIN CustomerEmployment BCEMP ON BC.CustomerId = BCEMP.CustomerId AND BC.FinancialInstitutionId = BCEMP.FinancialInstitutionId  AND BCEMP.RN = 1\r\n    LEFT JOIN Employer BEMP ON BCEMP.EmployerId = BEMP.EmployerId AND BCEMP.FinancialInstitutionId = BEMP.FinancialInstitutionId AND BEMP.RN = 1\r\n    LEFT JOIN City BCTY2 ON CONVERT(VARCHAR,BEMP.CityId) = CONVERT(VARCHAR,BCTY2.CityId) AND BCTY2.FinancialInstitutionId = BEMP.FinancialInstitutionId    \r\n    LEFT JOIN STATE BSTT2   ON CONVERT(VARCHAR,BEMP.StateId) = convert(varchar,BSTT2.StateId) AND BEMP.FinancialInstitutionId = BSTT2.FinancialInstitutionId\r\n    LEFT JOIN Country BCTRY ON  BEMP.Country = convert(varchar,BCTRY.CountryId) and BEMP.FinancialInstitutionId = BCTRY.FinancialInstitutionId\r\n    LEFT JOIN AnzsicClass BAZC ON BEMP.AnzsicClassCode = BAZC.AnzsicClassCode  AND BEMP.FinancialInstitutionId = BAZC.FinancialInstitutionId\r\n    LEFT JOIN JobTitle  BJT ON BCEMP.JobTitleId = BJT.JobTitleId AND BC.FinancialInstitutionId = BJT.FinancialInstitutionId\r\n    LEFT JOIN CustomerCountryOfCitizenshipRN BCCC ON BC.CustomerId = BCCC.CustomerId AND BC.FinancialInstitutionId = BCCC.FinancialInstitutionId\r\n    LEFT JOIN Nationality BN ON BCCC.NationalityId = BN.NationalityId AND BCCC.FinancialInstitutionId = BN.FinancialInstitutionId\r\n    WHERE BC.SourceSystemCode = 'CRM'\r\n\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script6",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script5",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "select customersk, count(1) cnt, 'dimcustomer' tables from dw.dimcustomer\ngroup by customersk\nhaving count(1)>1\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script7",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script6",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "select * from dw.dimcustomer where customersk in (\nselect customersk from dw.dimcustomer\ngroup by customersk\nhaving count(1)>1) \n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-01-04T05:01:50Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

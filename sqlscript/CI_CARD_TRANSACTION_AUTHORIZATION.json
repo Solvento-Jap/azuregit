@@ -1,0 +1,17 @@
+{
+	"name": "CI_CARD_TRANSACTION_AUTHORIZATION",
+	"properties": {
+		"content": {
+			"query": "/*\n    Daily Authorization\n    Inclusion of CUST_CIF_NBR (CIF) -> This will be used to JOIN in CI_DEMOGRAPHIC\n*/\nSELECT\n    TXN.*\n    ,CCD.CUST_CIF_NBR AS FCBSCIF\n/*\n    Remove the duplicates using ROW_NUMBER() window function\n*/\nFROM (\nSELECT\n    *\n    ,ROW_NUMBER() OVER(PARTITION BY RETR_KEY, MESSAGE_TYPE, TRAN_END_TIME, AUTH_NBR, CARD_NBR, INTERNAL_RESP_CODE, BANKNET_REF_NBR, RECV_ID \n        ORDER BY LEFT(RIGHT(FILE_NAME,12),8) DESC) RN\n    FROM eds.CCD_CBCEXTXLGP_CI_20240618 TXN\n    WHERE CAST(CAST(TRAN_DATE AS char(8)) AS date) >= '2024-04-01'\n) TXN\n/*\n    Link all customers associated to the account of the transaction using AAS\n    Fetch the ORGKEY in CUSTOMER_DIM\n*/\nINNER JOIN \n    (SELECT AS_OF_DATE, CUST_CIF_NBR, CRDACCT_NBR, CARD_NBR FROM eds.CCD_CREDIT_CARDS_FACT_CI_20240618 WHERE AS_OF_DATE <= '2024-04-01' GROUP BY AS_OF_DATE, CUST_CIF_NBR, CRDACCT_NBR, CARD_NBR) CCD\n    ON TXN.CARD_ACCT_NBR = CCD.CRDACCT_NBR\n    AND TXN.CARD_NBR = CCD.CARD_NBR\n    AND CAST(CAST(TXN.TRAN_DATE AS char(8)) AS date) = CAST(CCD.AS_OF_DATE AS DATE)\nWHERE RN = 1 AND CCD.CUST_CIF_NBR IS NOT NULL",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

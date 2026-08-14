@@ -1,0 +1,39 @@
+{
+	"name": "HashLog_CRM_MISCELLANEOUSINFO",
+	"properties": {
+		"activities": [
+			{
+				"name": "HashLog_CRM_MISCELLANEOUSINFO",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nWITH CTE1 \r\nAS(\r\nSELECT convert(NUMERIC(25,5),COUNT(*)) COUNT_tgt\r\n, isnull(sum(convert(NUMERIC(25,5),CREDITDISCOUNTPERCENT)),0) CREDITDISCOUNTPERCENT_tgt\r\n, isnull(sum(convert(NUMERIC(25,5),DEBITDISCOUNTPERCENT)),0) DEBITDISCOUNTPERCENT_tgt\r\n, isnull(sum(convert(NUMERIC(25,5),WITHHOLDTAXFLOORLMT)),0) WITHHOLDTAXFLOORLMT_tgt\r\n, isnull(sum(convert(NUMERIC(25,5),WITHHOLDTAXPCNT)),0) WITHHOLDTAXPCNT_tgt\r\n, isnull(sum(convert(NUMERIC(25,5),AMOUNT1)),0) AMOUNT1_tgt\r\n\r\n, FILE_NAME, INSERT_DTTM \r\nFROM d360.STG_EDS_CRM_MISCELLANEOUSINFO WHERE H = 'D'\r\nGROUP BY FILE_NAME, INSERT_DTTM\r\n)\r\n,\r\nCTE2 AS (\r\nSELECT REPLACE(H,'F-','') COUNT_src\r\n, CREDITDISCOUNTPERCENT CREDITDISCOUNTPERCENT_src\r\n, DEBITDISCOUNTPERCENT DEBITDISCOUNTPERCENT_src\r\n, WITHHOLDTAXFLOORLMT WITHHOLDTAXFLOORLMT_src\r\n, WITHHOLDTAXPCNT WITHHOLDTAXPCNT_src\r\n, AMOUNT1 AMOUNT1_src\r\n\r\n, FILE_NAME, INSERT_DTTM FROM d360.STG_EDS_CRM_MISCELLANEOUSINFO WHERE H <> 'D'\r\n)\r\n,\r\nCTE12 as (\r\nSELECT COUNT_SRC, COUNT_TGT\r\n, CREDITDISCOUNTPERCENT_tgt\r\n, DEBITDISCOUNTPERCENT_tgt\r\n, WITHHOLDTAXFLOORLMT_tgt\r\n, WITHHOLDTAXPCNT_tgt\r\n, AMOUNT1_tgt\r\n, CREDITDISCOUNTPERCENT_src\r\n, DEBITDISCOUNTPERCENT_src\r\n, WITHHOLDTAXFLOORLMT_src\r\n, WITHHOLDTAXPCNT_src\r\n, AMOUNT1_src\r\n\r\n, A.FILE_NAME, A.INSERT_DTTM, CONVERT(DATE,(left(right(A.FILE_NAME, 12),8))) DATE FROM CTE1 A\r\nJOIN CTE2 B ON A.FILE_NAME = B.FILE_NAME AND A.INSERT_DTTM = B.INSERT_DTTM\r\n)\r\n\r\nINSERT INTO [EDS].[EDS_HASH_LOG_TBL]\r\nSELECT \r\nFILE_NAME\r\n,DATE\r\n,insert_dttm\r\n,REPLACE(METRICS,'_SRC','') METRICS\r\n,SRC\r\n,TGT \r\n\r\nFROM\r\n(\r\nSELECT \r\n  CAST(COUNT_SRC AS NUMERIC(25,5)) AS COUNT_SRC\r\n, CAST(COUNT_TGT AS NUMERIC(25,5)) AS COUNT_TGT\r\n, CAST(CREDITDISCOUNTPERCENT_tgt AS NUMERIC(25,5)) AS CREDITDISCOUNTPERCENT_tgt\r\n, CAST(DEBITDISCOUNTPERCENT_tgt AS NUMERIC(25,5)) AS DEBITDISCOUNTPERCENT_tgt\r\n, CAST(WITHHOLDTAXFLOORLMT_tgt AS NUMERIC(25,5)) AS WITHHOLDTAXFLOORLMT_tgt\r\n, CAST(WITHHOLDTAXPCNT_tgt AS NUMERIC(25,5)) AS WITHHOLDTAXPCNT_tgt\r\n, CAST(AMOUNT1_tgt AS NUMERIC(25,5)) AS AMOUNT1_tgt\r\n, CAST(CREDITDISCOUNTPERCENT_src AS NUMERIC(25,5)) AS CREDITDISCOUNTPERCENT_src\r\n, CAST(DEBITDISCOUNTPERCENT_src AS NUMERIC(25,5)) AS DEBITDISCOUNTPERCENT_src\r\n, CAST(WITHHOLDTAXFLOORLMT_src AS NUMERIC(25,5)) AS WITHHOLDTAXFLOORLMT_src\r\n, CAST(WITHHOLDTAXPCNT_src AS NUMERIC(25,5)) AS WITHHOLDTAXPCNT_src\r\n, CAST(AMOUNT1_src AS NUMERIC(25,5)) AS AMOUNT1_src\r\n, FILE_NAME\r\n, INSERT_DTTM\r\n, DATE\r\nFROM CTE12\r\n) pvt\r\n\r\nUNPIVOT\r\n(\r\nSRC FOR METRICS IN (COUNT_SRC\r\n, CREDITDISCOUNTPERCENT_src\r\n, DEBITDISCOUNTPERCENT_src\r\n, WITHHOLDTAXFLOORLMT_src\r\n, WITHHOLDTAXPCNT_src\r\n, AMOUNT1_src\r\n)\r\n) pvt1\r\n\r\nUNPIVOT\r\n(\r\nTGT For METRICS2 IN (COUNT_TGT\r\n, CREDITDISCOUNTPERCENT_tgt\r\n, DEBITDISCOUNTPERCENT_tgt\r\n, WITHHOLDTAXFLOORLMT_tgt\r\n, WITHHOLDTAXPCNT_tgt\r\n, AMOUNT1_tgt\r\n)\r\n) pvt2\r\n \r\nWHERE REPLACE(METRICS,'_SRC','') = REPLACE(METRICS2,'_TGT','');\r\n\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-04-26T07:44:03Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

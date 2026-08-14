@@ -1,0 +1,805 @@
+{
+	"name": "DecToStg_AML_FCBS_OTCTRANSACTION",
+	"properties": {
+		"description": "AML DecToStg pipeline for CUSTOM.C_CREPRINT -> STG_EDS_DEP_OTCTRANSACTION; CBC-RDP-AML-003 Phase 1; covers 1 approved manifest table.",
+		"activities": [
+			{
+				"name": "Require_Approved_Execution",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.ExecutionMode, 'ApprovedDateSliceReload')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Unapproved_Execution",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "ExecutionMode must be ApprovedDateSliceReload.",
+								"errorCode": "AML_EXECUTION_NOT_APPROVED"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Execution_Approved",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Require_Valid_MissingFilePolicy",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(equals(pipeline().parameters.MissingFilePolicy, 'Fail'), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Invalid_MissingFilePolicy",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "MissingFilePolicy must be Fail or Skip.",
+								"errorCode": "AML_INVALID_MISSING_FILE_POLICY"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "MissingFilePolicy_Valid",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "GetFile_OTCTRANSACTION",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv_AML",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('*CUSTOM.C_REPRINT-', pipeline().parameters.DateToProcess, '*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/FCBS",
+							"ColumnDelimiter": "|",
+							"FirstRowAsHeader": true,
+							"RowDelimiter": "\r\n",
+							"EncodingName": "UTF-8"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "RequireFileOrSkip_OTCTRANSACTION",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "GetFile_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(not(empty(activity('GetFile_OTCTRANSACTION').output.childItems)), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_OTCTRANSACTION_MissingFile",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "No source file matched @concat('*TRY-TXNS-', pipeline().parameters.DateToProcess, '*') under dev/decrypted/FCBS, and MissingFilePolicy is Fail.",
+								"errorCode": "AML_SOURCE_FILE_MISSING"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Accept_OTCTRANSACTION_FilePolicy",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "IfFile_OTCTRANSACTION",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "RequireFileOrSkip_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@not(empty(activity('GetFile_OTCTRANSACTION').output.childItems))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Skip_OTCTRANSACTION_NoFile",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Start_OTCTRANSACTION",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_START]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_FCBS_OTCTRANSACTION",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DateToProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Copy_OTCTRANSACTION",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Start_OTCTRANSACTION",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 2,
+								"retryIntervalInSeconds": 120
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										},
+										{
+											"name": "date_to_process",
+											"value": {
+												"value": "@pipeline().parameters.DateToProcess",
+												"type": "Expression"
+											}
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/FCBS",
+										"wildcardFileName": {
+											"value": "@concat('*CUSTOM.C_REPRINT-', pipeline().parameters.DateToProcess, '*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": {
+										"value": "@concat('DECLARE @DateToProcess varchar(8) = ''', replace(pipeline().parameters.DateToProcess, '''', ''''''), '''; IF LEN(@DateToProcess) <> 8 OR @DateToProcess LIKE ''%[^0-9]%'' OR TRY_CONVERT(date, @DateToProcess, 112) IS NULL THROW 50000, ''DateToProcess must be a valid yyyyMMdd date.'', 1; DELETE FROM [D360].[STG_EDS_DEP_OTCTRANSACTION] WHERE CHARINDEX(@DateToProcess, [date_to_process]) > 0;')",
+										"type": "Expression"
+									},
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "H"
+											},
+											"sink": {
+												"name": "H"
+											}
+										},
+										{
+											"source": {
+												"name": "BENEFICIARY"
+											},
+											"sink": {
+												"name": "BENEFICIARY"
+											}
+										},
+										{
+											"source": {
+												"name": "REMITTER"
+											},
+											"sink": {
+												"name": "REMITTER"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_TIN"
+											},
+											"sink": {
+												"name": "BENE_TIN"
+											}
+										},
+										{
+											"source": {
+												"name": "REMITTER_TIN"
+											},
+											"sink": {
+												"name": "REMITTER_TIN"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTRY"
+											},
+											"sink": {
+												"name": "COUNTRY"
+											}
+										},
+										{
+											"source": {
+												"name": "TRAN_CODE"
+											},
+											"sink": {
+												"name": "TRAN_CODE"
+											}
+										},
+										{
+											"source": {
+												"name": "CHRG_COLL_FLG"
+											},
+											"sink": {
+												"name": "CHRG_COLL_FLG"
+											}
+										},
+										{
+											"source": {
+												"name": "CHRG_TRAN_ID"
+											},
+											"sink": {
+												"name": "CHRG_TRAN_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "MODE_OF_PAY"
+											},
+											"sink": {
+												"name": "MODE_OF_PAY"
+											}
+										},
+										{
+											"source": {
+												"name": "REPRESENTATIVE_NAME"
+											},
+											"sink": {
+												"name": "REPRESENTATIVE_NAME"
+											}
+										},
+										{
+											"source": {
+												"name": "TRAN_ID"
+											},
+											"sink": {
+												"name": "TRAN_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "DTH_INIT_SOL_ID"
+											},
+											"sink": {
+												"name": "DTH_INIT_SOL_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "TRAN_DATE"
+											},
+											"sink": {
+												"name": "TRAN_DATE"
+											}
+										},
+										{
+											"source": {
+												"name": "TD_REF_NO"
+											},
+											"sink": {
+												"name": "TD_REF_NO"
+											}
+										},
+										{
+											"source": {
+												"name": "TD_WITHDRWL_TYPE"
+											},
+											"sink": {
+												"name": "TD_WITHDRWL_TYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "PCC_CODE"
+											},
+											"sink": {
+												"name": "PCC_CODE"
+											}
+										},
+										{
+											"source": {
+												"name": "MRT_NAME"
+											},
+											"sink": {
+												"name": "MRT_NAME"
+											}
+										},
+										{
+											"source": {
+												"name": "FREE_TEXT"
+											},
+											"sink": {
+												"name": "FREE_TEXT"
+											}
+										},
+										{
+											"source": {
+												"name": "MOP_ID"
+											},
+											"sink": {
+												"name": "MOP_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "PCC_CODE_DR"
+											},
+											"sink": {
+												"name": "PCC_CODE_DR"
+											}
+										},
+										{
+											"source": {
+												"name": "PCC_CODE_CR"
+											},
+											"sink": {
+												"name": "PCC_CODE_CR"
+											}
+										},
+										{
+											"source": {
+												"name": "OAP_REF_NUM_DR"
+											},
+											"sink": {
+												"name": "OAP_REF_NUM_DR"
+											}
+										},
+										{
+											"source": {
+												"name": "OAP_REF_NUM_CR"
+											},
+											"sink": {
+												"name": "OAP_REF_NUM_CR"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCTS_OFFICER_CODE"
+											},
+											"sink": {
+												"name": "ACCTS_OFFICER_CODE"
+											}
+										},
+										{
+											"source": {
+												"name": "CIF_ID"
+											},
+											"sink": {
+												"name": "CIF_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "REMARKS3"
+											},
+											"sink": {
+												"name": "REMARKS3"
+											}
+										},
+										{
+											"source": {
+												"name": "CHQ_NO_CR"
+											},
+											"sink": {
+												"name": "CHQ_NO_CR"
+											}
+										},
+										{
+											"source": {
+												"name": "CHQ_NO_DR"
+											},
+											"sink": {
+												"name": "CHQ_NO_DR"
+											}
+										},
+										{
+											"source": {
+												"name": "PN_REF_NUM"
+											},
+											"sink": {
+												"name": "PN_REF_NUM"
+											}
+										},
+										{
+											"source": {
+												"name": "REF_EBP_NUM"
+											},
+											"sink": {
+												"name": "REF_EBP_NUM"
+											}
+										},
+										{
+											"source": {
+												"name": "ORIG_TRAN_ID"
+											},
+											"sink": {
+												"name": "ORIG_TRAN_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "BANK_ID"
+											},
+											"sink": {
+												"name": "BANK_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "RCRE_USER_ID"
+											},
+											"sink": {
+												"name": "RCRE_USER_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "RCRE_TIME"
+											},
+											"sink": {
+												"name": "RCRE_TIME"
+											}
+										},
+										{
+											"source": {
+												"name": "OTHER_BANK_ID"
+											},
+											"sink": {
+												"name": "OTHER_BANK_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME"
+											},
+											"sink": {
+												"name": "FILE_NAME"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm"
+											},
+											"sink": {
+												"name": "insert_dttm"
+											}
+										},
+										{
+											"source": {
+												"name": "date_to_process"
+											},
+											"sink": {
+												"name": "date_to_process"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv_AML",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": {
+											"value": "@concat('*CUSTOM.C_REPRINT-', pipeline().parameters.DateToProcess, '*')",
+											"type": "Expression"
+										},
+										"SourceCode": "dev/decrypted/FCBS",
+										"ColumnDelimiter": "|",
+										"FirstRowAsHeader": true,
+										"RowDelimiter": "\r\n",
+										"EncodingName": "UTF-8"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_EDS_DEP_OTCTRANSACTION"
+									}
+								}
+							]
+						},
+						{
+							"name": "End_OTCTRANSACTION_Success",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_OTCTRANSACTION",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_FCBS_OTCTRANSACTION",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "SUCCESSFUL",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_EDS_DEP_OTCTRANSACTION",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "End_OTCTRANSACTION_Failed",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_OTCTRANSACTION",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_FCBS_OTCTRANSACTION",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "FAILED",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_EDS_DEP_OTCTRANSACTION",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Fail_OTCTRANSACTION_Copy",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "End_OTCTRANSACTION_Failed",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "Copy into D360.STG_EDS_DEP_OTCTRANSACTION failed. Review the Copy activity and OM task evidence.",
+								"errorCode": "AML_COPY_FAILED"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"DateToProcess": {
+				"type": "String"
+			},
+			"ExecutionMode": {
+				"type": "String",
+				"defaultValue": "PlanOnly"
+			},
+			"MissingFilePolicy": {
+				"type": "String",
+				"defaultValue": "Fail"
+			}
+		},
+		"folder": {
+			"name": "AML_ETL/DecToStg"
+		},
+		"annotations": [
+			"AML",
+			"FCBS",
+			"DecToStg",
+			"CBC-RDP-AML-003",
+			"PHASE_1"
+		],
+		"lastPublishTime": "2026-08-11T06:45:40Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

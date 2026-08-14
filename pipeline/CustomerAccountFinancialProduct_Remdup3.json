@@ -1,0 +1,399 @@
+{
+	"name": "CustomerAccountFinancialProduct_Remdup3",
+	"properties": {
+		"activities": [
+			{
+				"name": "Create Backup",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": " select\n[CustomerAccountId]\n,[PeriodStartDate]\n,[PeriodEndDate]\n,[ProductId]\n,[FinancialProductId]\n,[IsoCurrencyCode]\n,[UsageCategoryId]\n,[CommitmentId]\n,[FcbsApplication]\n,[FinancialInstitutionId]\n,[SourceSystemCode]\n,[TaskRunId]\n,[WorkFlowId]\n,[InsertDttm]\ninto [BNKM].CustomerAccountFinancialProduct_BU_20240321\n FROM [BNKM].[CustomerAccountFinancialProduct]\n group by\n[CustomerAccountId]\n,[PeriodStartDate]\n,[PeriodEndDate]\n,[ProductId]\n,[FinancialProductId]\n,[IsoCurrencyCode]\n,[UsageCategoryId]\n,[CommitmentId]\n,[FcbsApplication]\n,[FinancialInstitutionId]\n,[SourceSystemCode]\n,[TaskRunId]\n,[WorkFlowId]\n,[InsertDttm]"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Create Temp",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Create Backup",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT ROW_NUMBER() OVER(PARTITION BY  CustomerAccountId, PeriodStartDate, FinancialProductId, FinancialInstitutionId, SourceSystemCode ORDER BY CustomerAccountId DESC, INSERTDTTM DESC ) RN , \r\n* INTO Bnkm.CustomerAccountFinancialProduct_WITH_DUP_20240321\r\nFROM bnkm.CustomerAccountFinancialProduct_BU_20240321;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Count Temp",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Create Temp",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "Select count(1) CNT from bnkm.CustomerAccountFinancialProduct_WITH_DUP_20240321;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Record Count",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Count Temp",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "Select count(1) CNT from bnkm.CustomerAccountFinancialProduct_BU_20240321;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Truncate Backup",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Record Count",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "truncate table Bnkm.CustomerAccountFinancialProduct_BU_20240321;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Reload data",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Truncate Backup",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "INSERT INTO bnkm.CustomerAccountFinancialProduct_BU_20240321--Target table to remove duplicate\r\n(\r\n[CustomerAccountId]\r\n,[PeriodStartDate]\r\n,[PeriodEndDate]\r\n,[ProductId]\r\n,[FinancialProductId]\r\n,[IsoCurrencyCode]\r\n,[UsageCategoryId]\r\n,[CommitmentId]\r\n,[FcbsApplication]\r\n,[FinancialInstitutionId]\r\n,[SourceSystemCode]\r\n,[TaskRunId]\r\n,[WorkFlowId]\r\n,[InsertDttm]   \r\n)\r\nSELECT  \r\n[CustomerAccountId]\r\n,[PeriodStartDate]\r\n,[PeriodEndDate]\r\n,[ProductId]\r\n,[FinancialProductId]\r\n,[IsoCurrencyCode]\r\n,[UsageCategoryId]\r\n,[CommitmentId]\r\n,[FcbsApplication]\r\n,[FinancialInstitutionId]\r\n,[SourceSystemCode]\r\n,[TaskRunId]\r\n,[WorkFlowId]\r\n,[InsertDttm]\r\nFROM Bnkm.CustomerAccountFinancialProduct_WITH_DUP_20240321 -- Name of backup table to store duplicate records\r\nWHERE RN = 1;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "True Backup",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Reload data",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "rename object bnkm.CustomerAccountFinancialProduct to CustomerAccountFinancialProduct_BU_20240321_2;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Target Table Rename",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "True Backup",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "rename object bnkm.CustomerAccountFinancialProduct_BU_20240321 to CustomerAccountFinancialProduct;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Check for Dups",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Target Table Rename",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT CustomerAccountId, PeriodStartDate, FinancialProductId, FinancialInstitutionId, SourceSystemCode, COUNT(1) CNT \nFROM BNKM.CustomerAccountFinancialProduct\nGROUP BY CustomerAccountId, PeriodStartDate, FinancialProductId, FinancialInstitutionId, SourceSystemCode\nHAVING COUNT(1) > 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Count Dups",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Check for Dups",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(*) CNT FROM Bnkm.CustomerAccountFinancialProduct_WITH_DUP_20240321;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Count Target",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Count Dups",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(*) CNT FROM Bnkm.CustomerAccountFinancialProduct;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-03-21T14:24:14Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

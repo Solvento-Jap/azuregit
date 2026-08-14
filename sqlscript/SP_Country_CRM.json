@@ -1,0 +1,20 @@
+{
+	"name": "SP_Country_CRM",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nALTER PROC [BNKM].[SP_Country_CRM] AS\nBEGIN\n--------------GET DELTA FROM BUSC\nWITH TEMP_BNKM_Country\nAS(\n    SELECT\n     BCC.[VALUE] AS CountryId\n    ,BCC.DESCRIPTION  AS IsoCountryName\n    ,BCC.[VALUE] AS Iso2LetterCountryCode\n    ,BCC.BANK_ID AS FinancialInstitutionId\n    ,BCC.CATEGORYID AS CategoryId\n    ,'CRM' AS SourceSystemCode\n    ,BCC.INSERT_DTTM AS InsertDttm\nFROM BUSC.CRM_CATEGORIES BCC \nWHERE BCC.ISLATEST = 1 AND CATEGORYTYPE = 'COUNTRY'\n\n)\n\nSELECT * INTO #TEMP_BNKM_Country FROM TEMP_BNKM_Country;\n\n-------------CHECK IF THERE IS DELTA \nWITH\nTEMP_BNKM_Country_SRC\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nCountryId\n,IsoCountryName\n,Iso2LetterCountryCode\n,FinancialInstitutionId \n,CategoryId \n)) HASHROW, CountryId,FinancialInstitutionId,CATEGORYID\nFROM #TEMP_BNKM_Country\n)\n,\nTEMP_BNKM_Country_TGT\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nCountryId\n,IsoCountryName\n,Iso2LetterCountryCode\n,FinancialInstitutionId \n,CategoryId \n)) HASHROW, CountryId, FinancialInstitutionId,CATEGORYID\nFROM BNKM.Country WHERE SourceSystemCode = 'CRM'\t\n)\n,\nTEMP_BNKM_Country_DELTA\nAS\n(\nSELECT\t\n\tSRC.HASHROW AS SRC_HR\n\t,TGT.HASHROW AS TGT_HR\n\t,ISNULL(SRC.CountryId,TGT.CountryId) AS CountryId\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\n\t,ISNULL(SRC.CATEGORYID,TGT.CATEGORYID) AS CATEGORYID\n\t,CASE\n        WHEN TGT.HASHROW IS NULL THEN 'INSERT'\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n\tELSE NULL END AS RECORD_STATUS\n\t\nFROM TEMP_BNKM_Country_SRC\tSRC\nFULL OUTER JOIN TEMP_BNKM_Country_TGT\tTGT\nON\tSRC.CountryId = TGT.CountryId\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\nAND SRC.CATEGORYID = TGT.CATEGORYID\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\n)\n\nSELECT * INTO #TEMP_BNKM_Country_DELTA FROM TEMP_BNKM_Country_DELTA;\n\n\nUPDATE TGT \nSET\n CountryId  = SRC.CountryId \n,IsoCountryName  = SRC.IsoCountryName \n,Iso2LetterCountryCode = SRC.Iso2LetterCountryCode\n,CategoryId  = SRC.CategoryId \nFROM BNKM.Country TGT\nJOIN #TEMP_BNKM_Country_DELTA DELTA ON DELTA.CountryId = TGT.CountryId AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId AND DELTA.CATEGORYID = TGT.CATEGORYID AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_Country SRC ON SRC.CountryId = TGT.CountryId AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId AND SRC.CATEGORYID = TGT.CATEGORYID ;\n \n\n----INSERT TO BNKM\nINSERT INTO BNKM.Country\n([CountryId]\n,[IsoCountryName]\n,[Iso2LetterCountryCode]\n,[Iso3LetterCountryCode]\n,[Iso3DigitCountryCode]\n,[CapitalOrMajorCityName]\n,[FinancialInstitutionId]\n,[CategoryId]\n,[SourceSystemCode]\n,[WorkFlowId]\n,[TaskRunId]\n,[InsertDttm] )\n\nSELECT\n     SRC.CountryId AS CountryId\n    ,IsoCountryName AS IsoCountryName\n    ,Iso2LetterCountryCode AS Iso2LetterCountryCode\n    ,NULL AS Iso3LetterCountryCode\n    ,NULL AS Iso3DigitCountryCode\n    ,NULL AS CapitalOrMajorCityName\n    ,SRC.FinancialInstitutionId AS FinancialInstitutionId\n    ,SRC.CategoryId AS CategoryId\n    ,SourceSystemCode AS SourceSystemCode\n    ,0 AS WorkFlowId\n    ,0 AS TaskRunId\n    ,InsertDttm AS InsertDttm\nFROM #TEMP_BNKM_Country SRC\nJOIN #TEMP_BNKM_Country_DELTA DELTA ON DELTA.CountryId = SRC.CountryId AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId AND DELTA.CATEGORYID = SRC.CATEGORYID\nWHERE DELTA.RECORD_STATUS = 'INSERT'\n\nDROP TABLE #TEMP_BNKM_Country;\nDROP TABLE #TEMP_BNKM_Country_DELTA;\n\nEND\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

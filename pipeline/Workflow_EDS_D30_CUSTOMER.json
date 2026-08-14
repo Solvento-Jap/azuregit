@@ -1,0 +1,240 @@
+{
+	"name": "Workflow_EDS_D30_CUSTOMER",
+	"properties": {
+		"activities": [
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('select fulldate\nfrom \n    eds.eds_ctl ect\ninner join \n    eds.date_dim dd\n    on \n    ect.',pipeline().parameters.src_sys,'_Date=dd.previous_business_day and dd.business_day_flag=''Y''')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "EDS_D30_CUSTOMER",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "swf_EDS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"startDate": {
+							"value": "@variables('V_startDate')",
+							"type": "Expression"
+						},
+						"endDate": {
+							"value": "@variables('V_endDate')",
+							"type": "Expression"
+						},
+						"tables": "D30_CUSTOMER",
+						"EDS_SQL": {
+							"value": "BEGIN TRY\n\tUPDATE EDS.D30_CUSTOMER\n\tSET [ISLATEST] = 0\n\t\t,[SCD_END_DATE] = (\n\t\t\tSELECT PREVIOUS_BUSINESS_DAY\n\t\t\tFROM EDS.DATE_DIM\n\t\t\tINNER JOIN (\n\t\t\t\tSELECT TOP 1 CAST(LEFT(RIGHT(FILE_NAME, 12), 8) AS INTEGER) MX_DT\n\t\t\t\tFROM EDS.D30_ENROLLMENT\n\t\t\t\tWHERE STATUS = 'Successful'\n\t\t\t\t\tAND AS_OF_DATE = CAST('${PROCESS_DATE}' AS DATE)\n\t\t\t\t) MX_DT_TBL ON DATESK = MX_DT\n\t\t\t)\n\tFROM EDS.D30_CUSTOMER tgt\n\tLEFT JOIN EDS.D30_ENROLLMENT src ON src.[CIF_ID] = tgt.[CIF_ID]\n\t\tAND src.[STATUS] = 'Successful'\n\t\tAND src.AS_OF_DATE = CAST('${PROCESS_DATE}' AS DATE)\n\tLEFT JOIN EDS.ENROLLMENT_STATUS_DIM SD ON \n\t\t1=1\n\t\tAND SD.STATUS_DESC='Active'\n\tWHERE tgt.[ISLATEST] = 1\n\t\tAND src.STATUS = 'Successful'\n\t\tAND HASHBYTES('SHA2_256', CONCAT_WS(N'|', src.[USERNAME], src.[ACCOUNT_NAME], src.[DEVICE_MODEL], SD.[STATUS_ID], FORMAT(CAST(src.[TRANSACTION_DATE] AS DATETIME) + CAST(DATEDIFF(SECOND, '00:00:00', src.[TRANSACTION_TIME]) AS FLOAT) / 86400, 'yyyy-MM-dd HH:mm:ss')))\n\t\t<> HASHBYTES('SHA2_256', CONCAT_WS(N'|', tgt.[USERNAME], tgt.[FULL_NAME], tgt.[DEVICE], tgt.[STATUS], FORMAT(tgt.[ENROLLMENT_DATE], 'yyyy-MM-dd HH:mm:ss')));\n\n\tINSERT INTO EDS.D30_CUSTOMER (\n\t\t[USERNAME]\n\t\t,[FULL_NAME]\n\t\t,[CIF_ID]\n\t\t,[ENROLLMENT_DATE]\n\t\t,[Device]\n\t\t,[Device_OS]\n\t\t,[SCD_START_DATE]\n\t\t,[SCD_END_DATE]\n\t\t,[ISACTIVE]\n\t\t,[ISLATEST]\n\t\t,[BNK_CODE]\n\t\t,[SOURCE_CODE]\n\t\t,[FILE_NAME]\n\t\t,[insert_dttm]\n\t\t,[STATUS]\n\t\t)\n\tSELECT DISTINCT\n\t\tsrc.[USERNAME]\n\t\t,src.[ACCOUNT_NAME]\n\t\t,src.[CIF_ID]\n\t\t,CAST(src.[TRANSACTION_DATE] AS DATETIME) + CAST(DATEDIFF(SECOND, '00:00:00', src.[TRANSACTION_TIME]) AS FLOAT) / 86400\n\t\t,src.[DEVICE_MODEL]\n\t\t,NULL\n\t\t,CAST(LEFT(RIGHT(src.[FILE_NAME], 12), 8) AS DATE) AS [SCD_START_DATE]\n\t\t,CAST('9999-12-31' AS DATE) AS [SCD_END_DATE]\n\t\t,1 AS [ISACTIVE]\n\t\t,1 AS [ISLATEST]\n\t\t,LEFT(src.[FILE_NAME], 5) AS [BNK_CODE]\n\t\t,'D30' AS [SOURCE_CODE]\n\t\t,src.[FILE_NAME]\n\t\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATETIME)\n\t\t,SD.[STATUS_ID] AS [STATUS]\n\tFROM EDS.D30_ENROLLMENT src\n\tJOIN EDS.ENROLLMENT_STATUS_DIM SD \n\t\tON\t1=1\n\t\tAND SD.STATUS_DESC='Active'\n\tWHERE src.[STATUS] = 'Successful'\n\t\tAND src.AS_OF_DATE = CAST('${PROCESS_DATE}' AS DATE)\n\t\tAND NOT EXISTS (\n\t\t\tSELECT 1\n\t\t\tFROM EDS.D30_CUSTOMER tgt\n\t\t\tWHERE src.[CIF_ID] = tgt.[CIF_ID]\n\t\t\t\tAND HASHBYTES('SHA2_256', CONCAT_WS(N'|', src.[USERNAME], src.[ACCOUNT_NAME], src.[DEVICE_MODEL], SD.[STATUS_ID], FORMAT(CAST(src.[TRANSACTION_DATE] AS DATETIME) + CAST(DATEDIFF(SECOND, '00:00:00', src.[TRANSACTION_TIME]) AS FLOAT) / 86400, 'yyyy-MM-dd HH:mm:ss')))\n\t\t\t\t= HASHBYTES('SHA2_256', CONCAT_WS(N'|', tgt.[USERNAME], tgt.[FULL_NAME], tgt.[DEVICE], tgt.[STATUS], FORMAT(tgt.[ENROLLMENT_DATE], 'yyyy-MM-dd HH:mm:ss') ))\n\t\t\t\tAND tgt.[ISLATEST] = 1\n\t\t\t);\nEND TRY\nBEGIN CATCH\n\tDECLARE @msg NVARCHAR(2048) = ERROR_MESSAGE();\n\tTHROW 51000\n\t\t,@msg\n\t\t,1;\nEND CATCH",
+							"type": "Expression"
+						}
+					}
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"tables": {
+				"type": "string",
+				"defaultValue": "D30_CUSTOMER"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "D30"
+			}
+		},
+		"variables": {
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"CheckFEstatus": {
+				"type": "String",
+				"defaultValue": "True"
+			},
+			"Source": {
+				"type": "String",
+				"defaultValue": "D30"
+			},
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-07-16T06:29:00Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

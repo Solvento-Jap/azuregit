@@ -1,0 +1,294 @@
+{
+	"name": "DEBUG_DEP_TDMASTER_20240628",
+	"properties": {
+		"activities": [
+			{
+				"name": "BU_EDS_TDMASTER",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "CREATE TABLE  D360.DEP_TDMASTER_BU_20240717 \r\nWITH\r\n(\r\n\tDISTRIBUTION = ROUND_ROBIN,\r\n\tHEAP\r\n)\r\nAS\r\n\r\nSELECT * FROM EDS.DEP_TDMASTER "
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "BU_EDS_TDMASTER_CHK",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "BU_EDS_TDMASTER",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT, 'D360' TBLS FROM D360.DEP_TDMASTER_BU_20240717\r\nUNION ALL\r\nSELECT COUNT(1) CNT, 'EDS' TBLS FROM EDS.DEP_TDMASTER"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "COPY_EDS_TO_PATCH_TBL",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "BU_EDS_TDMASTER_CHK",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "CREATE TABLE  D360.DEP_TDMASTER_20240628_PATCH \r\nWITH\r\n(\r\n\tDISTRIBUTION = ROUND_ROBIN,\r\n\tHEAP\r\n)\r\nAS\r\n\r\nSELECT * FROM EDS.DEP_TDMASTER "
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "COPY_EDS_TO_PATCH_TBL_CHK",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "COPY_EDS_TO_PATCH_TBL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT, 'D360_patch' TBLS FROM D360.DEP_TDMASTER_20240628_PATCH\r\nUNION ALL\r\nSELECT COUNT(1) CNT, 'EDS' TBLS FROM EDS.DEP_TDMASTER"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CLEANUP_EDS_TBL",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "COPY_EDS_TO_PATCH_TBL_CHK",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "TRUNCATE TABLE EDS.DEP_TDMASTER "
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Workflow_EDS_DEP_TDMASTER_No_Manifest",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "CLEANUP_EDS_TBL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Workflow_EDS_DEP_TDMASTER_No_Manifest",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"startDate": {
+							"value": "@variables('date')",
+							"type": "Expression"
+						},
+						"endDate": {
+							"value": "@variables('date')",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "LOAD_DELTA_EDS_TO_PATCH_TBL",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Workflow_EDS_DEP_TDMASTER_No_Manifest",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "INSERT INTO [D360].[DEP_TDMASTER_20240628_PATCH]\r\nSELECT\r\n                ACID,\r\n                DEPOSIT_PERIOD_MTHS,\r\n                DEPOSIT_PERIOD_DAYS,\r\n                OPEN_EFFECTIVE_DATE,\r\n                MATURITY_DATE,\r\n                DEPOSIT_AMOUNT,\r\n                MATURITY_AMOUNT,\r\n                ADJUSTED_COMM_AMT,\r\n                DEPOSIT_STATUS,\r\n                ACCT_SEGMENT,\r\n                SAFE_CUSTODY_FLG,\r\n                NOMINEE_PRINT_FLG,\r\n                PRINTING_FLG,\r\n                SPL_CATG_IND,\r\n                XFER_IN_IND,\r\n                LAST_INT_PROVISION_DATE,\r\n                LAST_REPAYMENT_DATE,\r\n                CUMULATIVE_PRINCIPAL,\r\n                CUMULATIVE_INSTL_PAID,\r\n                CUMULATIVE_REPAYMENT_PAID,\r\n                CUMULATIVE_INT_PAID,\r\n                CUMULATIVE_INT_CREDITED,\r\n                INT_ACCRUAL_FLG,\r\n                RELATED_ACID,\r\n                PENAL_PCNT,\r\n                REPAYMENT_ACID,\r\n                LOAN_ACID,\r\n                PENALTY_AMOUNT,\r\n                PENALTY_RECOVERED,\r\n                PENALTY_WAIVED,\r\n                AGENT_EMP_IND,\r\n                AGENT_CODE,\r\n                MATURITY_NOTICE_DATE,\r\n                LCHG_USER_ID,\r\n                LCHG_TIME,\r\n                RCRE_USER_ID,\r\n                RCRE_TIME,\r\n                TDS_AMT,\r\n                INT_CR_RATE_CODE,\r\n                NOSTRO_VALUE_DATE,\r\n                OVERDUE_INT_AMT,\r\n                CLS_VALUE_DATE,\r\n                AUTO_RENEWAL_FLG,\r\n                PERD_MTHS_FOR_AUTO_RENEW,\r\n                PERD_DAYS_FOR_AUTO_RENEW,\r\n                MAX_AUTO_RENEWAL_ALLOWED,\r\n                AUTO_RENEWED_COUNTER,\r\n                CLOSE_ON_MATURITY_FLG,\r\n                AUTO_RENEWAL_SCHM_CODE,\r\n                AUTO_RENEWAL_INT_TBL_CODE,\r\n                AUTO_RENWL_GL_SUBHEAD_CODE,\r\n                RENEWAL_CRNCY,\r\n                RENEWAL_RATE_CODE,\r\n                RENEWAL_RATE,\r\n                TS_CNT,\r\n                SOL_ID,\r\n                ORIGINAL_DEPOSIT_AMOUNT,\r\n                NOTICE_PERIOD_MNTHS,\r\n                NOTICE_PERIOD_DAYS,\r\n                NOTICE_DATE,\r\n                ACCT_CLOSE_INTEREST_RATE,\r\n                TRAN_ID,\r\n                TXOD_REGL_OVERDRAFT,\r\n                ORIGINAL_MATURITY_AMOUNT,\r\n                REN_SRL_NUM,\r\n                DEPOSIT_TYPE,\r\n                LINK_OPER_ACCOUNT,\r\n                OUTFLOW_MULTIPLE_AMT,\r\n                AVAIL_DEPOSIT_AMT,\r\n                CUST_INST_TYPE,\r\n                TDS_TOTAL_FROM_SELF_ACCT,\r\n                INT_FLOW_FREQ_MTHS,\r\n                INT_FLOW_FREQ_DAYS,\r\n                TAM_CRNCY_CODE,\r\n                MASTER_B2K_ID,\r\n                ACCT_STATUS,\r\n                ACCT_STATUS_DATE,\r\n                FIXED_INSTALLMENT_AMT,\r\n                NRML_INSTALLMENT_PCNT,\r\n                INSTALLMENT_BASIS,\r\n                MAX_MISS_CONTRIB_ALLOW,\r\n                AUTO_CLOSURE_OF_IRREGULAR_ACCT,\r\n                TOTAL_NO_OF_MISS_CONTRIB,\r\n                ACCT_IRREGULAR_STATUS,\r\n                ACCT_IRREGULAR_STATUS_DATE,\r\n                CUMULATIVE_NRML_INSTL_PAID,\r\n                CUMULATIVE_INITIAL_DEP_PAID,\r\n                CUMULATIVE_TOP_UP_PAID,\r\n                AUTO_CLOSURE_OF_ZERO_BAL_MNTHS,\r\n                AUTO_CLOSURE_OF_ZERO_BAL_DAYS,\r\n                BANK_ID,\r\n                PENALTY_CHARGE_EVENT_ID,\r\n                NUM_OF_GRACE_DAYS_UTIL,\r\n                ABSOLUTE_PENAL_INT_AMT,\r\n                LAST_BONUS_RUN_DATE,\r\n                LAST_CALC_BONUS_AMOUNT,\r\n                BONUS_UPTO_DATE,\r\n                NEXT_BONUS_RUN_DATE,\r\n                NRML_INT_PAID_TIL_LST_BONUS,\r\n                BONUS_CYCLE,\r\n                LAST_CALC_BONUS_PCNT,\r\n                ACCT_CLS_REASON_CODE,\r\n                LAST_LOCAL_CAL_UPDATE,\r\n                LOC_DEPOSIT_PERIOD_MTHS,\r\n                LOC_DEPOSIT_PERIOD_DAYS,\r\n                ACCT_CLOSE_FWC_NUM,\r\n                ACCT_CLOSE_FWC_SOL_ID,\r\n                LAST_NON_FIN_TRAN_DATE,\r\n                COMMITMENT_AMT,\r\n                DEPOSIT_WINDOW_END_DATE,\r\n                INT_RATE_BASED_ON,\r\n                CUMULATIVE_PART_CLOSE_AMT,\r\n                CUMULATIVE_INT_WITHDRAWN,\r\n                LOSS_OF_INT,\r\n                LAST_RENEWAL_INST_MOD_DATE,\r\n                LAST_RENEWAL_INST_MOD_INT_VER,\r\n                FLOW_CODE,\r\n                FLOW_FREQ_MTHS,\r\n                FLOW_FREQ_DAYS,\r\n                CUMULATIVE_BONUS_PAID,\r\n                FIRST_INT_FLOW_DATE,\r\n                OUTFLOW_TDS_AMOUNT,\r\n                ORIG_OPEN_EFFECTIVE_DATE,\r\n                TRAN_REASON_CODE_DR1,\r\n                TRAN_REASON_CODE_DR2,\r\n                FLOW_CODE_DR,\r\n                TRAN_REASON_CODE_CR,\r\n                FLOW_CODE_CR,\r\n                CURR_YR_CONTRI,\r\n                PREV_YR_CONTRI,\r\n                NO_OF_BUMP_UP_UTLZD,\r\n                ORIGINAL_MATURITY_DATE,\r\n\t\t\t\t[SCD_Start_Date],\r\n\t\t\t\t'9999-12-31',\r\n\t\t\t\t1,\r\n\t\t\t\t0,\r\n\t\t\t\tBANK_ID,\r\n\t\t\t\t'DEP',\r\n\t\t\t\tFILE_NAME,\r\n\t\t\t\tCAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime)\r\nFROM EDS.DEP_TDMASTER ;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "LOAD_PATCH_TO_EDS_TBL",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "LOAD_DELTA_EDS_TO_PATCH_TBL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "\r\nTRUNCATE TABLE EDS.DEP_TDMASTER;\r\n\r\nINSERT INTO EDS.DEP_TDMASTER\r\nSELECT          a.ACID,\r\n                DEPOSIT_PERIOD_MTHS,\r\n                DEPOSIT_PERIOD_DAYS,\r\n                OPEN_EFFECTIVE_DATE,\r\n                MATURITY_DATE,\r\n                DEPOSIT_AMOUNT,\r\n                MATURITY_AMOUNT,\r\n                ADJUSTED_COMM_AMT,\r\n                DEPOSIT_STATUS,\r\n                ACCT_SEGMENT,\r\n                SAFE_CUSTODY_FLG,\r\n                NOMINEE_PRINT_FLG,\r\n                PRINTING_FLG,\r\n                SPL_CATG_IND,\r\n                XFER_IN_IND,\r\n                LAST_INT_PROVISION_DATE,\r\n                LAST_REPAYMENT_DATE,\r\n                CUMULATIVE_PRINCIPAL,\r\n                CUMULATIVE_INSTL_PAID,\r\n                CUMULATIVE_REPAYMENT_PAID,\r\n                CUMULATIVE_INT_PAID,\r\n                CUMULATIVE_INT_CREDITED,\r\n                INT_ACCRUAL_FLG,\r\n                RELATED_ACID,\r\n                PENAL_PCNT,\r\n                REPAYMENT_ACID,\r\n                LOAN_ACID,\r\n                PENALTY_AMOUNT,\r\n                PENALTY_RECOVERED,\r\n                PENALTY_WAIVED,\r\n                AGENT_EMP_IND,\r\n                AGENT_CODE,\r\n                MATURITY_NOTICE_DATE,\r\n                LCHG_USER_ID,\r\n                LCHG_TIME,\r\n                RCRE_USER_ID,\r\n                RCRE_TIME,\r\n                TDS_AMT,\r\n                INT_CR_RATE_CODE,\r\n                NOSTRO_VALUE_DATE,\r\n                OVERDUE_INT_AMT,\r\n                CLS_VALUE_DATE,\r\n                AUTO_RENEWAL_FLG,\r\n                PERD_MTHS_FOR_AUTO_RENEW,\r\n                PERD_DAYS_FOR_AUTO_RENEW,\r\n                MAX_AUTO_RENEWAL_ALLOWED,\r\n                AUTO_RENEWED_COUNTER,\r\n                CLOSE_ON_MATURITY_FLG,\r\n                AUTO_RENEWAL_SCHM_CODE,\r\n                AUTO_RENEWAL_INT_TBL_CODE,\r\n                AUTO_RENWL_GL_SUBHEAD_CODE,\r\n                RENEWAL_CRNCY,\r\n                RENEWAL_RATE_CODE,\r\n                RENEWAL_RATE,\r\n                TS_CNT,\r\n                SOL_ID,\r\n                ORIGINAL_DEPOSIT_AMOUNT,\r\n                NOTICE_PERIOD_MNTHS,\r\n                NOTICE_PERIOD_DAYS,\r\n                NOTICE_DATE,\r\n                ACCT_CLOSE_INTEREST_RATE,\r\n                TRAN_ID,\r\n                TXOD_REGL_OVERDRAFT,\r\n                ORIGINAL_MATURITY_AMOUNT,\r\n                REN_SRL_NUM,\r\n                DEPOSIT_TYPE,\r\n                LINK_OPER_ACCOUNT,\r\n                OUTFLOW_MULTIPLE_AMT,\r\n                AVAIL_DEPOSIT_AMT,\r\n                CUST_INST_TYPE,\r\n                TDS_TOTAL_FROM_SELF_ACCT,\r\n                INT_FLOW_FREQ_MTHS,\r\n                INT_FLOW_FREQ_DAYS,\r\n                TAM_CRNCY_CODE,\r\n                MASTER_B2K_ID,\r\n                ACCT_STATUS,\r\n                ACCT_STATUS_DATE,\r\n                FIXED_INSTALLMENT_AMT,\r\n                NRML_INSTALLMENT_PCNT,\r\n                INSTALLMENT_BASIS,\r\n                MAX_MISS_CONTRIB_ALLOW,\r\n                AUTO_CLOSURE_OF_IRREGULAR_ACCT,\r\n                TOTAL_NO_OF_MISS_CONTRIB,\r\n                ACCT_IRREGULAR_STATUS,\r\n                ACCT_IRREGULAR_STATUS_DATE,\r\n                CUMULATIVE_NRML_INSTL_PAID,\r\n                CUMULATIVE_INITIAL_DEP_PAID,\r\n                CUMULATIVE_TOP_UP_PAID,\r\n                AUTO_CLOSURE_OF_ZERO_BAL_MNTHS,\r\n                AUTO_CLOSURE_OF_ZERO_BAL_DAYS,\r\n                a.BANK_ID,\r\n                PENALTY_CHARGE_EVENT_ID,\r\n                NUM_OF_GRACE_DAYS_UTIL,\r\n                ABSOLUTE_PENAL_INT_AMT,\r\n                LAST_BONUS_RUN_DATE,\r\n                LAST_CALC_BONUS_AMOUNT,\r\n                BONUS_UPTO_DATE,\r\n                NEXT_BONUS_RUN_DATE,\r\n                NRML_INT_PAID_TIL_LST_BONUS,\r\n                BONUS_CYCLE,\r\n                LAST_CALC_BONUS_PCNT,\r\n                ACCT_CLS_REASON_CODE,\r\n                LAST_LOCAL_CAL_UPDATE,\r\n                LOC_DEPOSIT_PERIOD_MTHS,\r\n                LOC_DEPOSIT_PERIOD_DAYS,\r\n                ACCT_CLOSE_FWC_NUM,\r\n                ACCT_CLOSE_FWC_SOL_ID,\r\n                LAST_NON_FIN_TRAN_DATE,\r\n                COMMITMENT_AMT,\r\n                DEPOSIT_WINDOW_END_DATE,\r\n                INT_RATE_BASED_ON,\r\n                CUMULATIVE_PART_CLOSE_AMT,\r\n                CUMULATIVE_INT_WITHDRAWN,\r\n                LOSS_OF_INT,\r\n                LAST_RENEWAL_INST_MOD_DATE,\r\n                LAST_RENEWAL_INST_MOD_INT_VER,\r\n                FLOW_CODE,\r\n                FLOW_FREQ_MTHS,\r\n                FLOW_FREQ_DAYS,\r\n                CUMULATIVE_BONUS_PAID,\r\n                FIRST_INT_FLOW_DATE,\r\n                OUTFLOW_TDS_AMOUNT,\r\n                ORIG_OPEN_EFFECTIVE_DATE,\r\n                TRAN_REASON_CODE_DR1,\r\n                TRAN_REASON_CODE_DR2,\r\n                FLOW_CODE_DR,\r\n                TRAN_REASON_CODE_CR,\r\n                FLOW_CODE_CR,\r\n                CURR_YR_CONTRI,\r\n                PREV_YR_CONTRI,\r\n                NO_OF_BUMP_UP_UTLZD,\r\n                ORIGINAL_MATURITY_DATE,\r\n\t\t\t\ta.[SCD_Start_Date],\r\n\t\t\t\tcase when c.previous_business_day is null then b.SCD_END_DATE else c.previous_business_day end,\r\n\t\t\t\t1,\r\n\t\t\t\tcase when c.previous_business_day is null then 1 else 0 end,\r\n\t\t\t\ta.BANK_ID,\r\n\t\t\t\t'DEP',\r\n\t\t\t\tFILE_NAME,\r\n\t\t\t\tCAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime)\r\nfrom D360.DEP_TDMASTER_20240628_PATCH a\r\ninner join (\r\n            select ACID,BANK_ID,SCD_START_DATE,\r\n            LEAD(SCD_START_DATE, 1 ,'9999-12-31') OVER (PARTITION BY ACID ,BANK_ID  ORDER BY SCD_START_DATE) as SCD_END_DATE\r\n            from D360.DEP_TDMASTER_20240628_PATCH   ) b\r\n            on a.acid = b.acid and a.SCD_START_DATE = b.SCD_START_DATE and a.bank_id = b.BANK_ID\r\nleft join eds.date_dim c on b.scd_end_date = c.fulldate\r\n\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"variables": {
+			"date": {
+				"type": "String",
+				"defaultValue": "2024-06-28"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-07-19T02:02:24Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

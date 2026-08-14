@@ -1,0 +1,116 @@
+{
+	"name": "EDS_DID_DIGITAL_BILLERS_DIM",
+	"properties": {
+		"activities": [
+			{
+				"name": "DID_DIGITAL_BILLERS_DIM_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT COUNT(1) CNT FROM D360.STG_EDS_DID_DIGITAL_BILLERS_DIM --WHERE H = 'D'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_EDS_DID_DIGITAL_BILLERS_DIM"
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "DID_DIGITAL_BILLERS_DIM_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('DID_DIGITAL_BILLERS_DIM_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "DID_DIGITAL_BILLERS_DIM",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"parameters": [
+											{
+												"name": "DATETOPROCESS",
+												"type": "Datetime",
+												"value": {
+													"value": "@pipeline().parameters.DATETOPROCESS",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											}
+										],
+										"type": "NonQuery",
+										"text": "BEGIN TRY\n\tUPDATE EDS.DIGITAL_BILLERS_DIM\n\tSET [ISLATEST] = 0\n\t\t,[SCD_END_DATE] = (\n\t\t\tSELECT PREVIOUS_BUSINESS_DAY\n\t\t\tFROM EDS.DATE_DIM\n\t\t\tINNER JOIN (\n\t\t\t\tSELECT TOP 1 CAST(LEFT(RIGHT(FILE_NAME, 12), 8) AS INTEGER) MX_DT\n\t\t\t\tFROM D360.STG_EDS_DID_DIGITAL_BILLERS_DIM\n\t\t\t\t) MX_DT_TBL ON DATESK = MX_DT\n\t\t\t)\n\tFROM EDS.DIGITAL_BILLERS_DIM tgt\n\tLEFT JOIN D360.STG_EDS_DID_DIGITAL_BILLERS_DIM src \n\tON (\n         tgt.PAYMENT_TYPE = 'Bills Payment'\n         AND src.PAYMENT_TYPE = 'Bills Payment'\n         AND CASE WHEN src.BILLER_ID IN ('ALVS') THEN src.BILLER_NAME ELSE src.BILLER_ID END = CASE WHEN tgt.BILLER_ID IN ('ALVS') THEN tgt.BILLER_NAME ELSE tgt.BILLER_ID END\n\t--AND src.BILLER_ID = tgt.BILLER_ID\n       )\n    OR (\n         tgt.PAYMENT_TYPE <> 'Bills Payment'\n         AND src.PAYMENT_TYPE <> 'Bills Payment'\n         AND tgt.TXN_TYPE = src.TXN_TYPE\n         AND tgt.SOURCE = src.SOURCE\n       )\n    OR \n        (\n         tgt.PAYMENT_TYPE IS NULL\n         AND src.PAYMENT_TYPE IS NULL\n         AND tgt.TXN_TYPE = src.TXN_TYPE\n         AND tgt.SOURCE = src.SOURCE\n       )\n\tWHERE tgt.[ISLATEST] = 1\n\t\tAND HASHBYTES('SHA2_256', \n\t\tCONCAT_WS(N'|', \n\t\tsrc.[TXN_CATEGORY],\n\t\tsrc.[TXN_GROUP],\n\t\tsrc.[PAYMENT_TYPE],\n\t\tsrc.[TXN_DESCRIPTION],\n\t\tsrc.[TXN_EXCLUSION],\n\t\tsrc.[BILLER_NAME],\n\t\tsrc.[PROPRIETARY_TAG],\n\t\tsrc.[P2B_TAG],\n\t\tsrc.[EBK_BP],\n\t\tsrc.[MBK_BP],\n\t\tsrc.[D30_BP],\n\t\tsrc.[P2B_BP],\n\t\tsrc.[DEFAULT_FEE_BP],\n\t\tsrc.[GROSS_TXN_FEE],\n\t\tsrc.[NET_TXN_FEE])) \n\t\t<> \n\t\tHASHBYTES('SHA2_256', CONCAT_WS(N'|', \n\t\ttgt.[TXN_CATEGORY],\n\t\ttgt.[TXN_GROUP],\n\t\ttgt.[PAYMENT_TYPE],\n\t\ttgt.[TXN_DESCRIPTION],\n\t\ttgt.[TXN_EXCLUSION],\n\t\ttgt.[BILLER_NAME],\n\t\ttgt.[PROPRIETARY_TAG],\n\t\ttgt.[P2B_TAG],\n\t\ttgt.[EBK_BP],\n\t\ttgt.[MBK_BP],\n\t\ttgt.[D30_BP],\n\t\ttgt.[P2B_BP],\n\t\ttgt.[DEFAULT_FEE_BP],\n\t\ttgt.[GROSS_TXN_FEE],\n\t\ttgt.[NET_TXN_FEE]));\n\n\tINSERT INTO EDS.DIGITAL_BILLERS_DIM (\n\t\t [SOURCE]\n\t\t,[TXN_CATEGORY]\n\t\t,[TXN_GROUP]\n\t\t,[PAYMENT_TYPE]\n\t\t,[TXN_TYPE]\n\t\t,[TXN_DESCRIPTION]\n\t\t,[TXN_EXCLUSION]\n\t\t,[BILLER_ID]\n\t\t,[BILLER_NAME]\n\t\t,[PROPRIETARY_TAG]\n\t\t,[P2B_TAG]\n\t\t,[EBK_BP]\n\t\t,[MBK_BP]\n\t\t,[D30_BP]\n\t\t,[P2B_BP]\n\t\t,[DEFAULT_FEE_BP]\n\t\t,[GROSS_TXN_FEE]\n\t\t,[NET_TXN_FEE]\n\t\t,SCD_START_DATE\n\t\t,SCD_END_DATE\n\t\t,ISACTIVE\n\t\t,ISLATEST\n\t\t,[BNK_CODE] \n\t\t,[SOURCE_CODE]\n\t\t,[FILE_NAME]\n\t\t,[INSERT_DTTM]\n\t\t)\n\tSELECT DISTINCT\n\t\t[SOURCE]\n\t\t,[TXN_CATEGORY]\n\t\t,[TXN_GROUP]\n\t\t,[PAYMENT_TYPE]\n\t\t,[TXN_TYPE]\n\t\t,[TXN_DESCRIPTION]\n\t\t,[TXN_EXCLUSION]\n\t\t,[BILLER_ID]\n\t\t,[BILLER_NAME]\n\t\t,[PROPRIETARY_TAG]\n\t\t,[P2B_TAG]\n\t\t,[EBK_BP]\n\t\t,[MBK_BP]\n\t\t,[D30_BP]\n\t\t,[P2B_BP]\n\t\t,[DEFAULT_FEE_BP]\n\t\t,[GROSS_TXN_FEE]\n\t\t,[NET_TXN_FEE]\n\t\t,CAST(LEFT(RIGHT(FILE_NAME, 12), 8) AS DATE) AS [SCD_START_DATE]\n\t\t,CAST('9999-12-31' AS DATE) AS [SCD_END_DATE]\n\t\t,1 AS [ISACTIVE]\n\t\t,1 AS [ISLATEST]\n\t\t,LEFT(FILE_NAME, 5) AS [BNK_CODE]\n\t\t,'DID' AS [SOURCE_CODE]\n\t\t,[FILE_NAME]\n\t\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATETIME) AS INSERT_DTTM\n\tFROM D360.STG_EDS_DID_DIGITAL_BILLERS_DIM src\n\tWHERE NOT EXISTS (\n\t\t\tSELECT 1\n\t\t\tFROM EDS.DIGITAL_BILLERS_DIM tgt\n\t\t\tWHERE((\n\t\t\t\t\ttgt.PAYMENT_TYPE = 'Bills Payment'\n\t\t\t\t\tAND src.PAYMENT_TYPE = 'Bills Payment'\n\t\t\t\t\t         AND CASE WHEN src.BILLER_ID IN ('ALVS') THEN src.BILLER_NAME ELSE src.BILLER_ID END = CASE WHEN tgt.BILLER_ID IN ('ALVS') THEN tgt.BILLER_NAME ELSE tgt.BILLER_ID END\n\t\t\t\t\t--AND src.BILLER_ID = tgt.BILLER_ID\n\t\t\t\t)\n\t\t\t\tOR (\n\t\t\t\t\ttgt.PAYMENT_TYPE <> 'Bills Payment'\n\t\t\t\t\tAND src.PAYMENT_TYPE <> 'Bills Payment'\n\t\t\t\t\tAND tgt.TXN_TYPE = src.TXN_TYPE\n\t\t\t\t\tAND tgt.SOURCE = src.SOURCE\n\t\t\t\t)\n\t\t\t\tOR \n\t\t\t\t\t(\n\t\t\t\t\ttgt.PAYMENT_TYPE IS NULL\n\t\t\t\t\tAND src.PAYMENT_TYPE IS NULL\n\t\t\t\t\tAND tgt.TXN_TYPE = src.TXN_TYPE\n\t\t\t\t\tAND tgt.SOURCE = src.SOURCE\n\t\t\t\t))\n\t\t\t\tAND HASHBYTES('SHA2_256', CONCAT_WS(N'|', \n\t\t\t\tsrc.[TXN_CATEGORY],\n\t\t\t\tsrc.[TXN_GROUP],\n\t\t\t\tsrc.[PAYMENT_TYPE],\n\t\t\t\tsrc.[TXN_DESCRIPTION],\n\t\t\t\tsrc.[TXN_EXCLUSION],\n\t\t\t\tsrc.[BILLER_NAME],\n\t\t\t\tsrc.[PROPRIETARY_TAG],\n\t\t\t\tsrc.[P2B_TAG],\n\t\t\t\tsrc.[EBK_BP],\n\t\t\t\tsrc.[MBK_BP],\n\t\t\t\tsrc.[D30_BP],\n\t\t\t\tsrc.[P2B_BP],\n\t\t\t\tsrc.[DEFAULT_FEE_BP],\n\t\t\t\tsrc.[GROSS_TXN_FEE],\n\t\t\t\tsrc.[NET_TXN_FEE])) \n\t\t\t\t= \n\t\t\t\tHASHBYTES('SHA2_256', CONCAT_WS(N'|', \n\t\t\t\ttgt.[TXN_CATEGORY],\n\t\t\t\ttgt.[TXN_GROUP],\n\t\t\t\ttgt.[PAYMENT_TYPE],\n\t\t\t\ttgt.[TXN_DESCRIPTION],\n\t\t\t\ttgt.[TXN_EXCLUSION],\n\t\t\t\ttgt.[BILLER_NAME],\n\t\t\t\ttgt.[PROPRIETARY_TAG],\n\t\t\t\ttgt.[P2B_TAG],\n\t\t\t\ttgt.[EBK_BP],\n\t\t\t\ttgt.[MBK_BP],\n\t\t\t\ttgt.[D30_BP],\n\t\t\t\ttgt.[P2B_BP],\n\t\t\t\ttgt.[DEFAULT_FEE_BP],\n\t\t\t\ttgt.[GROSS_TXN_FEE],\n\t\t\t\ttgt.[NET_TXN_FEE]))\n\t\t\t\tAND tgt.[ISLATEST] = 1\n\t\t\t);\nEND TRY\n\nBEGIN CATCH\n\tDECLARE @msg NVARCHAR(2048) = ERROR_MESSAGE();\n\n\tTHROW 51000\n\t\t,@msg\n\t\t,1;\nEND CATCH\n"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"DATETOPROCESS": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-12-23T09:02:19Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

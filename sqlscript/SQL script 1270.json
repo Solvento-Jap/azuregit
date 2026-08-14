@@ -1,0 +1,17 @@
+{
+	"name": "SQL script 1270",
+	"properties": {
+		"content": {
+			"query": "WITH Rolling_Window AS\n/*\n#\n# HISTORY\n#\n+---------------------------------------------------------------------------------------------------------------------------------------------------------------\n-+\n# | Date\t | Author \t  \t      |Description                                                \t\t\t\t |\n+------------------------------------------------------------------------------------------------------------+\n# | 20250101 | JAY-AR GAVINA      |Initial\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t |\n# | 20260116 | ARLAND BINDOY \t  |Removed filter on business_Day_flag for rolling window \t\t\t\t\t |\n+---------------------------------------------------------------------------------------------------------------------------------------------------------------\n-+\n#\n*/\n(\nSELECT * FROM\n    (\n    SELECT \n            ROW_NUMBER() OVER(PARTITION BY 1 ORDER BY FullDate DESC) AS RN,\n            DD.*,\n            EC.CRM_INTEGRATION_DATA,\n            EC.CRM_DATE,\n            EC.Rolling_Window\n    FROM eds.DATE_DIM DD\n        INNER JOIN eds.EDS_CTL EC\n            ON FULLDATE <= CRM_DATE\n    --WHERE Business_Day_Flag = 'Y'\n    ) A\n--WHERE\n--- Last n business days\n--    RN <= Rolling_Window\n)\nSELECT\nTOP 100\nRW.FullDate AS AS_OF_DATE,\nCOUNT(*)\nFROM Rolling_Window AS RW\n    LEFT JOIN eds.CRM_MISCELLANEOUSINFO AS CRM_MISCELLANEOUSINFO\n        ON CRM_MISCELLANEOUSINFO.Type = 'Currency'\n        AND CRM_MISCELLANEOUSINFO.BANK_ID = 'CBC01'\n        AND SUBSTRING(CRM_MISCELLANEOUSINFO.ORGKEY, 1, 1) = 'R'\n---Fetch all records that per business day (SNAPSHOT)\n        AND ((UPPER(RW.CRM_INTEGRATION_DATA) = 'DELTA' AND RW.FullDate = CRM_MISCELLANEOUSINFO.SCD_Start_Date))\n    LEFT JOIN eds.CRM_GROUPHOUSEHOLD AS CRM_GROUPHOUSEHOLD\n        ON CRM_MISCELLANEOUSINFO.ORGKEY = CRM_GROUPHOUSEHOLD.ORGKEY AND CRM_MISCELLANEOUSINFO.BANK_ID = CRM_GROUPHOUSEHOLD.BANK_ID\n\t\tAND CRM_GROUPHOUSEHOLD.ACCOUNTID IS NOT NULL \n---Fetch all records per business day (SNAPSHOT)\n        AND ((UPPER(RW.CRM_INTEGRATION_DATA) = 'DELTA' AND RW.FullDate = CRM_GROUPHOUSEHOLD.SCD_Start_Date))\nWHERE \n--CRM_MISCELLANEOUSINFO.ACCOUNTID IS NOT NULL\n--AND \n(CRM_MISCELLANEOUSINFO.ORGKEY IS NOT NULL OR CRM_GROUPHOUSEHOLD.ORGKEY IS NOT NULL\n--OR (CRM_MISCELLANEOUSINFO.ORGKEY IS NULL AND CRM_GROUPHOUSEHOLD.ORGKEY IS NULL)\n)\nGROUP BY RW.FullDate\nORDER BY COUNT(*) DESC",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

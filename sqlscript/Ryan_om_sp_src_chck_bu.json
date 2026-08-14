@@ -1,0 +1,20 @@
+{
+	"name": "Ryan_om_sp_src_chck_bu",
+	"properties": {
+		"folder": {
+			"name": "Ryan"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nCREATE PROC [OM].[SP_SRC_CHECK] @task_name [varchar](100),@process_date [datetime] AS\nBEGIN\n\n    DECLARE @FLAG_CNT [NUMERIC](15,0)\n    DECLARE @ME_FLAG_CNT [NUMERIC](15,0)\n\t\n\tSELECT  \n\t\t@ME_FLAG_CNT=COUNT(*)  \n\tFROM \n\t\t[EDS].[DATE_DIM] \n\tWHERE \n\t\tFULLDATE=@process_date \n\t\tAND COALESCE(MONTH_END,'N')='Y'\n\n\n    SELECT\n\t@FLAG_CNT=(CASE WHEN COUNT(*) <> SUM(COALESCE((CASE WHEN OS.STATUS = 'SUCCESSFUL' THEN 1 ELSE 0 END),0)) THEN 0 ELSE 1 END)\n\t\n\tFROM \n\t\t[OM].[OM_TASK_DEPENDENCY] OTD\n\tLEFT JOIN\n\t\t[OM].[OM_TASK_RUN] OTR\n\t\tON\n\t\tOTD.TASK_NAME =  OTR.TASK_NAME AND\n\t\tOTR.PROCESS_DATE = @process_date\n\tLEFT JOIN   \n\t\t[OM].[OM_STATUS] OS\n\t\tON\n\t\tOTR.STATUS_ID =  OS.STATUS_ID\n\tWHERE\n\t\tOTD.DEPENDENT_TASK_NAME = UPPER(@task_name)\n\t\tAND COALESCE(OTD.MONTHEND,'N')<>'Y'\n\tGROUP BY\n\t\tOTD.DEPENDENT_TASK_NAME\n\t \n\tIF(@FLAG_CNT<>1)   \n\t\tBEGIN\n\t\t\tDECLARE @errmsg1 NVARCHAR(2048) = 'JOB '+@task_name+' SOURCES ARE NOT YET AVAILABLE, PLEASE CHECK OM.OM_TASK_RUN TABLE FOR LIST OF SOURCES THAT ARE NOT YET AVAILABLE';   \n\t  \n\t\t\tTHROW 80000, @errmsg1, 1;  \n\t\tEND\n\t\t\n\tIF(@ME_FLAG_CNT>0)   \n\t\tBEGIN\n\t\t\tSELECT\n\t\t\t@FLAG_CNT=(CASE WHEN COUNT(*) <> SUM(COALESCE((CASE WHEN OS.STATUS = 'SUCCESSFUL' THEN 1 ELSE 0 END),0)) THEN 0 ELSE 1 END)\n\t\t\t\n\t\t\tFROM \n\t\t\t\t[OM].[OM_TASK_DEPENDENCY] OTD\n\t\t\tLEFT JOIN\n\t\t\t\t[OM].[OM_TASK_RUN] OTR\n\t\t\t\tON\n\t\t\t\tOTD.TASK_NAME =  OTR.TASK_NAME AND\n\t\t\t\tOTR.PROCESS_DATE = @process_date\n\t\t\tLEFT JOIN   \n\t\t\t\t[OM].[OM_STATUS] OS\n\t\t\t\tON\n\t\t\t\tOTR.STATUS_ID =  OS.STATUS_ID\n\t\t\tWHERE\n\t\t\t\tOTD.DEPENDENT_TASK_NAME = UPPER(@task_name)\n\t\t\t\tAND COALESCE(OTD.MONTHEND,'N')='Y'\n\t\t\tGROUP BY\n\t\t\t\tOTD.DEPENDENT_TASK_NAME\n\t\t\n\t\t\t\tIF(@FLAG_CNT<>1)   \n\t\t\t\tBEGIN\n\t\t\t\t\tDECLARE @errmsg2 NVARCHAR(2048) = 'JOB '+@task_name+' SOURCES ARE NOT YET AVAILABLE, PLEASE CHECK OM.OM_TASK_RUN TABLE FOR LIST OF SOURCES THAT ARE NOT YET AVAILABLE';   \n\t\t\t  \n\t\t\t\t\tTHROW 80000, @errmsg2, 1;  \n\t\t\t\tEND\n\t\tEND\t\n\nEND\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

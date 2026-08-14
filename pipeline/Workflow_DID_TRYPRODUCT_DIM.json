@@ -1,0 +1,231 @@
+{
+	"name": "Workflow_DID_TRYPRODUCT_DIM",
+	"properties": {
+		"activities": [
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('select fulldate\nfrom \n    eds.eds_ctl ect\ninner join \n    eds.date_dim dd\n    on \n    ect.',pipeline().parameters.src_sys,'_Date=dd.previous_business_day and dd.business_day_flag=''Y''')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "EDS_DID_TRYPRODUCT_DIM",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "wf_EDS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"startDate": {
+							"value": "@variables('V_startDate')",
+							"type": "Expression"
+						},
+						"endDate": {
+							"value": "@variables('V_endDate')",
+							"type": "Expression"
+						},
+						"tables": "DID_TRYPRODUCT_DIM",
+						"src_sys": "DID",
+						"Bank_Id": "CBC01",
+						"ColumnSchema": "[{\"source\":{\"name\":\"H\",\"type\":\"String\"},\"sink\":{\"name\":\"H\",\"type\":\"String\"}},{\"source\":{\"name\":\"PRODUCT_GROUP_FMS\",\"type\":\"String\"},\"sink\":{\"name\":\"PRODUCT_GROUP_FMS\",\"type\":\"String\"}},{\"source\":{\"name\":\"PRODUCT_CLASSIFICATION_FMS\",\"type\":\"String\"},\"sink\":{\"name\":\"PRODUCT_CLASSIFICATION_FMS\",\"type\":\"String\"}},{\"source\":{\"name\":\"PRODUCT_CODE_FMS\",\"type\":\"String\"},\"sink\":{\"name\":\"PRODUCT_CODE_FMS\",\"type\":\"String\"}},{\"source\":{\"name\":\"PRODUCT_DESC_FMS\",\"type\":\"String\"},\"sink\":{\"name\":\"PRODUCT_DESC_FMS\",\"type\":\"String\"}}]",
+						"HashLog_SQL": "INSERT INTO [EDS].[EDS_HASH_LOG_TBL] SELECT 'CBC01_DID_TRYPRODUCT_DIM_001_20260408' AS FILE_NAME ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS DATE ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS insert_dttm ,'COUNT' METRICS ,'1' SRC ,'1' TGT",
+						"EDS_SQL": {
+							"value": "BEGIN TRY UPDATE EDS.DID_TRYPRODUCT_DIM SET [ISLATEST] = 0 ,[SCD_END_DATE] = ( SELECT PREVIOUS_BUSINESS_DAY FROM EDS.DATE_DIM INNER JOIN ( SELECT TOP 1 CAST(LEFT(RIGHT(FILE_NAME, 12), 8) AS INTEGER) MX_DT FROM d360.STG_EDS_DID_TRYPRODUCT_DIM WHERE H = 'D' ) MX_DT_TBL ON DATESK = MX_DT ) FROM EDS.DID_TRYPRODUCT_DIM tgt LEFT JOIN d360.STG_EDS_DID_TRYPRODUCT_DIM src ON src.[PRODUCT_CODE_FMS] = tgt.[PRODUCT_CODE_FMS] AND src.[H] = 'D' WHERE tgt.[ISLATEST] = 1 AND HASHBYTES('SHA2_256', CONCAT_WS(N'|', src.[PRODUCT_GROUP_FMS], src.[PRODUCT_CLASSIFICATION_FMS], src.[PRODUCT_DESC_FMS])) <> HASHBYTES('SHA2_256', CONCAT_WS(N'|', tgt.[PRODUCT_GROUP_FMS], tgt.[PRODUCT_CLASSIFICATION_FMS], tgt.[PRODUCT_DESC_FMS])); INSERT INTO EDS.DID_TRYPRODUCT_DIM ( [PRODUCT_GROUP_FMS] ,[PRODUCT_CLASSIFICATION_FMS] ,[PRODUCT_CODE_FMS] ,[PRODUCT_DESC_FMS] ,[FILE_NAME] ,[SCD_START_DATE] ,[SCD_END_DATE] ,[ISACTIVE] ,[ISLATEST] ,[BNK_CODE] ,[SOURCE_CODE] ,[INSERT_DTTM] ) SELECT DISTINCT src.[PRODUCT_GROUP_FMS] ,src.[PRODUCT_CLASSIFICATION_FMS] ,src.[PRODUCT_CODE_FMS] ,src.[PRODUCT_DESC_FMS] ,src.[FILE_NAME] ,CAST(LEFT(RIGHT(src.[FILE_NAME], 12), 8) AS DATE) AS [SCD_START_DATE] ,CAST('9999-12-31' AS DATE) AS [SCD_END_DATE] ,1 AS [ISACTIVE] ,1 AS [ISLATEST] ,LEFT(src.[FILE_NAME], 5) AS [BNK_CODE] ,'DID' AS [SOURCE_CODE] ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATETIME) FROM d360.STG_EDS_DID_TRYPRODUCT_DIM src WHERE src.[H] = 'D' AND NOT EXISTS ( SELECT 1 FROM EDS.DID_TRYPRODUCT_DIM tgt WHERE src.[PRODUCT_CODE_FMS] = tgt.[PRODUCT_CODE_FMS] AND HASHBYTES('SHA2_256', CONCAT_WS(N'|', src.[PRODUCT_GROUP_FMS], src.[PRODUCT_CLASSIFICATION_FMS], src.[PRODUCT_DESC_FMS])) = HASHBYTES('SHA2_256', CONCAT_WS(N'|', tgt.[PRODUCT_GROUP_FMS], tgt.[PRODUCT_CLASSIFICATION_FMS], tgt.[PRODUCT_DESC_FMS])) AND tgt.[ISLATEST] = 1 ); END TRY BEGIN CATCH DECLARE @msg NVARCHAR(2048) = ERROR_MESSAGE(); THROW 51000 ,@msg ,1; END CATCH",
+							"type": "Expression"
+						},
+						"UseManifest": 0
+					}
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"tables": {
+				"type": "string",
+				"defaultValue": "DID_TRYPRODUCT_DIM"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "DID"
+			}
+		},
+		"variables": {
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-05-12T03:34:12Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

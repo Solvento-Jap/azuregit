@@ -1,0 +1,138 @@
+{
+	"name": "CATCH_UP_CRM_DEMOGRAPHIC",
+	"properties": {
+		"activities": [
+			{
+				"name": "BACKUP_CRM_DEMOGRAPHIC",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "create table d360.CRM_DEMOGRAPHIC_20241004\nWITH\n(\n\tDISTRIBUTION = ROUND_ROBIN,\n\tHEAP\n)\nas\nselect * from eds.CRM_DEMOGRAPHIC"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CLEAN_UP_OM_CRM_DEMOGRAPHIC",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "BACKUP_CRM_DEMOGRAPHIC",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "DELETE from om.om_task_run WHERE TASK_NAME LIKE '%CRM_DEMOGRAPHIC%' \nAND PROCESS_DATE >= '2024-07-27'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CLEAN_UP_EDS_CRM_DEMOGRAPHIC",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CLEAN_UP_OM_CRM_DEMOGRAPHIC",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "DELETE from EDS.CRM_DEMOGRAPHIC WHERE SCD_START_DATE >= '2024-07-27'\nUPDATE EDS.CRM_DEMOGRAPHIC SET ISLATEST=1 , SCD_END_DATE=CAST('9999-12-31' AS DATE) WHERE SCD_END_DATE >= '2024-07-26'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Workflow_EDS_CRM_DEMOGRAPHIC_Manifest",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "CLEAN_UP_EDS_CRM_DEMOGRAPHIC",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Workflow_EDS_CRM_DEMOGRAPHIC_Manifest",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"startDate": "2024-07-27",
+						"endDate": "2024-10-05"
+					}
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-10-04T08:06:02Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

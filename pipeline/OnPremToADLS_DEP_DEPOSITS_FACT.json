@@ -1,0 +1,1405 @@
+{
+	"name": "OnPremToADLS_DEP_DEPOSITS_FACT",
+	"properties": {
+		"description": "OnPremToADLS_DEP_GAM_EAB_YTD",
+		"activities": [
+			{
+				"name": "CBC01_EAB",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "DEP_EODACCOUNTBALANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "BinarySource",
+						"storeSettings": {
+							"type": "SftpReadSettings",
+							"recursive": false,
+							"wildcardFolderPath": "data360/uat/CBC01/DEP/encrypt",
+							"wildcardFileName": {
+								"value": "@concat(variables('v_tables1'),'*',variables('v_datetoprocessed'),'*')",
+								"type": "Expression"
+							},
+							"deleteFilesAfterCompletion": false,
+							"disableChunking": false
+						},
+						"formatSettings": {
+							"type": "BinaryReadSettings"
+						}
+					},
+					"sink": {
+						"type": "BinarySink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						}
+					},
+					"enableStaging": false,
+					"skipErrorFile": {
+						"fileMissing": false
+					},
+					"logSettings": {
+						"enableCopyActivityLog": true,
+						"copyActivityLogSettings": {
+							"logLevel": "Warning",
+							"enableReliableLogging": false
+						},
+						"logLocationSettings": {
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+								"type": "LinkedServiceReference"
+							},
+							"path": "data360/dev/Skip_logs"
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SFTP_OnPrem",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filepath": " ",
+							"Filename": " "
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SFTP_ADLS",
+						"type": "DatasetReference"
+					}
+				]
+			},
+			{
+				"name": "CBC02_EAB",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "DEP_EODACCOUNTBALANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "BinarySource",
+						"storeSettings": {
+							"type": "SftpReadSettings",
+							"recursive": false,
+							"wildcardFolderPath": "data360/uat/CBC02/DEP/encrypt",
+							"wildcardFileName": {
+								"value": "@concat(variables('v_tables1'),'*',variables('v_datetoprocessed'),'*')",
+								"type": "Expression"
+							},
+							"deleteFilesAfterCompletion": false,
+							"disableChunking": false
+						},
+						"formatSettings": {
+							"type": "BinaryReadSettings"
+						}
+					},
+					"sink": {
+						"type": "BinarySink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						}
+					},
+					"enableStaging": false
+				},
+				"inputs": [
+					{
+						"referenceName": "SFTP_OnPrem",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filepath": " ",
+							"Filename": " "
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SFTP_ADLS",
+						"type": "DatasetReference"
+					}
+				]
+			},
+			{
+				"name": "ErrorExecutionLog_CBC01_EAB",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CBC01_EAB",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@pipeline().TriggerTime",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "@concat('FAILED - ',activity('CBC01_EAB').error.message)",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SuccessExecutionLog_CBC01_EAB",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CBC01_EAB",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@addHours(pipeline().TriggerTime,+8)",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "SUCCESS",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "ErrorExecutionLog_CBC02_EAB",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CBC02_EAB",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@pipeline().TriggerTime",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "@concat('FAILED - ',activity('CBC02_EAB').error.message)",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SuccessExecutionLog_CBC02_EAB",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CBC02_EAB",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@addHours(pipeline().TriggerTime,+8)",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "SUCCESS",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Set DateToProcess",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "MovToArchive_DEP_DEPOSITS_FACT",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_datetoprocessed",
+					"value": {
+						"value": "@pipeline().parameters.DatetoProcessed",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "DEP_GENERALACCOUNTMASTER",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Set DateToProcess",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_tables2",
+					"value": {
+						"value": "@concat('*',pipeline().parameters.tables2)",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "DEP_EODACCOUNTBALANCE",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Set DateToProcess",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_tables1",
+					"value": {
+						"value": "@concat('*',pipeline().parameters.tables1)",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "CBC01_GAM",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "DEP_GENERALACCOUNTMASTER",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "BinarySource",
+						"storeSettings": {
+							"type": "SftpReadSettings",
+							"recursive": false,
+							"wildcardFolderPath": "data360/uat/CBC01/DEP/encrypt",
+							"wildcardFileName": {
+								"value": "@concat(variables('v_tables2'),'*',variables('v_datetoprocessed'),'*')",
+								"type": "Expression"
+							},
+							"deleteFilesAfterCompletion": false,
+							"disableChunking": false
+						},
+						"formatSettings": {
+							"type": "BinaryReadSettings"
+						}
+					},
+					"sink": {
+						"type": "BinarySink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						}
+					},
+					"enableStaging": false,
+					"skipErrorFile": {
+						"fileMissing": false
+					},
+					"logSettings": {
+						"enableCopyActivityLog": true,
+						"copyActivityLogSettings": {
+							"logLevel": "Warning",
+							"enableReliableLogging": false
+						},
+						"logLocationSettings": {
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+								"type": "LinkedServiceReference"
+							},
+							"path": "data360/dev/Skip_logs"
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SFTP_OnPrem",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filepath": " ",
+							"Filename": " "
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SFTP_ADLS",
+						"type": "DatasetReference"
+					}
+				]
+			},
+			{
+				"name": "CBC02_GAM",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "DEP_GENERALACCOUNTMASTER",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "BinarySource",
+						"storeSettings": {
+							"type": "SftpReadSettings",
+							"recursive": false,
+							"wildcardFolderPath": "data360/uat/CBC02/DEP/encrypt",
+							"wildcardFileName": {
+								"value": "@concat(variables('v_tables2'),'*',variables('v_datetoprocessed'),'*')",
+								"type": "Expression"
+							},
+							"deleteFilesAfterCompletion": false,
+							"disableChunking": false
+						},
+						"formatSettings": {
+							"type": "BinaryReadSettings"
+						}
+					},
+					"sink": {
+						"type": "BinarySink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						}
+					},
+					"enableStaging": false
+				},
+				"inputs": [
+					{
+						"referenceName": "SFTP_OnPrem",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filepath": " ",
+							"Filename": " "
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SFTP_ADLS",
+						"type": "DatasetReference"
+					}
+				]
+			},
+			{
+				"name": "ErrorExecutionLog_CBC01_GAM",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CBC01_GAM",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@pipeline().TriggerTime",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "@concat('FAILED - ',activity('CBC01_GAM').error.message)",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SuccessExecutionLog_CBC01_GAM",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CBC01_GAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@addHours(pipeline().TriggerTime,+8)",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "SUCCESS",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "ErrorExecutionLog_CBC02_GAM",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CBC02_GAM",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@pipeline().TriggerTime",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "@concat('FAILED - ',activity('CBC02_GAM').error.message)",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SuccessExecutionLog_CBC02_GAM",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CBC02_GAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@addHours(pipeline().TriggerTime,+8)",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "SUCCESS",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "CBC01_YTD",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "DEP_YTDDEPAGGRBALANCES",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "BinarySource",
+						"storeSettings": {
+							"type": "SftpReadSettings",
+							"recursive": false,
+							"wildcardFolderPath": "data360/uat/CBC01/DEP/encrypt",
+							"wildcardFileName": {
+								"value": "@concat(variables('v_tables3'),'*',variables('v_datetoprocessed'),'*')",
+								"type": "Expression"
+							},
+							"deleteFilesAfterCompletion": false,
+							"disableChunking": false
+						},
+						"formatSettings": {
+							"type": "BinaryReadSettings"
+						}
+					},
+					"sink": {
+						"type": "BinarySink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						}
+					},
+					"enableStaging": false,
+					"skipErrorFile": {
+						"fileMissing": false
+					},
+					"logSettings": {
+						"enableCopyActivityLog": true,
+						"copyActivityLogSettings": {
+							"logLevel": "Warning",
+							"enableReliableLogging": false
+						},
+						"logLocationSettings": {
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+								"type": "LinkedServiceReference"
+							},
+							"path": "data360/dev/Skip_logs"
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SFTP_OnPrem",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filepath": " ",
+							"Filename": " "
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SFTP_ADLS",
+						"type": "DatasetReference"
+					}
+				]
+			},
+			{
+				"name": "CBC02_YTD",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "DEP_YTDDEPAGGRBALANCES",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "BinarySource",
+						"storeSettings": {
+							"type": "SftpReadSettings",
+							"recursive": false,
+							"wildcardFolderPath": "data360/uat/CBC02/DEP/encrypt",
+							"wildcardFileName": {
+								"value": "@concat(variables('v_tables3'),'*',variables('v_datetoprocessed'),'*')",
+								"type": "Expression"
+							},
+							"deleteFilesAfterCompletion": false,
+							"disableChunking": false
+						},
+						"formatSettings": {
+							"type": "BinaryReadSettings"
+						}
+					},
+					"sink": {
+						"type": "BinarySink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						}
+					},
+					"enableStaging": false
+				},
+				"inputs": [
+					{
+						"referenceName": "SFTP_OnPrem",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filepath": " ",
+							"Filename": " "
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SFTP_ADLS",
+						"type": "DatasetReference"
+					}
+				]
+			},
+			{
+				"name": "ErrorExecutionLog_CBC01_YTD",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CBC01_YTD",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@pipeline().TriggerTime",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "@concat('FAILED - ',activity('CBC01_YTD').error.message)",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SuccessExecutionLog_CBC01_YTD",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CBC01_YTD",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@addHours(pipeline().TriggerTime,+8)",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "SUCCESS",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "ErrorExecutionLog_CBC02_YTD",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CBC02_YTD",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@pipeline().TriggerTime",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "@concat('FAILED - ',activity('CBC02_YTD').error.message)",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SuccessExecutionLog_CBC02_YTD",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CBC02_YTD",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@addHours(pipeline().TriggerTime,+8)",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "SUCCESS",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "DEP_YTDDEPAGGRBALANCES",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Set DateToProcess",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_tables3",
+					"value": {
+						"value": "@concat('*',pipeline().parameters.tables3)",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "MovToArchive_DEP_DEPOSITS_FACT",
+				"type": "ExecutePipeline",
+				"dependsOn": [],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "MovToArchive_DEP_DEPOSITS_FACT",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			}
+		],
+		"parameters": {
+			"DatetoProcessed": {
+				"type": "string"
+			},
+			"tables1": {
+				"type": "string",
+				"defaultValue": "DEP_EODACCOUNTBALANCEFULL"
+			},
+			"tables2": {
+				"type": "string",
+				"defaultValue": "DEP_GENERALACCOUNTMASTERFULL"
+			},
+			"tables3": {
+				"type": "string",
+				"defaultValue": "DEP_YTDDEPAGGRBALANCES"
+			}
+		},
+		"variables": {
+			"v_datetoprocessed": {
+				"type": "String"
+			},
+			"v_tables1": {
+				"type": "String"
+			},
+			"v_tables2": {
+				"type": "String"
+			},
+			"v_tables3": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-05-06T02:56:55Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

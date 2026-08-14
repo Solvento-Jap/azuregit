@@ -1,0 +1,941 @@
+{
+	"name": "DecToStg_AML_FCBS_OTCGOVTPAYREVERSAL",
+	"properties": {
+		"description": "AML DecToStg pipeline for CUSTOM.C_CGAT -> STG_EDS_DEP_OTCGOVTPAYREVERSAL; CBC-RDP-AML-003 Phase 1; covers 1 approved manifest table.",
+		"activities": [
+			{
+				"name": "Require_Approved_Execution",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.ExecutionMode, 'ApprovedDateSliceReload')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Unapproved_Execution",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "ExecutionMode must be ApprovedDateSliceReload.",
+								"errorCode": "AML_EXECUTION_NOT_APPROVED"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Execution_Approved",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Require_Valid_MissingFilePolicy",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(equals(pipeline().parameters.MissingFilePolicy, 'Fail'), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Invalid_MissingFilePolicy",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "MissingFilePolicy must be Fail or Skip.",
+								"errorCode": "AML_INVALID_MISSING_FILE_POLICY"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "MissingFilePolicy_Valid",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "GetFile_OTCGOVTPAYREVERSAL",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv_AML",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('*CUSTOM.C_CGAT-', pipeline().parameters.DateToProcess, '*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/FCBS",
+							"ColumnDelimiter": "|",
+							"FirstRowAsHeader": true,
+							"RowDelimiter": "\r\n",
+							"EncodingName": "UTF-8"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "RequireFileOrSkip_OTCGOVTPAYREVERSAL",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "GetFile_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(not(empty(activity('GetFile_OTCGOVTPAYREVERSAL').output.childItems)), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_OTCGOVTPAYREVERSAL_MissingFile",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "No source file matched @concat('*TRY-TXNS-', pipeline().parameters.DateToProcess, '*') under dev/decrypted/FCBS, and MissingFilePolicy is Fail.",
+								"errorCode": "AML_SOURCE_FILE_MISSING"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Accept_OTCGOVTPAYREVERSAL_FilePolicy",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "IfFile_OTCGOVTPAYREVERSAL",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "RequireFileOrSkip_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@not(empty(activity('GetFile_OTCGOVTPAYREVERSAL').output.childItems))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Skip_OTCGOVTPAYREVERSAL_NoFile",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Start_OTCGOVTPAYREVERSAL",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_START]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_FCBS_OTCGOVTPAYREVERSAL",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DateToProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Copy_OTCGOVTPAYREVERSAL",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Start_OTCGOVTPAYREVERSAL",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 2,
+								"retryIntervalInSeconds": 120
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										},
+										{
+											"name": "date_to_process",
+											"value": {
+												"value": "@pipeline().parameters.DateToProcess",
+												"type": "Expression"
+											}
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/FCBS",
+										"wildcardFileName": {
+											"value": "@concat('*CUSTOM.C_CGAT-', pipeline().parameters.DateToProcess, '*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": {
+										"value": "@concat('DECLARE @DateToProcess varchar(8) = ''', replace(pipeline().parameters.DateToProcess, '''', ''''''), '''; IF LEN(@DateToProcess) <> 8 OR @DateToProcess LIKE ''%[^0-9]%'' OR TRY_CONVERT(date, @DateToProcess, 112) IS NULL THROW 50000, ''DateToProcess must be a valid yyyyMMdd date.'', 1; DELETE FROM [D360].[STG_EDS_DEP_OTCGOVTPAYREVERSAL] WHERE CHARINDEX(@DateToProcess, [date_to_process]) > 0;')",
+										"type": "Expression"
+									},
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "H"
+											},
+											"sink": {
+												"name": "H"
+											}
+										},
+										{
+											"source": {
+												"name": "BILLER_ID"
+											},
+											"sink": {
+												"name": "BILLER_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "BILLER_SERVICE_ID"
+											},
+											"sink": {
+												"name": "BILLER_SERVICE_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "PAYMENT_ID"
+											},
+											"sink": {
+												"name": "PAYMENT_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "PAYMENT_DATE"
+											},
+											"sink": {
+												"name": "PAYMENT_DATE"
+											}
+										},
+										{
+											"source": {
+												"name": "PAYMENT_AMT"
+											},
+											"sink": {
+												"name": "PAYMENT_AMT"
+											}
+										},
+										{
+											"source": {
+												"name": "BILL_CCY"
+											},
+											"sink": {
+												"name": "BILL_CCY"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTION_TYPE"
+											},
+											"sink": {
+												"name": "TRANSACTION_TYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "PAYMENT_TYPE"
+											},
+											"sink": {
+												"name": "PAYMENT_TYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCT_NO"
+											},
+											"sink": {
+												"name": "ACCT_NO"
+											}
+										},
+										{
+											"source": {
+												"name": "CHECK_NO"
+											},
+											"sink": {
+												"name": "CHECK_NO"
+											}
+										},
+										{
+											"source": {
+												"name": "CHECK_TYPE"
+											},
+											"sink": {
+												"name": "CHECK_TYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "BRSTN"
+											},
+											"sink": {
+												"name": "BRSTN"
+											}
+										},
+										{
+											"source": {
+												"name": "BIR_FORM_LINE_NUM"
+											},
+											"sink": {
+												"name": "BIR_FORM_LINE_NUM"
+											}
+										},
+										{
+											"source": {
+												"name": "PBR_NO"
+											},
+											"sink": {
+												"name": "PBR_NO"
+											}
+										},
+										{
+											"source": {
+												"name": "PHILHEALTH_NO"
+											},
+											"sink": {
+												"name": "PHILHEALTH_NO"
+											}
+										},
+										{
+											"source": {
+												"name": "PAYOR_EMPLOYER"
+											},
+											"sink": {
+												"name": "PAYOR_EMPLOYER"
+											}
+										},
+										{
+											"source": {
+												"name": "MEMBER_TYPE"
+											},
+											"sink": {
+												"name": "MEMBER_TYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "RECONCILIATION_NO"
+											},
+											"sink": {
+												"name": "RECONCILIATION_NO"
+											}
+										},
+										{
+											"source": {
+												"name": "COVERED_PERIOD_FROM"
+											},
+											"sink": {
+												"name": "COVERED_PERIOD_FROM"
+											}
+										},
+										{
+											"source": {
+												"name": "COVERED_PERIOD_TO"
+											},
+											"sink": {
+												"name": "COVERED_PERIOD_TO"
+											}
+										},
+										{
+											"source": {
+												"name": "PAYMENT_FOR"
+											},
+											"sink": {
+												"name": "PAYMENT_FOR"
+											}
+										},
+										{
+											"source": {
+												"name": "SBR_NO"
+											},
+											"sink": {
+												"name": "SBR_NO"
+											}
+										},
+										{
+											"source": {
+												"name": "SSS_ID"
+											},
+											"sink": {
+												"name": "SSS_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "BCS_NO"
+											},
+											"sink": {
+												"name": "BCS_NO"
+											}
+										},
+										{
+											"source": {
+												"name": "BIR_CODE"
+											},
+											"sink": {
+												"name": "BIR_CODE"
+											}
+										},
+										{
+											"source": {
+												"name": "COLLECTION_PERIOD"
+											},
+											"sink": {
+												"name": "COLLECTION_PERIOD"
+											}
+										},
+										{
+											"source": {
+												"name": "PCC_CODE"
+											},
+											"sink": {
+												"name": "PCC_CODE"
+											}
+										},
+										{
+											"source": {
+												"name": "OTHER_INFOR"
+											},
+											"sink": {
+												"name": "OTHER_INFOR"
+											}
+										},
+										{
+											"source": {
+												"name": "AMLA_CODE"
+											},
+											"sink": {
+												"name": "AMLA_CODE"
+											}
+										},
+										{
+											"source": {
+												"name": "BANK_MNEMONIC"
+											},
+											"sink": {
+												"name": "BANK_MNEMONIC"
+											}
+										},
+										{
+											"source": {
+												"name": "COMB_STRING"
+											},
+											"sink": {
+												"name": "COMB_STRING"
+											}
+										},
+										{
+											"source": {
+												"name": "LATE_CHECK_PAYMENT_FLG"
+											},
+											"sink": {
+												"name": "LATE_CHECK_PAYMENT_FLG"
+											}
+										},
+										{
+											"source": {
+												"name": "TRAN_ID_BY_PUB"
+											},
+											"sink": {
+												"name": "TRAN_ID_BY_PUB"
+											}
+										},
+										{
+											"source": {
+												"name": "TRAN_DATE_BY_PUB"
+											},
+											"sink": {
+												"name": "TRAN_DATE_BY_PUB"
+											}
+										},
+										{
+											"source": {
+												"name": "BILLER_PAYMENT_TRAN_ID"
+											},
+											"sink": {
+												"name": "BILLER_PAYMENT_TRAN_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "BILLER_PAYMENT_TRAN_DATE"
+											},
+											"sink": {
+												"name": "BILLER_PAYMENT_TRAN_DATE"
+											}
+										},
+										{
+											"source": {
+												"name": "REVERSE_FLG"
+											},
+											"sink": {
+												"name": "REVERSE_FLG"
+											}
+										},
+										{
+											"source": {
+												"name": "REVERSE_CRE_TIME"
+											},
+											"sink": {
+												"name": "REVERSE_CRE_TIME"
+											}
+										},
+										{
+											"source": {
+												"name": "REVERSE_CRE_USER_ID"
+											},
+											"sink": {
+												"name": "REVERSE_CRE_USER_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "REVERSAL_TRAN_ID"
+											},
+											"sink": {
+												"name": "REVERSAL_TRAN_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "REVERSAL_TRAN_DATE"
+											},
+											"sink": {
+												"name": "REVERSAL_TRAN_DATE"
+											}
+										},
+										{
+											"source": {
+												"name": "RCRE_USER_ID"
+											},
+											"sink": {
+												"name": "RCRE_USER_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "RCRE_TIME"
+											},
+											"sink": {
+												"name": "RCRE_TIME"
+											}
+										},
+										{
+											"source": {
+												"name": "LCHG_USER_ID"
+											},
+											"sink": {
+												"name": "LCHG_USER_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "LCHG_TIME"
+											},
+											"sink": {
+												"name": "LCHG_TIME"
+											}
+										},
+										{
+											"source": {
+												"name": "DEL_FLG"
+											},
+											"sink": {
+												"name": "DEL_FLG"
+											}
+										},
+										{
+											"source": {
+												"name": "ENTITY_CRE_FLG"
+											},
+											"sink": {
+												"name": "ENTITY_CRE_FLG"
+											}
+										},
+										{
+											"source": {
+												"name": "SOL_ID"
+											},
+											"sink": {
+												"name": "SOL_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "BANK_ID"
+											},
+											"sink": {
+												"name": "BANK_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "SET_NUM"
+											},
+											"sink": {
+												"name": "SET_NUM"
+											}
+										},
+										{
+											"source": {
+												"name": "ZONE_CODE"
+											},
+											"sink": {
+												"name": "ZONE_CODE"
+											}
+										},
+										{
+											"source": {
+												"name": "ZONE_DATE"
+											},
+											"sink": {
+												"name": "ZONE_DATE"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME"
+											},
+											"sink": {
+												"name": "FILE_NAME"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm"
+											},
+											"sink": {
+												"name": "insert_dttm"
+											}
+										},
+										{
+											"source": {
+												"name": "date_to_process"
+											},
+											"sink": {
+												"name": "date_to_process"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv_AML",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": {
+											"value": "@concat('*CUSTOM.C_CGAT-', pipeline().parameters.DateToProcess, '*')",
+											"type": "Expression"
+										},
+										"SourceCode": "dev/decrypted/FCBS",
+										"ColumnDelimiter": "|",
+										"FirstRowAsHeader": true,
+										"RowDelimiter": "\r\n",
+										"EncodingName": "UTF-8"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_EDS_DEP_OTCGOVTPAYREVERSAL"
+									}
+								}
+							]
+						},
+						{
+							"name": "End_OTCGOVTPAYREVERSAL_Success",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_OTCGOVTPAYREVERSAL",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_FCBS_OTCGOVTPAYREVERSAL",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "SUCCESSFUL",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_EDS_DEP_OTCGOVTPAYREVERSAL",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "End_OTCGOVTPAYREVERSAL_Failed",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_OTCGOVTPAYREVERSAL",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_FCBS_OTCGOVTPAYREVERSAL",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "FAILED",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_EDS_DEP_OTCGOVTPAYREVERSAL",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Fail_OTCGOVTPAYREVERSAL_Copy",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "End_OTCGOVTPAYREVERSAL_Failed",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "Copy into D360.STG_EDS_DEP_OTCGOVTPAYREVERSAL failed. Review the Copy activity and OM task evidence.",
+								"errorCode": "AML_COPY_FAILED"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"DateToProcess": {
+				"type": "String"
+			},
+			"ExecutionMode": {
+				"type": "String",
+				"defaultValue": "PlanOnly"
+			},
+			"MissingFilePolicy": {
+				"type": "String",
+				"defaultValue": "Fail"
+			}
+		},
+		"folder": {
+			"name": "AML_ETL/DecToStg"
+		},
+		"annotations": [
+			"AML",
+			"FCBS",
+			"DecToStg",
+			"CBC-RDP-AML-003",
+			"PHASE_1"
+		],
+		"lastPublishTime": "2026-08-11T06:40:34Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

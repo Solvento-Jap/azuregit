@@ -1,0 +1,1274 @@
+{
+	"name": "Archive_AML_ExactFile",
+	"properties": {
+		"description": "AML exact encrypted-original archive with independent existence/size verification and post-archive decrypted working-file cleanup. Encrypted landing copies are never deleted.",
+		"activities": [
+			{
+				"name": "Require_Approved_Execution",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.ExecutionMode, 'ApprovedDateSliceReload')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Unapproved_Execution",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "ExecutionMode must be ApprovedDateSliceReload.",
+								"errorCode": "AML_EXECUTION_NOT_APPROVED"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Execution_Approved",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Require_Valid_DateToProcess",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(length(pipeline().parameters.DateToProcess), 8), not(equals(pipeline().parameters.DateToProcess, '')), not(contains(pipeline().parameters.DateToProcess, '''')), not(contains(pipeline().parameters.DateToProcess, '/')))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Invalid_DateToProcess",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "DateToProcess must be a non-empty yyyyMMdd value.",
+								"errorCode": "AML_INVALID_DATE_TO_PROCESS"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "DateToProcess_Valid",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Require_Valid_MissingFilePolicy",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Require_Valid_DateToProcess",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(equals(pipeline().parameters.MissingFilePolicy, 'Fail'), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Invalid_MissingFilePolicy",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "MissingFilePolicy must be Fail or Skip.",
+								"errorCode": "AML_INVALID_MISSING_FILE_POLICY"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "MissingFilePolicy_Valid",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "List_Requested_Date_Encrypted_Files",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "adls_aml_encrypted_file",
+						"type": "DatasetReference",
+						"parameters": {
+							"FolderPath": "dev/encrypt",
+							"FileName": {
+								"value": "@pipeline().parameters.EncryptedSelector",
+								"type": "Expression"
+							}
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "Require_Complete_Encrypted_Set",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "List_Requested_Date_Encrypted_Files",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(and(equals(length(activity('List_Requested_Date_Encrypted_Files').output.childItems), 0), equals(pipeline().parameters.MissingFilePolicy, 'Skip')), equals(length(activity('List_Requested_Date_Encrypted_Files').output.childItems), pipeline().parameters.ExpectedFileCount))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Incomplete_Encrypted_Set",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "Archive input must contain the expected exact requested-date set or be empty with MissingFilePolicy=Skip.",
+								"errorCode": "AML_ENCRYPTED_FILE_SET_INCOMPLETE"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Encrypted_File_Set_Valid",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Archive_And_Verify_Exact_Files",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Require_Complete_Encrypted_Set",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('List_Requested_Date_Encrypted_Files').output.childItems",
+						"type": "Expression"
+					},
+					"isSequential": false,
+					"batchCount": 5,
+					"activities": [
+						{
+							"name": "Get_Encrypted_Source_Metadata",
+							"type": "GetMetadata",
+							"dependsOn": [],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "adls_aml_binary_file",
+									"type": "DatasetReference",
+									"parameters": {
+										"FolderPath": "dev/encrypt",
+										"FileName": {
+											"value": "@item().name",
+											"type": "Expression"
+										}
+									}
+								},
+								"fieldList": [
+									"exists",
+									"size",
+									"lastModified"
+								],
+								"storeSettings": {
+									"type": "AzureBlobFSReadSettings",
+									"recursive": false,
+									"enablePartitionDiscovery": false
+								}
+							}
+						},
+						{
+							"name": "Require_Encrypted_Source_Metadata",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get_Encrypted_Source_Metadata",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@and(equals(activity('Get_Encrypted_Source_Metadata').output.exists, true), greater(activity('Get_Encrypted_Source_Metadata').output.size, 0))",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "Fail_Encrypted_Source_Metadata",
+										"type": "Fail",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"message": "The exact encrypted AML source file is missing or has no readable size metadata.",
+											"errorCode": "AML_ENCRYPTED_SOURCE_METADATA_INCOMPLETE"
+										}
+									}
+								],
+								"ifTrueActivities": [
+									{
+										"name": "Encrypted_Source_Metadata_Valid",
+										"type": "Wait",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"waitTimeInSeconds": 1
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "Get_Existing_Archive_Metadata",
+							"type": "GetMetadata",
+							"dependsOn": [
+								{
+									"activity": "Require_Encrypted_Source_Metadata",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "adls_aml_binary_file",
+									"type": "DatasetReference",
+									"parameters": {
+										"FolderPath": {
+											"value": "@concat('dev/archive/AML/',pipeline().parameters.SourceCode,'/',pipeline().parameters.DateToProcess)",
+											"type": "Expression"
+										},
+										"FileName": {
+											"value": "@item().name",
+											"type": "Expression"
+										}
+									}
+								},
+								"fieldList": [
+									"exists",
+									"size",
+									"lastModified"
+								],
+								"storeSettings": {
+									"type": "AzureBlobFSReadSettings",
+									"recursive": false,
+									"enablePartitionDiscovery": false
+								}
+							}
+						},
+						{
+							"name": "Copy_Only_When_Archive_Is_New",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get_Existing_Archive_Metadata",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@equals(activity('Get_Existing_Archive_Metadata').output.exists, false)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "Archive_Already_Exists",
+										"type": "Wait",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"waitTimeInSeconds": 1
+										}
+									}
+								],
+								"ifTrueActivities": [
+									{
+										"name": "Copy_New_Archive_Object",
+										"type": "Copy",
+										"dependsOn": [],
+										"policy": {
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"source": {
+												"type": "BinarySource",
+												"storeSettings": {
+													"type": "AzureBlobFSReadSettings",
+													"recursive": false
+												},
+												"formatSettings": {
+													"type": "BinaryReadSettings"
+												}
+											},
+											"sink": {
+												"type": "BinarySink",
+												"storeSettings": {
+													"type": "AzureBlobFSWriteSettings",
+													"copyBehavior": "PreserveHierarchy"
+												}
+											},
+											"enableStaging": false
+										},
+										"inputs": [
+											{
+												"referenceName": "adls_aml_binary_file",
+												"type": "DatasetReference",
+												"parameters": {
+													"FolderPath": "dev/encrypt",
+													"FileName": {
+														"value": "@item().name",
+														"type": "Expression"
+													}
+												}
+											}
+										],
+										"outputs": [
+											{
+												"referenceName": "adls_aml_binary_file",
+												"type": "DatasetReference",
+												"parameters": {
+													"FolderPath": {
+														"value": "@concat('dev/archive/AML/',pipeline().parameters.SourceCode,'/',pipeline().parameters.DateToProcess)",
+														"type": "Expression"
+													},
+													"FileName": {
+														"value": "@item().name",
+														"type": "Expression"
+													}
+												}
+											}
+										]
+									}
+								]
+							}
+						},
+						{
+							"name": "Require_Archive_Collision_Safe",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get_Existing_Archive_Metadata",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@or(equals(activity('Get_Existing_Archive_Metadata').output.exists, false), equals(activity('Get_Existing_Archive_Metadata').output.size, activity('Get_Encrypted_Source_Metadata').output.size))",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "Fail_Archive_Collision",
+										"type": "Fail",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"message": "An existing AML archive object has different metadata; no overwrite or deletion is allowed.",
+											"errorCode": "AML_ARCHIVE_COLLISION"
+										}
+									}
+								],
+								"ifTrueActivities": [
+									{
+										"name": "Archive_Collision_Safe",
+										"type": "Wait",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"waitTimeInSeconds": 1
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "Verify_Archive_Object",
+							"type": "GetMetadata",
+							"dependsOn": [
+								{
+									"activity": "Copy_Only_When_Archive_Is_New",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "Require_Archive_Collision_Safe",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "adls_aml_binary_file",
+									"type": "DatasetReference",
+									"parameters": {
+										"FolderPath": {
+											"value": "@concat('dev/archive/AML/',pipeline().parameters.SourceCode,'/',pipeline().parameters.DateToProcess)",
+											"type": "Expression"
+										},
+										"FileName": {
+											"value": "@item().name",
+											"type": "Expression"
+										}
+									}
+								},
+								"fieldList": [
+									"exists",
+									"size",
+									"lastModified"
+								],
+								"storeSettings": {
+									"type": "AzureBlobFSReadSettings",
+									"recursive": false,
+									"enablePartitionDiscovery": false
+								}
+							}
+						},
+						{
+							"name": "Require_Archive_Verified",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Verify_Archive_Object",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@and(equals(activity('Verify_Archive_Object').output.exists, true), equals(activity('Verify_Archive_Object').output.size, activity('Get_Encrypted_Source_Metadata').output.size))",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "Fail_Archive_Verification",
+										"type": "Fail",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"message": "The archived AML object is missing or its size does not match the encrypted original.",
+											"errorCode": "AML_ARCHIVE_VERIFICATION_FAILED"
+										}
+									}
+								],
+								"ifTrueActivities": [
+									{
+										"name": "Archive_Object_Verified",
+										"type": "Wait",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"waitTimeInSeconds": 1
+										}
+									}
+								]
+							}
+						}
+					]
+				},
+				"activities": [
+					{
+						"name": "Get_Encrypted_Source_Metadata",
+						"dependsOn": [],
+						"userProperties": [],
+						"typeProperties": {
+							"dataset": {
+								"referenceName": "adls_aml_binary_file",
+								"type": "DatasetReference",
+								"parameters": {
+									"FolderPath": "dev/encrypt",
+									"FileName": {
+										"value": "@item().name",
+										"type": "Expression"
+									}
+								}
+							},
+							"fieldList": [
+								"exists",
+								"size",
+								"lastModified"
+							],
+							"storeSettings": {
+								"recursive": false,
+								"enablePartitionDiscovery": false
+							}
+						}
+					},
+					{
+						"name": "Require_Encrypted_Source_Metadata",
+						"dependsOn": [
+							{
+								"activity": "Get_Encrypted_Source_Metadata",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"expression": {
+								"value": "@and(equals(activity('Get_Encrypted_Source_Metadata').output.exists, true), greater(activity('Get_Encrypted_Source_Metadata').output.size, 0))",
+								"type": "Expression"
+							},
+							"ifTrueActivities": [
+								{
+									"name": "Encrypted_Source_Metadata_Valid",
+									"dependsOn": [],
+									"userProperties": [],
+									"typeProperties": {
+										"waitTimeInSeconds": 1
+									}
+								}
+							],
+							"ifFalseActivities": [
+								{
+									"name": "Fail_Encrypted_Source_Metadata",
+									"dependsOn": [],
+									"typeProperties": {
+										"message": "The exact encrypted AML source file is missing or has no readable size metadata.",
+										"errorCode": "AML_ENCRYPTED_SOURCE_METADATA_INCOMPLETE"
+									}
+								}
+							]
+						}
+					},
+					{
+						"name": "Get_Existing_Archive_Metadata",
+						"dependsOn": [
+							{
+								"activity": "Require_Encrypted_Source_Metadata",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"dataset": {
+								"referenceName": "adls_aml_binary_file",
+								"type": "DatasetReference",
+								"parameters": {
+									"FolderPath": {
+										"value": "@concat('dev/archive/AML/',pipeline().parameters.SourceCode,'/',pipeline().parameters.DateToProcess)",
+										"type": "Expression"
+									},
+									"FileName": {
+										"value": "@item().name",
+										"type": "Expression"
+									}
+								}
+							},
+							"fieldList": [
+								"exists",
+								"size",
+								"lastModified"
+							],
+							"storeSettings": {
+								"recursive": false,
+								"enablePartitionDiscovery": false
+							}
+						}
+					},
+					{
+						"name": "Copy_Only_When_Archive_Is_New",
+						"dependsOn": [
+							{
+								"activity": "Get_Existing_Archive_Metadata",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"expression": {
+								"value": "@equals(activity('Get_Existing_Archive_Metadata').output.exists, false)",
+								"type": "Expression"
+							},
+							"ifTrueActivities": [
+								{
+									"name": "Copy_New_Archive_Object",
+									"dependsOn": [],
+									"userProperties": [],
+									"typeProperties": {
+										"source": {
+											"formatSettings": {
+												"type": "BinaryReadSettings"
+											},
+											"storeSettings": {
+												"recursive": false,
+												"enablePartitionDiscovery": false
+											}
+										},
+										"sink": {
+											"storeSettings": {
+												"copyBehavior": "PreserveHierarchy"
+											}
+										}
+									},
+									"inputs": [
+										{
+											"referenceName": "adls_aml_binary_file",
+											"type": "DatasetReference",
+											"parameters": {
+												"FolderPath": "dev/encrypt",
+												"FileName": {
+													"value": "@item().name",
+													"type": "Expression"
+												}
+											}
+										}
+									],
+									"outputs": [
+										{
+											"referenceName": "adls_aml_binary_file",
+											"type": "DatasetReference",
+											"parameters": {
+												"FolderPath": {
+													"value": "@concat('dev/archive/AML/',pipeline().parameters.SourceCode,'/',pipeline().parameters.DateToProcess)",
+													"type": "Expression"
+												},
+												"FileName": {
+													"value": "@item().name",
+													"type": "Expression"
+												}
+											}
+										}
+									]
+								}
+							],
+							"ifFalseActivities": [
+								{
+									"name": "Archive_Already_Exists",
+									"dependsOn": [],
+									"userProperties": [],
+									"typeProperties": {
+										"waitTimeInSeconds": 1
+									}
+								}
+							]
+						}
+					},
+					{
+						"name": "Require_Archive_Collision_Safe",
+						"dependsOn": [
+							{
+								"activity": "Get_Existing_Archive_Metadata",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"expression": {
+								"value": "@or(equals(activity('Get_Existing_Archive_Metadata').output.exists, false), equals(activity('Get_Existing_Archive_Metadata').output.size, activity('Get_Encrypted_Source_Metadata').output.size))",
+								"type": "Expression"
+							},
+							"ifTrueActivities": [
+								{
+									"name": "Archive_Collision_Safe",
+									"dependsOn": [],
+									"userProperties": [],
+									"typeProperties": {
+										"waitTimeInSeconds": 1
+									}
+								}
+							],
+							"ifFalseActivities": [
+								{
+									"name": "Fail_Archive_Collision",
+									"dependsOn": [],
+									"typeProperties": {
+										"message": "An existing AML archive object has different metadata; no overwrite or deletion is allowed.",
+										"errorCode": "AML_ARCHIVE_COLLISION"
+									}
+								}
+							]
+						}
+					},
+					{
+						"name": "Verify_Archive_Object",
+						"dependsOn": [
+							{
+								"activity": "Copy_Only_When_Archive_Is_New",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							},
+							{
+								"activity": "Require_Archive_Collision_Safe",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"dataset": {
+								"referenceName": "adls_aml_binary_file",
+								"type": "DatasetReference",
+								"parameters": {
+									"FolderPath": {
+										"value": "@concat('dev/archive/AML/',pipeline().parameters.SourceCode,'/',pipeline().parameters.DateToProcess)",
+										"type": "Expression"
+									},
+									"FileName": {
+										"value": "@item().name",
+										"type": "Expression"
+									}
+								}
+							},
+							"fieldList": [
+								"exists",
+								"size",
+								"lastModified"
+							],
+							"storeSettings": {
+								"recursive": false,
+								"enablePartitionDiscovery": false
+							}
+						}
+					},
+					{
+						"name": "Require_Archive_Verified",
+						"dependsOn": [
+							{
+								"activity": "Verify_Archive_Object",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"expression": {
+								"value": "@and(equals(activity('Verify_Archive_Object').output.exists, true), equals(activity('Verify_Archive_Object').output.size, activity('Get_Encrypted_Source_Metadata').output.size))",
+								"type": "Expression"
+							},
+							"ifTrueActivities": [
+								{
+									"name": "Archive_Object_Verified",
+									"dependsOn": [],
+									"userProperties": [],
+									"typeProperties": {
+										"waitTimeInSeconds": 1
+									}
+								}
+							],
+							"ifFalseActivities": [
+								{
+									"name": "Fail_Archive_Verification",
+									"dependsOn": [],
+									"typeProperties": {
+										"message": "The archived AML object is missing or its size does not match the encrypted original.",
+										"errorCode": "AML_ARCHIVE_VERIFICATION_FAILED"
+									}
+								}
+							]
+						}
+					}
+				],
+				"batchCount": 5,
+				"items": {
+					"value": "@activity('List_Requested_Date_Encrypted_Files').output.childItems",
+					"type": "Expression"
+				},
+				"isSequential": false
+			},
+			{
+				"name": "Archive_Verification_Barrier",
+				"type": "Wait",
+				"dependsOn": [
+					{
+						"activity": "Archive_And_Verify_Exact_Files",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"waitTimeInSeconds": 1
+				}
+			},
+			{
+				"name": "Delete_Verified_Decrypted_Working_Files",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Archive_Verification_Barrier",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('List_Requested_Date_Encrypted_Files').output.childItems",
+						"type": "Expression"
+					},
+					"isSequential": false,
+					"batchCount": 5,
+					"activities": [
+						{
+							"name": "Get_Decrypted_Working_File",
+							"type": "GetMetadata",
+							"dependsOn": [],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "adls_aml_decrypted_file",
+									"type": "DatasetReference",
+									"parameters": {
+										"FolderPath": {
+											"value": "@concat('dev/decrypted/',pipeline().parameters.SourceCode)",
+											"type": "Expression"
+										},
+										"FileName": {
+											"value": "@replace(item().name,'.gpg','')",
+											"type": "Expression"
+										}
+									}
+								},
+								"fieldList": [
+									"exists",
+									"size",
+									"lastModified"
+								],
+								"storeSettings": {
+									"type": "AzureBlobFSReadSettings",
+									"recursive": false,
+									"enablePartitionDiscovery": false
+								},
+								"formatSettings": {
+									"type": "DelimitedTextReadSettings"
+								}
+							}
+						},
+						{
+							"name": "Delete_Only_When_Working_File_Exists",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get_Decrypted_Working_File",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@equals(activity('Get_Decrypted_Working_File').output.exists, true)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "Working_File_Already_Cleaned",
+										"type": "Wait",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"waitTimeInSeconds": 1
+										}
+									}
+								],
+								"ifTrueActivities": [
+									{
+										"name": "Delete_Decrypted_Working_File",
+										"type": "Delete",
+										"dependsOn": [],
+										"policy": {
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"dataset": {
+												"referenceName": "adls_aml_decrypted_file",
+												"type": "DatasetReference",
+												"parameters": {
+													"FolderPath": {
+														"value": "@concat('dev/decrypted/',pipeline().parameters.SourceCode)",
+														"type": "Expression"
+													},
+													"FileName": {
+														"value": "@replace(item().name,'.gpg','')",
+														"type": "Expression"
+													}
+												}
+											},
+											"logStorageSettings": {
+												"linkedServiceName": {
+													"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+													"type": "LinkedServiceReference"
+												},
+												"path": "data360/dev/Delete_Logs",
+												"enableReliableLogging": true
+											},
+											"enableLogging": true,
+											"storeSettings": {
+												"type": "AzureBlobFSReadSettings",
+												"recursive": false,
+												"enablePartitionDiscovery": false
+											}
+										},
+										"enableLogging": true,
+										"logStorageSettings": {
+											"enableReliableLogging": true,
+											"linkedServiceName": {
+												"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+												"type": "LinkedServiceReference"
+											},
+											"path": "data360/dev/Delete_Logs"
+										}
+									},
+									{
+										"name": "Delete_Working_File_Succeeded",
+										"type": "Wait",
+										"dependsOn": [
+											{
+												"activity": "Delete_Decrypted_Working_File",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"userProperties": [],
+										"typeProperties": {
+											"waitTimeInSeconds": 1
+										}
+									},
+									{
+										"name": "Fail_Decrypted_Delete",
+										"type": "Fail",
+										"dependsOn": [
+											{
+												"activity": "Delete_Decrypted_Working_File",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"userProperties": [],
+										"typeProperties": {
+											"message": "The decrypted working-file delete failed after archive verification.",
+											"errorCode": "AML_DECRYPTED_DELETE_FAILED"
+										}
+									}
+								]
+							}
+						}
+					]
+				},
+				"activities": [
+					{
+						"name": "Get_Decrypted_Working_File",
+						"dependsOn": [],
+						"userProperties": [],
+						"typeProperties": {
+							"dataset": {
+								"referenceName": "adls_aml_decrypted_file",
+								"type": "DatasetReference",
+								"parameters": {
+									"FolderPath": {
+										"value": "@concat('dev/decrypted/',pipeline().parameters.SourceCode)",
+										"type": "Expression"
+									},
+									"FileName": {
+										"value": "@replace(item().name,'.gpg','')",
+										"type": "Expression"
+									}
+								}
+							},
+							"fieldList": [
+								"exists",
+								"size",
+								"lastModified"
+							],
+							"storeSettings": {
+								"recursive": false,
+								"enablePartitionDiscovery": false
+							}
+						}
+					},
+					{
+						"name": "Delete_Only_When_Working_File_Exists",
+						"dependsOn": [
+							{
+								"activity": "Get_Decrypted_Working_File",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"expression": {
+								"value": "@equals(activity('Get_Decrypted_Working_File').output.exists, true)",
+								"type": "Expression"
+							},
+							"ifTrueActivities": [
+								{
+									"name": "Delete_Decrypted_Working_File",
+									"dependsOn": [],
+									"userProperties": [],
+									"enableLogging": true,
+									"logStorageSettings": {
+										"enableReliableLogging": true,
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+											"type": "LinkedServiceReference"
+										},
+										"path": "data360/dev/Delete_Logs"
+									},
+									"typeProperties": {
+										"dataset": {
+											"referenceName": "adls_aml_decrypted_file",
+											"type": "DatasetReference",
+											"parameters": {
+												"FolderPath": {
+													"value": "@concat('dev/decrypted/',pipeline().parameters.SourceCode)",
+													"type": "Expression"
+												},
+												"FileName": {
+													"value": "@replace(item().name,'.gpg','')",
+													"type": "Expression"
+												}
+											}
+										},
+										"storeSettings": {
+											"recursive": false,
+											"enablePartitionDiscovery": false
+										}
+									}
+								},
+								{
+									"name": "Delete_Working_File_Succeeded",
+									"dependsOn": [
+										{
+											"activity": "Delete_Decrypted_Working_File",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"userProperties": [],
+									"typeProperties": {
+										"waitTimeInSeconds": 1
+									}
+								},
+								{
+									"name": "Fail_Decrypted_Delete",
+									"dependsOn": [
+										{
+											"activity": "Delete_Decrypted_Working_File",
+											"dependencyConditions": [
+												"Failed"
+											]
+										}
+									],
+									"typeProperties": {
+										"message": "The decrypted working-file delete failed after archive verification.",
+										"errorCode": "AML_DECRYPTED_DELETE_FAILED"
+									}
+								}
+							],
+							"ifFalseActivities": [
+								{
+									"name": "Working_File_Already_Cleaned",
+									"dependsOn": [],
+									"userProperties": [],
+									"typeProperties": {
+										"waitTimeInSeconds": 1
+									}
+								}
+							]
+						}
+					}
+				],
+				"batchCount": 5,
+				"items": {
+					"value": "@activity('List_Requested_Date_Encrypted_Files').output.childItems",
+					"type": "Expression"
+				},
+				"isSequential": false
+			},
+			{
+				"name": "Cleanup_Reconciled",
+				"type": "Wait",
+				"dependsOn": [
+					{
+						"activity": "Delete_Verified_Decrypted_Working_Files",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"waitTimeInSeconds": 1
+				}
+			}
+		],
+		"parameters": {
+			"SourceCode": {
+				"type": "String"
+			},
+			"DateToProcess": {
+				"type": "String"
+			},
+			"EncryptedSelector": {
+				"type": "String"
+			},
+			"ExpectedFileCount": {
+				"type": "Int"
+			},
+			"ExecutionMode": {
+				"type": "String",
+				"defaultValue": "PlanOnly"
+			},
+			"MissingFilePolicy": {
+				"type": "String",
+				"defaultValue": "Skip"
+			}
+		},
+		"folder": {
+			"name": "AML_ETL/Archive"
+		},
+		"annotations": [
+			"AML",
+			"ArchiveEncryptedOriginalOnly",
+			"ExactFilename",
+			"DateToProcessPartition",
+			"BinaryCopy",
+			"NoEncryptedLandingDelete",
+			"DeleteLogEnabled"
+		],
+		"lastPublishTime": "2026-08-05T04:47:35Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

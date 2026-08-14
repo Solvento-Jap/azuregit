@@ -1,0 +1,20 @@
+{
+	"name": "bnkm_MaritalStatus_crm",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "CREATE PROCEDURE BNKM.SP_MaritalStatus_CRM\nAS\nBEGIN\n--------------GET DELTA FROM BUSC\nWITH TEMP_BNKM_MaritalStatus\nAS(\n    SELECT\n     BCC.[VALUE] AS MaritalStatusId\n    ,BCC.DESCRIPTION  AS MaritalStatusName\n    ,BCC.BANK_ID AS FinancialInstitutionId\n    ,BCC.CATEGORYID AS CategoryId\n    ,'CRM' AS SourceSystemCode\n    ,BCCD.RECORD_STATUS\n    ,BCC.INSERT_DTTM AS InsertDttm\nFROM BUSC.CRM_CATEGORIES_DELTA BCCD\nLEFT JOIN BUSC.CRM_CATEGORIES BCC ON BCCD.CATEGORYID = BCC.CATEGORYID AND BCCD.BANK_ID = BCC.BANK_ID AND BCC.ISLATEST = 1 AND CATEGORYTYPE = 'MARITAL_STATUS'\nWHERE BCC.CATEGORYID IS NOT NULL\n)\n\nSELECT * INTO #TEMP_BNKM_MaritalStatus FROM TEMP_BNKM_MaritalStatus;\n\n-------------CHECK IF THERE IS DELTA \nWITH\nTEMP_BNKM_MaritalStatus_SRC\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nMaritalStatusId\n,MaritalStatusName\n,FinancialInstitutionId\n,CategoryId\n\n)) HASHROW, MaritalStatusId,FinancialInstitutionId,CategoryId, RECORD_STATUS \nFROM #TEMP_BNKM_MaritalStatus WHERE RECORD_STATUS = 'UPDATE'\n)\n,\nTEMP_BNKM_MaritalStatus_TGT\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nMaritalStatusId\n,MaritalStatusName\n,FinancialInstitutionId\n,CategoryId\n\n)) HASHROW, MaritalStatusId, FinancialInstitutionId,CategoryId\nFROM BNKM.MaritalStatus --WHERE SOURCE_CODE = 'CRM'\t\n)\n,\nTEMP_BNKM_MaritalStatus_DELTA\nAS\n(\nSELECT\t\n\tSRC.HASHROW AS SRC_HR\n\t,TGT.HASHROW AS TGT_HR\n\t,ISNULL(SRC.MaritalStatusId,TGT.MaritalStatusId) AS MaritalStatusId\n\t,ISNULL(SRC.CategoryId,TGT.CategoryId) AS CategoryId\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\n\t,CASE\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n\tELSE NULL END AS RECORD_STATUS\n\t\nFROM TEMP_BNKM_MaritalStatus_SRC\tSRC\nFULL OUTER JOIN TEMP_BNKM_MaritalStatus_TGT\tTGT\nON\tSRC.CategoryId = TGT.CategoryId\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\nAND SRC.MaritalStatusId = TGT.MaritalStatusId\nWHERE SRC.HASHROW <> TGT.HASHROW \n)\n\nSELECT * INTO #TEMP_BNKM_MaritalStatus_DELTA FROM TEMP_BNKM_MaritalStatus_DELTA;\n\nUPDATE TGT \nSET\n MaritalStatusId = SRC.MaritalStatusId\n,MaritalStatusName = SRC.MaritalStatusName\n,MaritalStatusDescription = NULL\n,FinancialInstitutionId = SRC.FinancialInstitutionId\n,CategoryId = SRC.CategoryId\nFROM BNKM.MaritalStatus TGT\nJOIN #TEMP_BNKM_MaritalStatus_DELTA DELTA ON DELTA.MaritalStatusId = TGT.MaritalStatusId AND DELTA.CategoryId = TGT.CategoryId AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_MaritalStatus SRC ON SRC.MaritalStatusId = TGT.MaritalStatusId AND SRC.CategoryId = TGT.CategoryId AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId ;\n \n\n----INSERT TO BNKM\nINSERT INTO BNKM.MaritalStatus\n([MaritalStatusId]\n,[MaritalStatusName]\n,[MaritalStatusDescription]\n,[FinancialInstitutionId]\n,[CategoryId]\n,[SourceSystemCode]\n,[WorkFlowId]\n,[TaskRunId]\n,[InsertDttm] )\n\nSELECT\n     MaritalStatusId AS MaritalStatusId\n    ,MaritalStatusName AS MaritalStatusName\n    ,NULL AS MaritalStatusDescription\n    ,FinancialInstitutionId AS FinancialInstitutionId\n    ,CategoryId AS CategoryId\n    ,SourceSystemCode AS SourceSystemCode\n    ,0 AS WorkFlowId\n    ,0 AS TaskRunId\n    ,InsertDttm AS InsertDttm\nFROM #TEMP_BNKM_MaritalStatus\nWHERE RECORD_STATUS = 'INSERT'\n\nDROP TABLE #TEMP_BNKM_MaritalStatus;\nDROP TABLE #TEMP_BNKM_MaritalStatus_DELTA;\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

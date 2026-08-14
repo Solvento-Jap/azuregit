@@ -1,0 +1,20 @@
+{
+	"name": "TRY_SDI_REMOVEDUP",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SELECT * from BUSC.TRY_SDI\n\n\n--1 CHECK DUPLICATE\nSELECT ID,Beneficiary_id, COUNT(1) FROM BUSC.TRY_SDI GROUP BY ID,Beneficiary_id HAVING COUNT(1)>1\n\n--2 TAGGED DUPLICATE\nSELECT ROW_NUMBER() OVER(PARTITION BY ID,Beneficiary_id ORDER BY INSERT_DTTM DESC, FILE_NAME DESC ) RN , --define PKs in partition by\n* \nINTO BUSC.TRY_SDI_WITH_DUP_20230509  --Name of backup table to store duplicate records\nFROM BUSC.TRY_SDI; --Target table to remove duplicate\n\n--3 CHECK COUNT MAIN AND BU TABLE\nSELECT COUNT(*) FROM BUSC.TRY_SDI\n--30932\nSELECT COUNT(*) FROM BUSC.TRY_SDI_WITH_DUP_20230509\n--30932\n\n--4 CLEAN DUP\nTRUNCATE TABLE BUSC.TRY_SDI; -- Truncate target table to remove duplicate\n\n--5 UPDATE ISLATEST = 0\nUPDATE BUSC.TRY_SDI_WITH_DUP_20230509 SET ISLATEST = 0 WHERE RN > 1\n\n--5 INSERT BACK UNIQUE RECORDS ONLY\nINSERT INTO BUSC.TRY_SDI --Target table to remove duplicate\nSELECT  \n[Beneficiary]\n,[Beneficiary_Id]\n,[CBCGLAcctEncryted]\n,[CBCGLAcctSixDigits]\n,[Currencies]\n,[Direct]\n,[Id]\n,[Method]\n,[Pay_Receive]\n,[ProcessingOrg]\n,[Products]\n,[Roles]\n,[isActive]\n,[isLatest]\n,[BNK_CODE]\n,[SOURCE_CODE]\n,[FILE_NAME]\n,[insert_dttm]\nFROM BUSC.TRY_SDI_WITH_DUP_20230509; -- Name of backup table to store duplicate records\n\n\n--6 CHECK IF STILL HAVE DUP\nSELECT ID,Beneficiary_Id, COUNT(1) FROM BUSC.TRY_SDI WHERE ISLATEST = 1 GROUP BY ID,Beneficiary_Id HAVING COUNT(1)>1;\n\n--7\n\nSELECT COUNT(*) FROM BUSC.TRY_SDI\n--30932\nSELECT COUNT(*) FROM BUSC.TRY_SDI_WITH_DUP_20230509\n--30932\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

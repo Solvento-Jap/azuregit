@@ -1,0 +1,20 @@
+{
+	"name": "dw_FactLoansOutstandingBalance",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "alter PROCEDURE DW.SP_DW_FACTLOANSOUTSTANDINGBALANCE\nAS\nBEGIN\n\nWITH CurrencyConversion\nAS(\n    SELECT * FROM BNKM.CurrencyConversion WHERE ConvertToCurrencyId = 'PHP' AND RateId = 'REV'\n)\n,Cnt_DimCustomerAccount\nAS(\n    SELECT BRPP.CustomerAccountId, COUNT(1) CNT FROM [BNKM].[RepaymentPlanPayment] BRPP\n    LEFT JOIN DW.DimCustomerAccount DCA ON BRPP.CustomerAccountId = DCA.AccountID and DCA.ShareIndicator = 'Y' \n    GROUP BY BRPP.CustomerAccountId\n\n)\n\nINSERT INTO  DW.FactLoansOutstandingBalance\n(\n     BusinessDateSK\n    ,BranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n    ,AmortizationAmount\n    ,InterestAmount\n    ,PenaltyAmount\n    ,OutstandingBalanceFull\n    ,OutstandingBalanceProrated\n    ,SourceSystemCode\n    ,WorkFlowId\n    ,TaskRunId\n    ,InsertDttm\n)\nSELECT \n BusinessDateSK\n,BranchSK\n,BankSK\n,AccountSK\n,AccountId\n,SUM(AmortizationAmount) AS AmortizationAmount\n,SUM(InterestAmount) AS InterestAmount\n,SUM(PenaltyAmount) AS PenaltyAmount\n,SUM(AmortizationAmount) + SUM(InterestAmount) + SUM(PenaltyAmount) AS OutstandingBalanceFull\n,(SUM(AmortizationAmount) + SUM(InterestAmount) + SUM(PenaltyAmount) ) / DCA.CNT  AS OutstandingBalanceProrated\n,'LNS' AS SourceSystemCode\n,0 AS WorkFlowId\n,0 AS TaskRunId\n,Getdate() AS InsertDttm\nFROM (\n         SELECT\n         CONVERT(VARCHAR,BRPP.DemandEffectiveDate,112) AS BusinessDateSK\n        ,DDB.BranchSK AS BranchSK\n        ,DDBK.BankSK AS BankSK\n        ,DDA.AccountSK AS AccountSK\n        ,DDA.AccountId AS AccountId\n        ,CASE WHEN BRPP.DemandFlowId = 'PRDEM' THEN \n              CASE WHEN BRPP.IsoCurrencyCode <> 'PHP' THEN BRPP.DemandAmount * CC.ConversionRate ELSE BRPP.DemandAmount END\n         ELSE 0 END AS AmortizationAmount\n        ,CASE WHEN BRPP.DemandFlowId = 'INDEM' THEN \n              CASE WHEN BRPP.IsoCurrencyCode <> 'PHP' THEN BRPP.DemandAmount * CC.ConversionRate ELSE BRPP.DemandAmount END  \n         ELSE 0 END AS InterestAmount\n        ,CASE WHEN BRPP.DemandFlowId = 'APDEM' THEN \n              CASE WHEN BRPP.IsoCurrencyCode <> 'PHP' THEN BRPP.DemandAmount * CC.ConversionRate ELSE BRPP.DemandAmount END\n         ELSE 0 END AS PenaltyAmount\n        FROM \n        [BNKM].[RepaymentPlanPayment] BRPP\n        LEFT JOIN [BNKM].[CustomerAccount] BCA ON BRPP.CustomerAccountId = BCA.CustomerAccountId\n        LEFT JOIN [DW].[DimBranch] DDB ON BCA.BranchId = DDB.BranchID AND DDB.CurrentIndicator = 1\n        LEFT JOIN [DW].[DimBank] DDBK ON BRPP.FinancialInstitutionId = DDBK.BankID\n        LEFT JOIN [DW].[DimAccount] DDA ON BRPP.CustomerAccountId = DDA.AccountID AND DDA.CurrentIndicator = 1\n        LEFT JOIN CurrencyConversion CC ON BRPP.IsoCurrencyCode = CC.ConvertFromCurrencyId AND BRPP.FinancialInstitutionId = CC.FinancialInstitutionId AND BRPP.DemandDate = CC.CurrencyConversionTimestamp\n) BRPP\nLEFT JOIN Cnt_DimCustomerAccount DCA ON DCA.CustomerAccountId = BRPP.AccountId\n\nGROUP BY \nBusinessDateSK\n,BranchSK\n,BankSK\n,AccountSK\n,AccountId\n,DCA.CNT \n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

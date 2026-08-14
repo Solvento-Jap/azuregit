@@ -1,0 +1,667 @@
+{
+	"name": "DecToStg_EDS_ATM_CASHCARDACCOUNT",
+	"properties": {
+		"activities": [
+			{
+				"name": "ATM_CASHCARDACCOUNT_getfile_CBC01",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('CBC01_',pipeline().parameters.tables,'_*',pipeline().parameters.DateToProcess,'*')",
+								"type": "Expression"
+							},
+							"SourceCode": {
+								"value": "@concat('dev/decrypted/',pipeline().parameters.src_sys)",
+								"type": "Expression"
+							}
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "If Condition5",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "ATM_CASHCARDACCOUNT_getfile_CBC01",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@empty(activity('ATM_CASHCARDACCOUNT_getfile_CBC01').output.childItems)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "ATM_CASHCARDACCOUNT",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": {
+											"value": "@concat('dev/decrypted/',pipeline().parameters.src_sys)",
+											"type": "Expression"
+										},
+										"wildcardFileName": {
+											"value": "@concat('*',pipeline().parameters.tables,'_*',pipeline().parameters.DateToProcess,'*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": {
+										"value": "@concat('TRUNCATE TABLE D360.STG_EDS_',pipeline().parameters.tables)",
+										"type": "Expression"
+									},
+									"allowCopyCommand": true,
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									},
+									"path": "data360/dev/stg_synapse",
+									"enableCompression": true
+								},
+								"enableSkipIncompatibleRow": true,
+								"logSettings": {
+									"enableCopyActivityLog": true,
+									"copyActivityLogSettings": {
+										"logLevel": "Warning",
+										"enableReliableLogging": true
+									},
+									"logLocationSettings": {
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+											"type": "LinkedServiceReference"
+										},
+										"path": {
+											"value": "@concat('data360/dev/Logging/ATM/ATM_CASHCARDACCOUNT/',substring(replace(replace(replace(addHours(utcnow(),+8),'-',''),'T','_'),':',''),0,15))",
+											"type": "Expression"
+										}
+									}
+								},
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "H",
+												"type": "String"
+											},
+											"sink": {
+												"name": "H",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CAC_ID",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "CAC_ID",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "CAC_UUID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CAC_UUID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CAC_CLT_ID",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "CAC_CLT_ID",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "CAC_ACCOUNT_NUMBER",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CAC_ACCOUNT_NUMBER",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CAC_BAT_ID",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "CAC_BAT_ID",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "CAC_STS_ID",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "CAC_STS_ID",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "CAC_CREATED_BY",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "CAC_CREATED_BY",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "CAC_CREATED_TS",
+												"type": "DateTime",
+												"format": "yyyyMMddHHmmss"
+											},
+											"sink": {
+												"name": "CAC_CREATED_TS",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "CAC_UPDATED_BY",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "CAC_UPDATED_BY",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "CAC_UPDATED_TS",
+												"type": "DateTime",
+												"format": "yyyyMMddHHmmss"
+											},
+											"sink": {
+												"name": "CAC_UPDATED_TS",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "CAC_BRN_ID",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "CAC_BRN_ID",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "CAC_PRS_ID",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "CAC_PRS_ID",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "CAC_AUDIT_LOG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CAC_AUDIT_LOG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CAC_INS_ID",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "CAC_INS_ID",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "CAC_ACCOUNT_NUMBER_MASKED",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CAC_ACCOUNT_NUMBER_MASKED",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CAC_KEY_ROTATION_NUMBER",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "CAC_KEY_ROTATION_NUMBER",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FILE_NAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm",
+												"type": "String"
+											},
+											"sink": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv_escquote",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": " "
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": {
+											"value": "@concat('STG_EDS_',pipeline().parameters.tables)",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "SP_LOG_COPY_ACTIVITY_DTL",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "ATM_CASHCARDACCOUNT",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_LOG_COPY_ACTIVITY_DTL]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS_STG",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DateToProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"dataread": {
+										"value": {
+											"value": "@activity('ATM_CASHCARDACCOUNT').output.dataRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"datawritten": {
+										"value": {
+											"value": "@activity('ATM_CASHCARDACCOUNT').output.dataWritten",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"filesread": {
+										"value": {
+											"value": "@activity('ATM_CASHCARDACCOUNT').output.filesRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"sourcepeakconnections": {
+										"value": {
+											"value": "@activity('ATM_CASHCARDACCOUNT').output.sourcePeakConnections",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsread": {
+										"value": {
+											"value": "@activity('ATM_CASHCARDACCOUNT').output.rowsRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowscopied": {
+										"value": {
+											"value": "@activity('ATM_CASHCARDACCOUNT').output.rowsCopied",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsskipped": {
+										"value": {
+											"value": "@activity('ATM_CASHCARDACCOUNT').output.rowsSkipped",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"copyduration": {
+										"value": {
+											"value": "@activity('ATM_CASHCARDACCOUNT').output.copyDuration",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"throughput": {
+										"value": {
+											"value": "@activity('ATM_CASHCARDACCOUNT').output.throughput",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"redirectrowpath": {
+										"value": {
+											"value": "@activity('ATM_CASHCARDACCOUNT').output.redirectRowPath",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"logfilepath": {
+										"value": {
+											"value": "@activity('ATM_CASHCARDACCOUNT').output.logFilePath",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Set v_error_desc_get",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "ATM_CASHCARDACCOUNT",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "@activity('ATM_CASHCARDACCOUNT').Error.message",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Fail5",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "Set v_error_desc_get_nofile",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": {
+									"value": "File not found: ATM_CASHCARDACCOUNT",
+									"type": "Expression"
+								},
+								"errorCode": {
+									"value": "404",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "Set v_error_desc_get_nofile",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "File not found: ATM_CASHCARDACCOUNT",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_GET",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "If Condition5",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_STG_EDS_',replace(pipeline().parameters.tables,'''',''))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_STG",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@pipeline().parameters.DateToProcess",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_DectoStg",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "SP_LOG_TASK_ERROR_DTL_GET",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": {
+						"value": "@variables('v_error_desc')",
+						"type": "Expression"
+					},
+					"errorCode": "500"
+				}
+			}
+		],
+		"parameters": {
+			"DateToProcess": {
+				"type": "string"
+			},
+			"tables": {
+				"type": "string"
+			},
+			"src_sys": {
+				"type": "string"
+			}
+		},
+		"variables": {
+			"v_error_desc": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-12-04T01:46:26Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

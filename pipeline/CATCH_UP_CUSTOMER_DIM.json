@@ -1,0 +1,102 @@
+{
+	"name": "CATCH_UP_CUSTOMER_DIM",
+	"properties": {
+		"activities": [
+			{
+				"name": "CLONE_CUSTOMER_DIM",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "create table d360.CATCHUP_CUSTOMER_DIM\nWITH\n(\n\tDISTRIBUTION = HASH ( [CORE_CUST_ID] ),\n\tHEAP\n)\nas\nselect * from eds.CUSTOMER_DIM"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Workflow_EDS_CRM_ACCOUNTS_No_Manifest_Catchup",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "CLEAN_UP_CUSTOMER_DIM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Workflow_EDS_CRM_ACCOUNTS_No_Manifest_Catchup",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"startDate": "2024-07-27",
+						"endDate": "2024-11-24"
+					}
+				}
+			},
+			{
+				"name": "CLEAN_UP_CUSTOMER_DIM",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CLONE_CUSTOMER_DIM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "DELETE from d360.CATCHUP_CUSTOMER_DIM WHERE SCD_START_DATE >= '2024-07-27'\nUPDATE d360.CATCHUP_CUSTOMER_DIM SET ISLATEST=1 , SCD_END_DATE=CAST('9999-12-31' AS DATE) WHERE SCD_END_DATE >= '2024-07-26'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-11-20T07:12:42Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

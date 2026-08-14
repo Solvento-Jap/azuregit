@@ -1,0 +1,1070 @@
+{
+	"name": "Workflow_EDS_DID_BRANCHLOCATION_No_Manifest",
+	"properties": {
+		"activities": [
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(variables('V_endDate')),ticks(variables('V_startDate'))),864000000000),1))\n",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append Process Date",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Iterate Execution of Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "OM_SRC_CHECK",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Condition Success Count",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@replace(substring(item(),0,10),'-','')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Manifest_file",
+							"type": "ExecutePipeline",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Workflow_Manifest",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"MaxPipelineCalls": 5,
+									"RetryInterval": 120,
+									"DatetoProcessed": {
+										"value": "@substring(item(),0,10)",
+										"type": "Expression"
+									},
+									"tables": {
+										"value": "@concat('''',pipeline().parameters.tables,'''')",
+										"type": "Expression"
+									},
+									"EndTime": "07:00",
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "Get Success Count",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_STG_EDS_',pipeline().parameters.tables,''',''EDS_STG'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Manifest_file",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "END_TASK_STG_EDS_SUCCESSFUL",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_DID_BRANCHLOCATION",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												},
+												"tablename": {
+													"value": {
+														"value": "@concat('D360.STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_STG_EDS_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_DID_BRANCHLOCATION",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												},
+												"tablename": {
+													"value": {
+														"value": "@concat('D360.STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "START_TASK_STG_EDS",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "Onprem",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_STG_EDS",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "OnPremToADLS_EDS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"DatetoProcessed": {
+													"value": "@replace(substring(item(),0,10),'-','')",
+													"type": "Expression"
+												},
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												},
+												"src_sys": {
+													"value": "@pipeline().parameters.src_sys",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "PGP Decrypt",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "Onprem",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "PGPDecrypt_EDS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												},
+												"src_sys": {
+													"value": "@pipeline().parameters.src_sys",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "DecToStg_DID_BRANCHLOCATION",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "Truncate Staging",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "DecToStg_EDS_DID_BRANCHLOCATION",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"DateToProcess": {
+													"value": "@replace(substring(item(),0,10),'-','')",
+													"type": "Expression"
+												},
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "MovToArchive",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_DID_BRANCHLOCATION",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "MovToArchive_EDS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												},
+												"src_sys": {
+													"value": "@pipeline().parameters.src_sys",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "Truncate Staging",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "PGP Decrypt",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 3,
+											"retryIntervalInSeconds": 60,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"type": "NonQuery",
+													"text": {
+														"value": "@concat('TRUNCATE TABLE d360.STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													}
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									},
+									{
+										"name": "Hashlog_DID_BRANCHLOCATION",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_DID_BRANCHLOCATION",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "TestSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"parameters": [
+														{
+															"name": "HashLog_SQL",
+															"type": "String",
+															"value": {
+																"value": "@pipeline().parameters.HashLog_SQL",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														}
+													],
+													"type": "Query",
+													"text": "EXEC sp_executesql @HashLog_SQL;"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "Get Success Count EDS",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "OM_SRC_CHECK",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_EDS_',pipeline().parameters.tables,''',''EDS'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count EDS",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count EDS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count EDS').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "START_TASK_EDS",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_SUCCESSFUL",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_DID_BRANCHLOCATION",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_DID_BRANCHLOCATION",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "EDS_DID_BRANCHLOCATION",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_EDS",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "TestSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"parameters": [
+														{
+															"name": "EDS_SQL",
+															"type": "String",
+															"value": {
+																"value": "@pipeline().parameters.EDS_SQL",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														}
+													],
+													"type": "Query",
+													"text": "EXEC sp_executesql @EDS_SQL;"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('select fulldate\nfrom \n    eds.eds_ctl ect\ninner join \n    eds.date_dim dd\n    on \n    ect.',pipeline().parameters.src_sys,'_DATE=dd.previous_business_day\n    and dd.business_day_flag=''Y''')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"tables": {
+				"type": "string",
+				"defaultValue": "DID_BRANCHLOCATION"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "DID"
+			},
+			"HashLog_SQL": {
+				"type": "string",
+				"defaultValue": "WITH CTE1 AS ( \tSELECT TRY_CAST(COUNT(*) AS NUMERIC(25, 5)) COUNT_tgt \t\t,isnull(sum(LATITUDE),0)LATITUDE_tgt \t\t,isnull(sum(LONGITUDE),0)LONGITUDE_tgt \t\t,FILE_NAME \t\t,INSERT_DTTM \tFROM d360.STG_EDS_DID_BRANCHLOCATION \tWHERE H = 'D' \tGROUP BY FILE_NAME \t\t,INSERT_DTTM \t) \t,CTE2 AS ( \tSELECT TRY_CAST(REPLACE(H, 'F-', '') AS NUMERIC(25, 5)) COUNT_src \t\t,TRY_CAST(LATITUDE AS NUMERIC(25,5))LATITUDE_src \t\t,TRY_CAST(LONGITUDE AS NUMERIC(25,5))LONGITUDE_src \t\t,FILE_NAME \t\t,INSERT_DTTM \tFROM d360.STG_EDS_DID_BRANCHLOCATION \tWHERE H <> 'D' \t)  \t,CTE12 AS ( \tSELECT COUNT_SRC \t\t,COUNT_TGT \t\t,LATITUDE_tgt \t\t,LONGITUDE_tgt \t\t,LATITUDE_src \t\t,LONGITUDE_src \t\t,A.FILE_NAME \t\t,A.INSERT_DTTM \t\t,TRY_CAST((left(right(A.FILE_NAME, 12), 8)) AS DATE) DATE \tFROM CTE1 A \tJOIN CTE2 B ON A.FILE_NAME = B.FILE_NAME \t\tAND A.INSERT_DTTM = B.INSERT_DTTM \t) INSERT INTO [EDS].[EDS_HASH_LOG_TBL] SELECT FILE_NAME \t,DATE \t,insert_dttm \t,REPLACE(METRICS, '_SRC', '') METRICS \t,SRC \t,TGT FROM ( \tSELECT TRY_CAST(COUNT_SRC AS NUMERIC(25, 5)) COUNT_SRC \t\t,TRY_CAST(COUNT_TGT AS NUMERIC(25, 5)) COUNT_TGT \t\t,TRY_CAST(LATITUDE_tgt AS NUMERIC(25,5))LATITUDE_tgt \t\t,TRY_CAST(LONGITUDE_tgt AS NUMERIC(25,5))LONGITUDE_tgt \t\t,TRY_CAST(LATITUDE_src AS NUMERIC(25,5))LATITUDE_src \t\t,TRY_CAST(LONGITUDE_src AS NUMERIC(25,5))LONGITUDE_src \t\t,FILE_NAME \t\t,INSERT_DTTM \t\t,[DATE] \tFROM CTE12 \t) pvt UNPIVOT(SRC FOR METRICS IN ( \t\tCOUNT_SRC \t\t,LATITUDE_src \t\t,LONGITUDE_src \t\t\t)) pvt1 UNPIVOT(TGT FOR METRICS2 IN ( \t\tCOUNT_TGT \t\t,LATITUDE_tgt \t\t,LONGITUDE_tgt \t\t\t)) pvt2 WHERE REPLACE(METRICS, '_SRC', '') = REPLACE(METRICS2, '_TGT', '');"
+			},
+			"EDS_SQL": {
+				"type": "string",
+				"defaultValue": "BEGIN TRY \tUPDATE EDS.DID_BRANCHLOCATION \tSET [ISLATEST] = 0 \t\t,[SCD_END_DATE] = ( \t\t\tSELECT PREVIOUS_BUSINESS_DAY \t\t\tFROM EDS.DATE_DIM \t\t\tINNER JOIN ( \t\t\t\tSELECT TOP 1 CAST(LEFT(RIGHT(FILE_NAME, 12), 8) AS INTEGER) MX_DT \t\t\t\tFROM D360.STG_EDS_DID_BRANCHLOCATION \t\t\t\t) MX_DT_TBL ON DATESK = MX_DT \t\t\t) \tFROM EDS.DID_BRANCHLOCATION tgt \tLEFT JOIN D360.STG_EDS_DID_BRANCHLOCATION src  \t\tON src.[SOL_ID] = tgt.[SOL_ID] \t\tAND src.[H] = 'D' \tWHERE tgt.[ISLATEST] = 1 \t\tAND HASHBYTES('SHA2_256', CONCAT_WS(N'|', \t\tSRC.[SOL_ID], \t\tSRC.[SOL_DESC], \t\tSRC.[LATITUDE], \t\tSRC.[LONGITUDE])) \t\t<>  \t\tHASHBYTES('SHA2_256', CONCAT_WS(N'|', \t\tTGT.[SOL_ID], \t\tTGT.[SOL_DESC], \t\tTGT.[LATITUDE], \t\tTGT.[LONGITUDE])); \t\t \tINSERT INTO EDS.DID_BRANCHLOCATION( \t\t [SOL_ID] \t\t,[SOL_DESC] \t\t,[LATITUDE] \t\t,[LONGITUDE] \t\t,[SCD_START_DATE] \t\t,[SCD_END_DATE] \t\t,[ISACTIVE] \t\t,[ISLATEST] \t\t,[BNK_CODE] \t\t,[SOURCE_CODE] \t\t,[FILE_NAME] \t\t,[INSERT_DTTM] \t) \tSELECT DISTINCT  \t\t [SOL_ID] \t\t,[SOL_DESC] \t\t,[LATITUDE] \t\t,[LONGITUDE] \t\t,CAST(LEFT(RIGHT(FILE_NAME, 12), 8) AS DATE) AS [SCD_START_DATE] \t\t,CAST('9999-12-31' AS DATE) AS [SCD_END_DATE] \t\t,1 AS [ISACTIVE] \t\t,1 AS [ISLATEST] \t\t,LEFT(FILE_NAME, 5) AS [BNK_CODE] \t\t,'DID' AS [SOURCE_CODE] \t\t,[FILE_NAME] \t\t,CURRENT_TIMESTAMP \tFROM D360.STG_EDS_DID_BRANCHLOCATION src \tWHERE src.[H] = 'D' \t\tAND NOT EXISTS ( \t\t\tSELECT 1 \t\t\tFROM EDS.DID_BRANCHLOCATION tgt \t\t\tWHERE src.[SOL_ID] = tgt.[SOL_ID] \t\t\t\tAND HASHBYTES('SHA2_256', CONCAT_WS(N'|', \t\t\t\tSRC.[SOL_ID], \t\t\t\tSRC.[SOL_DESC], \t\t\t\tSRC.[LATITUDE], \t\t\t\tSRC.[LONGITUDE]))  \t\t\t\t=  \t\t\t\tHASHBYTES('SHA2_256', CONCAT_WS(N'|', \t\t\t\tTGT.[SOL_ID], \t\t\t\tTGT.[SOL_DESC], \t\t\t\tTGT.[LATITUDE], \t\t\t\tTGT.[LONGITUDE])) \t\t\t\tAND tgt.[ISLATEST] = 1 \t\t\t); END TRY  BEGIN CATCH \t\t\t  \tDECLARE @msg NVARCHAR(2048) = ERROR_MESSAGE();  \t\t\t THROW 51000 \t\t,@msg \t\t,1; END CATCH"
+			}
+		},
+		"variables": {
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"CheckFEstatus": {
+				"type": "String",
+				"defaultValue": "True"
+			},
+			"Source": {
+				"type": "String",
+				"defaultValue": "DID"
+			},
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-10-20T06:46:36Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

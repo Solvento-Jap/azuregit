@@ -1,0 +1,631 @@
+{
+	"name": "Workflow_EDS_DEP_CUSTOMCHANNELTRANSTABLE_No_Manifest_20250619",
+	"properties": {
+		"activities": [
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(pipeline().parameters.endDate),ticks(pipeline().parameters.startDate)),864000000000),1))",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append variable1",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "select fulldate\nfrom \n    eds.eds_ctl ect\ninner join \n    eds.date_dim dd\n    on \n    ect.DEPOSITS_Date=dd.previous_business_day and dd.business_day_flag='Y'\n",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "eds_ctl"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Iterate Execution of Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "ADLS_file_process",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Manifest_file",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "ADLS_file_process_EDS_DEP_CUSTOMCHANNELTRANSTABLE",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"DatetoProcess": {
+										"value": "@item()",
+										"type": "Expression"
+									},
+									"tables": {
+										"value": "@pipeline().parameters.tables1",
+										"type": "Expression"
+									},
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "OM_SRC_CHECK",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "ADLS_file_process",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_EDS_DEP_CUSTOMCHANNELTRANSTABLE",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@replace(substring(item(),0,10),'-','')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Get Success Count EDS",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "OM_SRC_CHECK",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_EDS_DEP_CUSTOMCHANNELTRANSTABLE'',''EDS'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count EDS",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count EDS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count EDS').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "START_TASK_EDS_DEP_CUSTOMCHANNELTRANSTABLE",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_DEP_CUSTOMCHANNELTRANSTABLE",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_DEP_CUSTOMCHANNELTRANSTABLE_SUCCESS",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_DEP_CUSTOMCHANNELTRANSTABLE",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_DEP_CUSTOMCHANNELTRANSTABLE",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_DEP_CUSTOMCHANNELTRANSTABLE_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_DEP_CUSTOMCHANNELTRANSTABLE",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_DEP_CUSTOMCHANNELTRANSTABLE",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "EDS_DEP_CUSTOMCHANNELTRANSTABLE",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_EDS_DEP_CUSTOMCHANNELTRANSTABLE",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testSQLpool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"type": "Query",
+													"text": "DELETE FROM EDS.DEP_CUSTOMCHANNELTRANSTABLE WHERE AS_OF_DATE = (SELECT TOP 1 CONVERT(DATE,LEFT(RIGHT(FILE_NAME, 12), 8)) FROM D360.STG_EDS_DEP_CUSTOMCHANNELTRANSTABLE);\r\n\r\nINSERT INTO EDS.DEP_CUSTOMCHANNELTRANSTABLE\r\n(\r\n\t AS_OF_DATE\r\n,\t[ACCOUNT_NUMBER]\r\n,\t[TRAN_DATETIME]\r\n,\t[ATM_BANK_ID]\r\n,\t[ATM_TERMINAL_ID]\r\n,\t[COMMAND]\r\n,\t[STAN]\r\n,\t[TRAN_ID]\r\n,\t[TRAN_DATE]\r\n,\t[PARTTRAN_NUM]\r\n,\t[PARTTRAN_IND]\r\n,\t[PARTTRAN_REM]\r\n,\t[PARTTRAN_PART1]\r\n,\t[PARTTRAN_PART2]\r\n,\t[TRAN_AMT]\r\n,\t[SOURCE_APP_CODE]\r\n,\t[ATM_CRD_NUM]\r\n,\t[BILLER_CODE]\r\n,\t[BILR_SUBR_NUM1]\r\n,\t[BILR_SUBR_NUM2]\r\n,\t[FREE_TEXT1]\r\n,\t[FREE_TEXT2]\r\n,\t[FREE_TEXT3]\r\n,\t[FREE_TEXT4]\r\n,\t[FREE_TEXT5]\r\n,\t[TPS_USER]\r\n,\t[TPS_TRANREF]\r\n,\t[TPS_ACCNO]\r\n,\t[TPS_ACCNAME]\r\n,\t[TPS_TRAN_RMKS]\r\n,\t[TPS_TRAN_DESC]\r\n,\t[LCHG_TIME]\r\n,\t[LCHG_USER_ID]\r\n,\t[RCRE_TIME]\r\n,\t[RCRE_USER_ID]\r\n,\t[BANK_ID]\r\n,\t[LAST6_ACC_NUM]\r\n,\tisActive\r\n,\tisLatest\r\n,\tBNK_CODE\r\n,\tSOURCE_CODE\r\n,\tFILE_NAME\r\n,\tinsert_dttm\r\n)\r\n\r\nSELECT \r\nCONVERT(DATE,LEFT(RIGHT(FILE_NAME, 12), 8)) AS AS_OF_DATE\r\n,\t[ACCOUNT_NUMBER]\r\n,\t[TRAN_DATETIME]\r\n,\t[ATM_BANK_ID]\r\n,\t[ATM_TERMINAL_ID]\r\n,\t[COMMAND]\r\n,\t[STAN]\r\n,\t[TRAN_ID]\r\n,\t[TRAN_DATE]\r\n,\t[PARTTRAN_NUM]\r\n,\t[PARTTRAN_IND]\r\n,\t[PARTTRAN_REM]\r\n,\t[PARTTRAN_PART1]\r\n,\t[PARTTRAN_PART2]\r\n,\t[TRAN_AMT]\r\n,\t[SOURCE_APP_CODE]\r\n,\t[ATM_CRD_NUM]\r\n,\t[BILLER_CODE]\r\n,\t[BILR_SUBR_NUM1]\r\n,\t[BILR_SUBR_NUM2]\r\n,\t[FREE_TEXT1]\r\n,\t[FREE_TEXT2]\r\n,\t[FREE_TEXT3]\r\n,\t[FREE_TEXT4]\r\n,\t[FREE_TEXT5]\r\n,\t[TPS_USER]\r\n,\t[TPS_TRANREF]\r\n,\t[TPS_ACCNO]\r\n,\t[TPS_ACCNAME]\r\n,\t[TPS_TRAN_RMKS]\r\n,\t[TPS_TRAN_DESC]\r\n,\t[LCHG_TIME]\r\n,\t[LCHG_USER_ID]\r\n,\t[RCRE_TIME]\r\n,\t[RCRE_USER_ID]\r\n,\t[BANK_ID]\r\n,\t[LAST6_ACC_NUM]\r\n,\t1 as isActive\r\n,\t1 as isLatest\r\n,\tBANK_ID as BNK_CODE\r\n,\t'DEP' as SOURCE_CODE\r\n,\tFILE_NAME\r\n,\tconvert(datetime2,insert_dttm) as insert_dttm\r\nFROM D360.STG_EDS_DEP_CUSTOMCHANNELTRANSTABLE\r\nWHERE H = 'D'\r\n\r\n"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "Manifest_file",
+							"type": "ExecutePipeline",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Workflow_Manifest",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"MaxPipelineCalls": 5,
+									"RetryInterval": 600,
+									"DatetoProcessed": {
+										"value": "@substring(item(),0,10)",
+										"type": "Expression"
+									},
+									"tables": {
+										"value": "@concat('''',pipeline().parameters.tables1,'''')",
+										"type": "Expression"
+									},
+									"EndTime": "08:00",
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									}
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"tables1": {
+				"type": "string",
+				"defaultValue": "DEP_CUSTOMCHANNELTRANSTABLE"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "DEP"
+			}
+		},
+		"variables": {
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"CheckFEstatus": {
+				"type": "String",
+				"defaultValue": "True"
+			},
+			"Source": {
+				"type": "String",
+				"defaultValue": "DEP_FACT"
+			},
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-06-19T01:31:28Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

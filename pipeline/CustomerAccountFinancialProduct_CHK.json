@@ -1,0 +1,396 @@
+{
+	"name": "CustomerAccountFinancialProduct_CHK",
+	"properties": {
+		"activities": [
+			{
+				"name": "BUSC",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT * FROM BUSC.LNS_GENERALACCTMAST\nWHERE ISLATEST = 1 AND FORACID = '62621362b90ae976c9bbc33453c00c59'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "BUSC_CNT",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "BUSC",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) DUP_CNT FROM (\nSELECT ACID, BANK_ID, COUNT(1) CNT FROM BUSC.LNS_GENERALACCTMAST\nWHERE ISLATEST = 1 \nGROUP BY ACID, BANK_ID\nHAVING COUNT(1) > 1 ) A"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "WITH",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "BUSC_CNT",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "--GET DELTA FROM BUSC\nWITH TEMP_BNKM_CustomerAccountFinancialProduct\nAS(\nSELECT\nBLG.FORACID AS CustomerAccountId\n,BLG.ACCT_OPN_DATE AS PeriodStartDate\n,BLG.ACCT_CLS_DATE AS PeriodEndDate\n,BLG.SCHM_CODE AS ProductId\n,BLG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n,BLG.SCHM_TYPE AS FcbsApplication\n,BLG.BANK_ID AS FinancialInstitutionId\n,BLG.INSERT_DTTM\n,'LNS' AS SourceSystemCode\nFROM BUSC.LNS_GENERALACCTMAST BLG WHERE BLG.ISLATEST = '1'\n)\n\nSELECT COUNT(1) CNT FROM TEMP_BNKM_CustomerAccountFinancialProduct\nWHERE CustomerAccountId = '62621362b90ae976c9bbc33453c00c59';"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "SRC",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "WITH",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "--GET DELTA FROM BUSC\nWITH TEMP_BNKM_CustomerAccountFinancialProduct\nAS(\nSELECT\nBLG.FORACID AS CustomerAccountId\n,BLG.ACCT_OPN_DATE AS PeriodStartDate\n,BLG.ACCT_CLS_DATE AS PeriodEndDate\n,BLG.SCHM_CODE AS ProductId\n,BLG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n,BLG.SCHM_TYPE AS FcbsApplication\n,BLG.BANK_ID AS FinancialInstitutionId\n,BLG.INSERT_DTTM\n,'LNS' AS SourceSystemCode\nFROM BUSC.LNS_GENERALACCTMAST BLG WHERE BLG.ISLATEST = '1'\n)\n\nSELECT * INTO #TEMP_BNKM_CustomerAccountFinancialProduct FROM TEMP_BNKM_CustomerAccountFinancialProduct;\n\n--CHECK IF THERE IS DELTA\nWITH TEMP_BNKM_CustomerAccountFinancialProduct_SRC\nAS(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerAccountId)\n,convert(date,PeriodStartDate)\n,convert(varchar,ProductId)\n,convert(varchar,IsoCurrencyCode)\n,convert(varchar,FcbsApplication)\n,convert(varchar,FinancialInstitutionId)\n,convert(varchar,SourceSystemCode)\n)) HASHROW, CustomerAccountId, ProductId, FinancialInstitutionId, SourceSystemCode\nFROM #TEMP_BNKM_CustomerAccountFinancialProduct\n)\n\n\nSELECT COUNT(1) CNT FROM TEMP_BNKM_CustomerAccountFinancialProduct_SRC\nWHERE CustomerAccountId = '62621362b90ae976c9bbc33453c00c59';"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "TGT",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "SRC",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH TEMP_BNKM_CustomerAccountFinancialProduct_TGT\nAS(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerAccountId)\n,convert(date,PeriodStartDate)\n,convert(varchar,ProductId)\n,convert(varchar,IsoCurrencyCode)\n,convert(varchar,FcbsApplication)\n,convert(varchar,FinancialInstitutionId)\n,convert(varchar,SourceSystemCode)\n))HASHROW, CustomerAccountId, ProductId, FinancialInstitutionId, SourceSystemCode\nFROM BNKM.CustomerAccountFinancialProduct WHERE  SourceSystemCode = 'LNS' AND PeriodEndDate = '1900-01-01T00:00:00.0000000'\n)\n\nSELECT COUNT(1) CNT FROM TEMP_BNKM_CustomerAccountFinancialProduct_TGT\nWHERE CustomerAccountId = '62621362b90ae976c9bbc33453c00c59';"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DELTA",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "TGT",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "--GET DELTA FROM BUSC\nWITH TEMP_BNKM_CustomerAccountFinancialProduct\nAS(\nSELECT\nBLG.FORACID AS CustomerAccountId\n,BLG.ACCT_OPN_DATE AS PeriodStartDate\n,BLG.ACCT_CLS_DATE AS PeriodEndDate\n,BLG.SCHM_CODE AS ProductId\n,BLG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n,BLG.SCHM_TYPE AS FcbsApplication\n,BLG.BANK_ID AS FinancialInstitutionId\n,BLG.INSERT_DTTM\n,'LNS' AS SourceSystemCode\nFROM BUSC.LNS_GENERALACCTMAST BLG WHERE BLG.ISLATEST = '1'\n)\n\nSELECT * INTO #TEMP_BNKM_CustomerAccountFinancialProduct FROM TEMP_BNKM_CustomerAccountFinancialProduct;\n\n--CHECK IF THERE IS DELTA\nWITH TEMP_BNKM_CustomerAccountFinancialProduct_SRC\nAS(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerAccountId)\n,convert(date,PeriodStartDate)\n,convert(varchar,ProductId)\n,convert(varchar,IsoCurrencyCode)\n,convert(varchar,FcbsApplication)\n,convert(varchar,FinancialInstitutionId)\n,convert(varchar,SourceSystemCode)\n)) HASHROW, CustomerAccountId, ProductId, FinancialInstitutionId, SourceSystemCode\nFROM #TEMP_BNKM_CustomerAccountFinancialProduct\n)\n,\n\nTEMP_BNKM_CustomerAccountFinancialProduct_TGT\nAS(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerAccountId)\n,convert(date,PeriodStartDate)\n,convert(varchar,ProductId)\n,convert(varchar,IsoCurrencyCode)\n,convert(varchar,FcbsApplication)\n,convert(varchar,FinancialInstitutionId)\n,convert(varchar,SourceSystemCode)\n))HASHROW, CustomerAccountId, ProductId, FinancialInstitutionId, SourceSystemCode\nFROM BNKM.CustomerAccountFinancialProduct WHERE  SourceSystemCode = 'LNS' AND PeriodEndDate = '1900-01-01T00:00:00.0000000'\n)\n,\n\nTEMP_BNKM_CustomerAccountFinancialProduct_DELTA\nAS(\nSELECT\nSRC.HASHROW AS SRC_HR\n,TGT.HASHROW AS TGT_HR\n,ISNULL(SRC.CustomerAccountId,TGT.CustomerAccountId) AS CustomerAccountId\n,ISNULL(SRC.ProductId,TGT.ProductId) AS ProductId\n,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\n,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\n,CASE\n\tWHEN TGT.HASHROW IS NULL THEN 'INSERT'  \n    WHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n    ELSE NULL END AS RECORD_STATUS\n\nFROM TEMP_BNKM_CustomerAccountFinancialProduct_SRC SRC\nLEFT JOIN TEMP_BNKM_CustomerAccountFinancialProduct_TGT TGT\nON SRC.CustomerAccountId = TGT.CustomerAccountId\nAND SRC.ProductId = TGT.ProductId\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\n--WHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\n)\n\nSELECT COUNT(1) CNT FROM TEMP_BNKM_CustomerAccountFinancialProduct_DELTA\nWHERE CustomerAccountId = '62621362b90ae976c9bbc33453c00c59';"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "INSERT",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "DELTA",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH TEMP_BNKM_CustomerAccountFinancialProduct\nAS(\nSELECT\nBLG.FORACID AS CustomerAccountId\n,BLG.ACCT_OPN_DATE AS PeriodStartDate\n,BLG.ACCT_CLS_DATE AS PeriodEndDate\n,BLG.SCHM_CODE AS ProductId\n,BLG.ACCT_CRNCY_CODE AS IsoCurrencyCode\n,BLG.SCHM_TYPE AS FcbsApplication\n,BLG.BANK_ID AS FinancialInstitutionId\n,BLG.INSERT_DTTM\n,'LNS' AS SourceSystemCode\nFROM BUSC.LNS_GENERALACCTMAST BLG WHERE BLG.ISLATEST = '1'\n)\n\nSELECT * INTO #TEMP_BNKM_CustomerAccountFinancialProduct FROM TEMP_BNKM_CustomerAccountFinancialProduct;\n\n--CHECK IF THERE IS DELTA\nWITH TEMP_BNKM_CustomerAccountFinancialProduct_SRC\nAS(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerAccountId)\n,convert(date,PeriodStartDate)\n,convert(varchar,ProductId)\n,convert(varchar,IsoCurrencyCode)\n,convert(varchar,FcbsApplication)\n,convert(varchar,FinancialInstitutionId)\n,convert(varchar,SourceSystemCode)\n)) HASHROW, CustomerAccountId, ProductId, FinancialInstitutionId, SourceSystemCode\nFROM #TEMP_BNKM_CustomerAccountFinancialProduct\n)\n,\n\nTEMP_BNKM_CustomerAccountFinancialProduct_TGT\nAS(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerAccountId)\n,convert(date,PeriodStartDate)\n,convert(varchar,ProductId)\n,convert(varchar,IsoCurrencyCode)\n,convert(varchar,FcbsApplication)\n,convert(varchar,FinancialInstitutionId)\n,convert(varchar,SourceSystemCode)\n))HASHROW, CustomerAccountId, ProductId, FinancialInstitutionId, SourceSystemCode\nFROM BNKM.CustomerAccountFinancialProduct WHERE  SourceSystemCode = 'LNS' AND PeriodEndDate = '1900-01-01T00:00:00.0000000'\n)\n,\n\nTEMP_BNKM_CustomerAccountFinancialProduct_DELTA\nAS(\nSELECT\nSRC.HASHROW AS SRC_HR\n,TGT.HASHROW AS TGT_HR\n,ISNULL(SRC.CustomerAccountId,TGT.CustomerAccountId) AS CustomerAccountId\n    ,ISNULL(SRC.ProductId,TGT.ProductId) AS ProductId\n    ,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\n    ,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\n,CASE\n\tWHEN TGT.HASHROW IS NULL THEN 'INSERT'  \n    WHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n    ELSE NULL END AS RECORD_STATUS\n\nFROM TEMP_BNKM_CustomerAccountFinancialProduct_SRC SRC\nLEFT JOIN TEMP_BNKM_CustomerAccountFinancialProduct_TGT TGT\nON SRC.CustomerAccountId = TGT.CustomerAccountId\nAND SRC.ProductId = TGT.ProductId\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\n)\nSELECT * INTO #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA FROM TEMP_BNKM_CustomerAccountFinancialProduct_DELTA;\n\nWITH TEMP_TABLE_SELECT AS (\nSELECT\nSRC.CustomerAccountId AS CustomerAccountId\n,SRC.PeriodStartDate AS PeriodStartDate\n,SRC.PeriodEndDate AS PeriodEndDate\n,SRC.ProductId AS ProductId\n,SRC.IsoCurrencyCode AS IsoCurrencyCode\n,NULL AS UsageCategoryId\n,NULL AS CommitmentId\n,SRC.FcbsApplication AS FcbsApplication\n,SRC.FinancialInstitutionId AS FinancialInstitutionId\n,'LNS' AS SourceSystemCode\n,0 AS WORKFLOWID\n,0 AS TASKRUNID\n,SRC.INSERT_DTTM AS INSERTDTTM\nFROM #TEMP_BNKM_CustomerAccountFinancialProduct SRC\nJOIN #TEMP_BNKM_CustomerAccountFinancialProduct_DELTA DELTA\nON DELTA.CustomerAccountId = SRC.CustomerAccountId\n AND DELTA.ProductId = SRC.ProductId\n  AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\n   AND DELTA.SourceSystemCode = SRC.SourceSystemCode\nWHERE DELTA.RECORD_STATUS IN ('UPDATE','INSERT')\n)\n\nSELECT COUNT(1) CNT FROM TEMP_TABLE_SELECT\nWHERE CustomerAccountId = '62621362b90ae976c9bbc33453c00c59';\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "TGT_CHK",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT * FROM BNKM.CustomerAccountFinancialProduct\nWHERE CustomerAccountId = '62621362b90ae976c9bbc33453c00c59' AND SourceSystemCode = 'LNS';"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script_CHK",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH TEMP_BNKM_CustomerAccountFinancialProduct_TGT\nAS(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerAccountId)\n,convert(date,PeriodStartDate)\n,convert(varchar,ProductId)\n,convert(varchar,IsoCurrencyCode)\n,convert(varchar,FcbsApplication)\n,convert(varchar,FinancialInstitutionId)\n,convert(varchar,SourceSystemCode)\n))HASHROW, CustomerAccountId, ProductId, FinancialInstitutionId, SourceSystemCode\nFROM BNKM.CustomerAccountFinancialProduct WHERE  SourceSystemCode = 'LNS' AND PeriodEndDate = '1900-01-01T00:00:00.0000000'\n)\n\nSELECT * FROM TEMP_BNKM_CustomerAccountFinancialProduct_TGT\nWHERE CustomerAccountId = '62621362b90ae976c9bbc33453c00c59';"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script_1",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script_0",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT CustomerAccountId, PeriodStartDate, FinancialProductId, FinancialInstitutionId, SourceSystemCode, COUNT(1) CNT \nFROM BNKM.CustomerAccountFinancialProduct\nGROUP BY CustomerAccountId, PeriodStartDate, FinancialProductId, FinancialInstitutionId, SourceSystemCode\nHAVING COUNT(1) > 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script_0",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT SOURCESYSTEMCODE, COUNT(1) DUP_CNT FROM (\nSELECT CustomerAccountId, PeriodStartDate, FinancialProductId, FinancialInstitutionId, SourceSystemCode, COUNT(1) CNT \nFROM BNKM.CustomerAccountFinancialProduct\nGROUP BY CustomerAccountId, PeriodStartDate, FinancialProductId, FinancialInstitutionId, SourceSystemCode\nHAVING COUNT(1) > 1) A\nGROUP BY SOURCESYSTEMCODE\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-11-07T02:46:18Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

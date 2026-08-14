@@ -1,0 +1,39 @@
+{
+	"name": "OM_START_TASK_UPD2",
+	"properties": {
+		"activities": [
+			{
+				"name": "Script1",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nALTER PROC [OM].[SP_TASK_START] @task_name [varchar](100),@pipeline_runid [VARCHAR](50),@data_layer [nvarchar](150),@process_date [datetime] AS\r\n\r\nBEGIN\r\n\r\n\t\tBEGIN\r\n\r\n\t\t\tDECLARE @FLAG_CNT [NUMERIC](15,0)\r\n\t\t\tDECLARE @FLAG_INIT_CNT [NUMERIC](15,0)\r\n\t\t\tDECLARE @FLAG_SUC_LATER_CNT [NUMERIC](15,0)\r\n\t\t\tDECLARE @FLAG_CHK_PREV_DAY_SUCC [NUMERIC](15,0)\r\n\t\t\tDECLARE @FLAG_CHK_BUS_DAY [NUMERIC](15,0)\r\n\r\n\r\n\t\t\tSELECT \r\n\t\t\t\t@FLAG_INIT_CNT=COUNT(*) \r\n\t\t\tFROM \r\n\t\t\t\t(SELECT TOP 1 TASK_NAME FROM OM.OM_TASK_RUN WHERE\r\n\t\t\t\tTASK_NAME=UPPER(@task_name) AND PROCESS_DATE < @process_date ) OTR\r\n\t\t\t\t\r\n\t\t\tSELECT \r\n\t\t\t\t@FLAG_SUC_LATER_CNT=COUNT(*) \r\n\t\t\tFROM \r\n\t\t\t\tOM.OM_TASK_RUN OTR\r\n\t\t\tINNER JOIN\r\n\t\t\t\tOM.OM_TASKS OT \r\n\t\t\t\tON\r\n\t\t\t\tOTR.TASK_NAME = OT.TASK_NAME\r\n\t\t\tINNER JOIN\r\n\t\t\t\tOM.OM_STATUS OS\r\n\t\t\t\tON\r\n\t\t\t\tOS.STATUS_ID=OTR.STATUS_ID\r\n\t\t\tWHERE\r\n\t\t\t\t(OS.STATUS='SUCCESSFUL' AND OT.TABLE_TYPE = 'SCD TYPE 2')\r\n\t\t\t\tAND OTR.TASK_NAME=UPPER(@task_name) \r\n\t\t\t\tAND OTR.PROCESS_DATE > @process_date\r\n\r\n\r\n\t\t\tSELECT \r\n\t\t\t\t@FLAG_CNT=COUNT(*) \r\n\t\t\tFROM \r\n\t\t\t\tEDS.DATE_DIM DD\r\n\t\t\tINNER JOIN\r\n\t\t\t\tOM.OM_TASK_RUN OTR\r\n\t\t\t\tON\r\n\t\t\t\tDD.FULLDATE=@process_date\r\n\t\t\t\tAND \r\n\t\t\t\tDD.PREVIOUS_BUSINESS_DAY=OTR.PROCESS_DATE\r\n\t\t\tINNER JOIN\r\n\t\t\t\tOM.OM_TASKS OT \r\n\t\t\t\tON\r\n\t\t\t\tOTR.TASK_NAME = OT.TASK_NAME\r\n\t\t\tINNER JOIN\r\n\t\t\t\tOM.OM_STATUS OS\r\n\t\t\t\tON\r\n\t\t\t\tOS.STATUS_ID=OTR.STATUS_ID\r\n\t\t\tWHERE\r\n\t\t\t\t(OS.STATUS<>'SUCCESSFUL' AND OT.TABLE_TYPE = 'SCD TYPE 2')\r\n\t\t\t\tAND OTR.TASK_NAME=UPPER(@task_name)\r\n\r\n\r\n\t\t\tIF((SELECT COUNT(1) FROM OM.OM_TASKS where TASK_NAME = UPPER(@task_name) AND TABLE_TYPE = 'SCD TYPE 2' AND FREQUENCY_LOADING = 'WEEKDAYS')>0) --UPDATED RTSF 2024-09-26\r\n\r\n\t\t\t\tSELECT \r\n\t\t    \t@FLAG_CHK_PREV_DAY_SUCC=COUNT(*) \r\n\t\r\n\t\t\t\tFROM \r\n\t\t\t\t\tEDS.DATE_DIM DD\r\n\t\t\t\tINNER JOIN\r\n\t\t\t\t\tOM.OM_TASK_RUN OTR\r\n\t\t\t\t\tON\r\n\t\t\t\t\tDD.FULLDATE=@process_date\r\n\t\t\t\t\tAND \r\n\t\t\t\t\tDD.PREVIOUS_BUSINESS_DAY=OTR.PROCESS_DATE\r\n\t\t\t\tINNER JOIN\r\n\t\t\t\t\tOM.OM_STATUS OS\r\n\t\t\t\t\tON\r\n\t\t\t\t\tOS.STATUS_ID=OTR.STATUS_ID\r\n            \tINNER JOIN\r\n            \t    OM.OM_TASKS OT\r\n            \t    ON\r\n            \t    OTR.TASK_NAME = OT.TASK_NAME\r\n\t\t\t\tWHERE\r\n            \t    OTR.TASK_NAME=UPPER(@task_name)\r\n            \t    AND OS.STATUS='SUCCESSFUL'\r\n            \t    AND OT.TABLE_TYPE='SCD TYPE 2'\r\n\r\n            ELSE IF((SELECT COUNT(1) FROM OM.OM_TASKS where TASK_NAME = UPPER(@task_name) AND TABLE_TYPE = 'SCD TYPE 2' AND FREQUENCY_LOADING = 'DAILY')>0) --ADDED RTSF 2024-09-26, UPDATE RTSF 2024-09-27\r\n\r\n\t\t\t\tSELECT \r\n\t\t    \t@FLAG_CHK_PREV_DAY_SUCC=COUNT(*) \r\n\t\r\n\t\t\t\tFROM \r\n\t\t\t\t\tEDS.DATE_DIM DD\r\n\t\t\t\tINNER JOIN\r\n\t\t\t\t\tOM.OM_TASK_RUN OTR\r\n\t\t\t\t\tON\r\n\t\t\t\t\tDD.FULLDATE=@process_date\r\n\t\t\t\t\tAND \r\n\t\t\t\t\tDATEADD(DD,-1,DD.FULLDATE)=OTR.PROCESS_DATE\r\n\t\t\t\tINNER JOIN\r\n\t\t\t\t\tOM.OM_STATUS OS\r\n\t\t\t\t\tON\r\n\t\t\t\t\tOS.STATUS_ID=OTR.STATUS_ID\r\n            \tINNER JOIN\r\n            \t    OM.OM_TASKS OT\r\n            \t    ON\r\n            \t    OTR.TASK_NAME = OT.TASK_NAME\r\n\t\t\t\tWHERE\r\n            \t    OTR.TASK_NAME=UPPER(@task_name)\r\n            \t    AND OS.STATUS='SUCCESSFUL'\r\n            \t    AND OT.TABLE_TYPE='SCD TYPE 2'\r\n\r\n\t\t\tELSE \r\n    \t\t\tSELECT @FLAG_CHK_PREV_DAY_SUCC = 1\r\n\r\n\t\t\t\r\n\t\t\tIF((SELECT COUNT(1) FROM OM.OM_TASKS where TASK_NAME =  @task_name AND FREQUENCY_LOADING = 'WEEKDAYS' )>0)\r\n\r\n\t\t\t    SELECT @FLAG_CHK_BUS_DAY=COUNT(*)\r\n\t\t\t    FROM \r\n\t\t\t\t\tEDS.DATE_DIM DD\r\n\t\t\t\tWHERE\r\n\t\t\t        DD.Business_Day_Flag = 'Y'\r\n\t\t\t        AND DD.FULLDATE=@process_date\r\n\t\t\t\t\t\r\n\r\n\t\t\tIF((SELECT COUNT(1) FROM OM.OM_TASKS where TASK_NAME =  @task_name AND FREQUENCY_LOADING = 'DAILY' )>0)\r\n\t\t\t    SELECT @FLAG_CHK_BUS_DAY=1\r\n\r\n\r\n\t\t\tIF(@FLAG_SUC_LATER_CNT>0)\r\n\t\t\t   BEGIN\r\n\r\n\t\t\t\t   DECLARE @errmsg1 NVARCHAR(2048) = 'JOB '+@task_name+' WAS EXECUTED SUCCESSFULLY ON A LATER PROCESS DATE. TERMINATING EXECUTION. PLEASE CHECK OM.OM_TASK_RUN AND EDS.EDS_CTL TABLE';   \r\n  \r\n\t\t\t\t   THROW 60000, @errmsg1, 1;  \r\n\t\t\t   END\r\n\t\t\t   \r\n\t\t\tIF(@FLAG_CNT>0 AND @FLAG_INIT_CNT>0)\r\n\t\t\t   BEGIN\r\n\r\n\t\t\t\t   DECLARE @errmsg2 NVARCHAR(2048) = 'CURRENT JOB '+@task_name+' STATUS IS NOT YET SUCCESSFUL FOR LATEST BUSINESS DATE IN EDS_CTL TABLE. PLEASE CHECK OM.OM_TASK_RUN AND EDS.EDS_CTL TABLE';   \r\n  \r\n\t\t\t\t   THROW 60001, @errmsg2, 1;  \r\n\t\t\t   END\r\n\r\n\t\t\tIF(@FLAG_CHK_PREV_DAY_SUCC<1 AND @FLAG_INIT_CNT>0)\r\n\t\t\t   BEGIN\r\n\r\n\t\t\t\t   DECLARE @errmsg3 NVARCHAR(2048) = 'CURRENT JOB '+@task_name+' STATUS IS NOT YET SUCCESSFUL FOR THE PREVIOUS BUSINESS DATE IN EDS_CTL TABLE. PLEASE CHECK OM.OM_TASK_RUN AND EDS.EDS_CTL TABLE';   \r\n  \r\n\t\t\t\t   THROW 60002, @errmsg3, 1;  \r\n\t\t\t   END\r\n\r\n\t\t\tIF(@FLAG_CHK_BUS_DAY<1)\r\n\t\t\t   BEGIN\r\n\r\n\t\t\t\t   DECLARE @errmsg4 NVARCHAR(2048) = 'CURRENT JOB '+@task_name+' PROCESS DATE IS NOT A BUSINESS DAY. PLEASE CHECK EDS.DATE_DIM AND EDS.EDS_CTL TABLE';   \r\n  \r\n\t\t\t\t   THROW 60003, @errmsg4, 1;  \r\n\t\t\t   END\r\n\r\n\t\tEND\r\n\r\n  \r\n\t   BEGIN\r\n\t\t\tDELETE\r\n\t\t\tFROM \r\n\t\t\t\t[OM].[OM_TASK_RUN] \r\n\t\t\tWHERE\r\n\t\t\t\tTASK_NAME = UPPER(@task_name) AND\r\n\t\t\t\tPROCESS_DATE = @process_date AND\r\n\t\t\t\tSTATUS_ID <> (SELECT STATUS_ID FROM OM.OM_STATUS WHERE STATUS = 'SUCCESSFUL')\r\n\t\t\t\t\r\n\t\t   ---START TASK\r\n\t\t\tINSERT INTO \r\n\t\t\t[OM].[OM_TASK_RUN] \r\n\t\t\t(\r\n\t\t\t\tTASK_RUN_ID,\r\n\t\t\t\tTASK_NAME,\r\n\t\t\t\tPIPELINE_RUNID,\r\n\t\t\t\tSTATUS_ID,\r\n\t\t\t\tDATA_LAYER,\r\n\t\t\t\tPROCESS_DATE,\r\n\t\t\t\tSTART_DATETIME,\r\n\t\t\t\tEND_DATETIME,\r\n\t\t\t\tCREATE_DATETIME\r\n\t\t\t)\r\n\t\t\tSELECT  \r\n\t\t\t\t concat(@pipeline_runid,'-',UPPER(@task_name))\r\n\t\t\t\t,UPPER(@task_name)\r\n\t\t\t\t,@pipeline_runid\r\n\t\t\t\t,(SELECT STATUS_ID FROM OM.OM_STATUS WHERE STATUS = 'RUNNING')\r\n\t\t\t\t,UPPER(@data_layer)\r\n\t\t\t\t,@process_date\r\n\t\t\t\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime)\r\n\t\t\t\t,NULL\r\n\t\t\t\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime)\t\t\r\n\t   END\r\n\t\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-09-27T05:26:10Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

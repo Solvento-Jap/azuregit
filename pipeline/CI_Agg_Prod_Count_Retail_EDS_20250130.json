@@ -1,0 +1,234 @@
+{
+	"name": "CI_Agg_Prod_Count_Retail_EDS_20250130",
+	"properties": {
+		"description": "Sources data from EDS tables",
+		"activities": [
+			{
+				"name": "Aggregated Prod Count Retail",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "START_TASK_CI_EDS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "WITH DEP AS\r\n(\r\n    SELECT\r\n    AAS_AS_OF_DATE AS AS_OF_DATE\r\n    ,ORGKEY AS CUSTOMER_ID\r\n    ,COUNT(FORACID) AS DEP_ACCT_CNT\r\n    FROM eds.DEPOSITS_ACCOUNT_HOLDER A\r\n    INNER JOIN EDs.EDS_CTL CTL ON CTL.DEPOSITS_DATE = AAS_AS_OF_DATE\r\n    WHERE \r\n         AAS_DEL_FLG <> 'Y'\r\n        AND AAS_ENTITY_CRE_FLG = 'Y'\r\n        AND GAM_ACID IS NOT NULL\r\n        --AND (DEP_ACCOUNT_STATUS <> 'C' AND DEP_ACCOUNT_STATUS IS NOT NULL)\r\n        AND AAS_BANK_ID = 'CBC01'\r\n\tGROUP BY \r\n\tAAS_AS_OF_DATE\r\n\t,ORGKEY\r\n)\r\n\r\n, LNS AS \r\n(\r\n    SELECT\r\n    A.AS_OF_DATE AS AS_OF_DATE\r\n    ,C.ORGKEY AS CUSTOMER_ID\r\n\t,COUNT(B.FORACID) AS LNS_ACCT_CNT\r\n    FROM eds.LNS_ACCTAUTHSIGN A\r\n    INNER JOIN EDS.EDS_CTL CTL ON CTL.LOANS_DATE = A.AS_OF_DATE\r\n        LEFT JOIN EDS.LOAN_FACT B\r\n            ON A.AS_OF_DATE = B.AS_OF_DATE\r\n            AND A.ACID = B.GAM_ACID\r\n            AND A.BANK_ID = B.GAM_BANK_ID\r\n        LEFT JOIN eds.CUSTOMER_DIM C\r\n            ON A.AS_OF_DATE BETWEEN C.SCD_START_DATE AND C.SCD_END_DATE\r\n            AND A.CUST_ID = C.CORE_CUST_ID\r\n            AND A.BANK_ID = C.BANK_ID\r\n        LEFT JOIN eds.BRANCH_DIM D\r\n            ON B.SOL_ID = D.SOL_ID\r\n            AND B.GAM_BANK_ID = D.BANK_ID\r\n    WHERE A.DEL_FLG <> 'Y'\r\n        AND A.ENTITY_CRE_FLG = 'Y'\r\n        AND B.GAM_ACID IS NOT NULL\r\n        --AND (LNS_ACCOUNT_STATUS <> 'C' AND LNS_ACCOUNT_STATUS IS NOT NULL)\r\n        AND A.BANK_ID = 'CBC01'\r\n\tGROUP BY \r\n\t    A.AS_OF_DATE\r\n\t\t,C.ORGKEY\r\n)\r\n, CCD AS \r\n(\r\n    SELECT\r\n    AS_OF_DATE\r\n    ,CUST_CIF_NBR AS CUSTOMER_ID\r\n\t,COUNT(CRDACCT_NBR) AS CCD_ACCT_CNT\r\n    FROM eds.CCD_CREDIT_CARDS_FACT A\r\n    INNER JOIN EDS.EDS_CTL CTL ON CTL.CCD_DATE = A.AS_OF_DATE\r\n\tGROUP BY\r\n\t AS_OF_DATE\r\n    ,CUST_CIF_NBR\r\n)\r\n, TRU AS\r\n(\r\n    SELECT \r\n    CAST(LEFT(RIGHT(CUST.FILE_NAME,12),8) AS DATE) AS AS_OF_DATE\r\n    ,CUST.UNIQUE_ID AS CUSTOMER_ID\r\n\t,COUNT(PORT.PORTFOLIO_NO) AS TRU_ACCT_CNT\r\n        FROM busc.TRU_CUST AS CUST\r\n        INNER JOIN EDS.EDS_CTL CTL ON CTL.TRU_DATE =  CAST(LEFT(RIGHT(CUST.FILE_NAME,12),8) AS DATE)\r\n        LEFT JOIN busc.TRU_BASELINK AS BASE\r\n            ON CUST.CUST_NO = BASE.CIF_NO\r\n            AND BASE.ISLATEST = 1 AND BASE.ISACTIVE = 1\r\n        LEFT JOIN busc.TRU_PORTFOLIO AS PORT\r\n            ON BASE.CUST_NO = PORT.BASE_NO\r\n            AND PORT.ISLATEST = 1 AND PORT.ISACTIVE = 1\r\n        LEFT JOIN busc.TRU_PFSUBSCRIPTION PFSUB\r\n            ON PORT.SUBSCRIPTION_ID = PFSUB.SUBSCRIPTION_ID\r\n            AND PORT.BASE_NO = PFSUB.BASE_NO\r\n        LEFT JOIN busc.TRU_AUMNONUITF AS NONUITF\r\n            ON NONUITF.BASE_NO = PORT.BASE_NO\r\n            AND NONUITF.PF_NO = PORT.PORTFOLIO_NO\r\n            AND NONUITF.ISLATEST = 1 AND NONUITF.ISACTIVE = 1\r\n        LEFT JOIN busc.TRU_AUMUITF AS UITF\r\n            ON UITF.BASE_NO = PORT.BASE_NO\r\n            AND UITF.PORTFOLIO_NO = PORT.PORTFOLIO_NO\r\n            AND UITF.ISLATEST = 1 AND UITF.ISACTIVE = 1\r\n    WHERE CUST.ISACTIVE = 1 AND CUST.ISLATEST = 1\r\n        AND PORT.STATUS = 'A'\r\n\tGROUP BY\r\n\tCAST(LEFT(RIGHT(CUST.FILE_NAME,12),8) AS DATE)\r\n\t,CUST.UNIQUE_ID\r\n)\r\n\r\n, TRY AS\r\n(\r\n    SELECT\r\n    CAST(LEFT(RIGHT(LE.FILE_NAME,12),8) AS DATE) AS AS_OF_DATE,\r\n    LE.EXTERNAL_REF AS CUSTOMER_ID,\r\n    COUNT(LE.ID) AS TRY_ACCT_CNT\r\n    from busc.TRY_LEGALENTITY AS LE\r\n   INNER JOIN EDS.EDS_CTL CTL ON CTL.TRY_DATE =  CAST(LEFT(RIGHT(LE.FILE_NAME,12),8) AS DATE)\r\n        LEFT JOIN busc.TRY_TRADES TRADES\r\n            ON LE.ID = TRADES.COUNTERPARTY_ID\r\n    WHERE TRADES.CounterParty_ID IS NOT NULL AND TRADES.ISACTIVE = 1\r\n    AND LE.ISLATEST = 1 AND LE.ISACTIVE = 1\r\n    AND LE.STATUS = 'ENABLED' AND LE.BNK_CODE = 'CBC01'\r\n\tGROUP BY \r\n\t    CAST(LEFT(RIGHT(LE.FILE_NAME,12),8) AS DATE),\r\n\t\tLE.EXTERNAL_REF\r\n)\r\nSELECT AS_OF_DATE, CUSTOMER_ID, SUM(DEP_ACCT_CNT) DEP_COUNT,  SUM(LNS_ACCT_CNT) LNS_COUNT,  SUM(CCD_ACCT_CNT) CCD_COUNT, \r\nSUM(TRU_ACCT_CNT) TRU_COUNT, SUM(TRY_ACCT_CNT) TRY_COUNT\r\nFROM \r\n(\r\n\tSELECT AS_OF_DATE, CUSTOMER_ID, DEP_ACCT_CNT, 0 LNS_ACCT_CNT, 0 CCD_ACCT_CNT, 0 TRU_ACCT_CNT, 0 TRY_ACCT_CNT FROM DEP\r\n    UNION ALL\r\n    SELECT AS_OF_DATE, CUSTOMER_ID, 0 DEP_ACCT_CNT, LNS_ACCT_CNT, 0 CCD_ACCT_CNT, 0 TRU_ACCT_CNT, 0 TRY_ACCT_CNT FROM LNS\r\n    UNION ALL\r\n    SELECT AS_OF_DATE, CUSTOMER_ID, 0 DEP_ACCT_CNT, 0 LNS_ACCT_CNT, CCD_ACCT_CNT, 0 TRU_ACCT_CNT, 0 TRY_ACCT_CNT FROM CCD\r\n    UNION ALL\r\n    SELECT AS_OF_DATE, CUSTOMER_ID, 0 DEP_ACCT_CNT, 0 LNS_ACCT_CNT, 0 CCD_ACCT_CNT, TRU_ACCT_CNT, 0 TRY_ACCT_CNT  FROM TRU\r\n    UNION ALL\r\n    SELECT AS_OF_DATE, CUSTOMER_ID, 0 DEP_ACCT_CNT, 0 LNS_ACCT_CNT, 0 CCD_ACCT_CNT, 0 TRU_ACCT_CNT, TRY_ACCT_CNT FROM TRY ) A\r\n    WHERE LEFT(CUSTOMER_ID,1) = 'R' --Retail\r\nGROUP BY AS_OF_DATE, CUSTOMER_ID\r\n\r\n",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "DelimitedTextSink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"formatSettings": {
+							"type": "DelimitedTextWriteSettings",
+							"quoteAllText": true,
+							"fileExtension": ".txt"
+						}
+					},
+					"enableStaging": false,
+					"translator": {
+						"type": "TabularTranslator",
+						"typeConversion": true,
+						"typeConversionSettings": {
+							"allowDataTruncation": true,
+							"treatBooleanAsNumber": false
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_EDS",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "-"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "CI_csv_gen",
+						"type": "DatasetReference",
+						"parameters": {
+							"Table": {
+								"value": "CI_Agg_Prod_Cnt_Retail",
+								"type": "Expression"
+							},
+							"Source": "AGGREGATE",
+							"Types": "Retail"
+						}
+					}
+				]
+			},
+			{
+				"name": "START_TASK_CI_EDS",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_START]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_CI_EDS_',toUpper(variables('tables')))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": null,
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_EDS_SUCCESSFUL",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Aggregated Prod Count Retail",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_CI_EDS_',toUpper(variables('tables')))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "SUCCESSFUL",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_EDS_FAILED",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Aggregated Prod Count Retail",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_CI_EDS_',toUpper(variables('tables')))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "FAILED",
+							"type": "String"
+						}
+					}
+				}
+			}
+		],
+		"variables": {
+			"tables": {
+				"type": "String",
+				"defaultValue": "CI_Agg_Prod_Count_Retail_EDS"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-01-30T02:33:21Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

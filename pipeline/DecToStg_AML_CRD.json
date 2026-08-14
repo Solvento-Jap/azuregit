@@ -1,0 +1,2138 @@
+{
+	"name": "DecToStg_AML_CRD",
+	"properties": {
+		"description": "AML DecToStg pipeline for CRD; covers 4 approved manifest table(s).",
+		"activities": [
+			{
+				"name": "Require_Approved_Execution",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.ExecutionMode, 'ApprovedDateSliceReload')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Unapproved_Execution",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "ExecutionMode must be ApprovedDateSliceReload.",
+								"errorCode": "AML_EXECUTION_NOT_APPROVED"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Execution_Approved",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Require_Valid_MissingFilePolicy",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(equals(pipeline().parameters.MissingFilePolicy, 'Fail'), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Invalid_MissingFilePolicy",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "MissingFilePolicy must be Fail or Skip.",
+								"errorCode": "AML_INVALID_MISSING_FILE_POLICY"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "MissingFilePolicy_Valid",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "GetFile_CRD_ACCOUNTS",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv_AML",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('*CRD-ACCT-', pipeline().parameters.DateToProcess, '*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/CRD",
+							"ColumnDelimiter": "|",
+							"FirstRowAsHeader": false,
+							"RowDelimiter": "\n",
+							"EncodingName": "UTF-8"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "RequireFileOrSkip_CRD_ACCOUNTS",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "GetFile_CRD_ACCOUNTS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(not(empty(activity('GetFile_CRD_ACCOUNTS').output.childItems)), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_CRD_ACCOUNTS_MissingFile",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "No source file matched @concat('*CRD-ACCT-', pipeline().parameters.DateToProcess, '*') under dev/decrypted/CRD, and MissingFilePolicy is Fail.",
+								"errorCode": "AML_SOURCE_FILE_MISSING"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Accept_CRD_ACCOUNTS_FilePolicy",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "IfFile_CRD_ACCOUNTS",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "RequireFileOrSkip_CRD_ACCOUNTS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@not(empty(activity('GetFile_CRD_ACCOUNTS').output.childItems))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Skip_CRD_ACCOUNTS_NoFile",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Start_CRD_ACCOUNTS",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_START]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_CRD_ACCOUNTS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DateToProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Copy_CRD_ACCOUNTS",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Start_CRD_ACCOUNTS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										},
+										{
+											"name": "H",
+											"value": "D"
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/CRD",
+										"wildcardFileName": {
+											"value": "@concat('*CRD-ACCT-', pipeline().parameters.DateToProcess, '*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": {
+										"value": "@concat('DECLARE @DateToProcess varchar(8) = ''', replace(pipeline().parameters.DateToProcess, '''', ''''''), '''; IF LEN(@DateToProcess) <> 8 OR @DateToProcess LIKE ''%[^0-9]%'' OR TRY_CONVERT(date, @DateToProcess, 112) IS NULL THROW 50000, ''DateToProcess must be a valid yyyyMMdd date.'', 1; DELETE FROM [D360].[STG_CRD_ACCOUNTS] WHERE CHARINDEX(''CRD-ACCT-'' + @DateToProcess, [FILE_NAME]) > 0;')",
+										"type": "Expression"
+									},
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"ordinal": "1"
+											},
+											"sink": {
+												"name": "SOURCE"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "2"
+											},
+											"sink": {
+												"name": "ACCTNUMBER"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "3"
+											},
+											"sink": {
+												"name": "ACCTTYPE"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "4"
+											},
+											"sink": {
+												"name": "CURRENCY"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "5"
+											},
+											"sink": {
+												"name": "ACCOUNTSTATUS"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "6"
+											},
+											"sink": {
+												"name": "CREDITLIMIT"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "7"
+											},
+											"sink": {
+												"name": "DATEOPEN"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "8"
+											},
+											"sink": {
+												"name": "DATEMODIFIED"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "9"
+											},
+											"sink": {
+												"name": "BRANCHCODE"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "10"
+											},
+											"sink": {
+												"name": "DATEGEN"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "11"
+											},
+											"sink": {
+												"name": "CUSTID"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME"
+											},
+											"sink": {
+												"name": "FILE_NAME"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm"
+											},
+											"sink": {
+												"name": "Insert_dttm"
+											}
+										},
+										{
+											"source": {
+												"name": "H"
+											},
+											"sink": {
+												"name": "H"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv_AML",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": "dev/decrypted/CRD",
+										"ColumnDelimiter": "|",
+										"FirstRowAsHeader": false,
+										"RowDelimiter": "\n",
+										"EncodingName": "UTF-8"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_CRD_ACCOUNTS"
+									}
+								}
+							]
+						},
+						{
+							"name": "End_CRD_ACCOUNTS_Success",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_CRD_ACCOUNTS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_CRD_ACCOUNTS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "SUCCESSFUL",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_CRD_ACCOUNTS",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "End_CRD_ACCOUNTS_Failed",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_CRD_ACCOUNTS",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_CRD_ACCOUNTS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "FAILED",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_CRD_ACCOUNTS",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Fail_CRD_ACCOUNTS_Copy",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "End_CRD_ACCOUNTS_Failed",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "Copy into D360.STG_CRD_ACCOUNTS failed. Review the Copy activity and OM task evidence.",
+								"errorCode": "AML_COPY_FAILED"
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "GetFile_CRD_ACCT_REL",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "IfFile_CRD_ACCOUNTS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv_AML",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('*CRD-ACCT-REL-', pipeline().parameters.DateToProcess, '*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/CRD",
+							"ColumnDelimiter": "|",
+							"FirstRowAsHeader": false,
+							"RowDelimiter": "\n",
+							"EncodingName": "UTF-8"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "RequireFileOrSkip_CRD_ACCT_REL",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "GetFile_CRD_ACCT_REL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(not(empty(activity('GetFile_CRD_ACCT_REL').output.childItems)), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_CRD_ACCT_REL_MissingFile",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "No source file matched @concat('*CRD-ACCT-REL-', pipeline().parameters.DateToProcess, '*') under dev/decrypted/CRD, and MissingFilePolicy is Fail.",
+								"errorCode": "AML_SOURCE_FILE_MISSING"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Accept_CRD_ACCT_REL_FilePolicy",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "IfFile_CRD_ACCT_REL",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "RequireFileOrSkip_CRD_ACCT_REL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@not(empty(activity('GetFile_CRD_ACCT_REL').output.childItems))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Skip_CRD_ACCT_REL_NoFile",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Start_CRD_ACCT_REL",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_START]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_CRD_ACCT_REL",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DateToProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Copy_CRD_ACCT_REL",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Start_CRD_ACCT_REL",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										},
+										{
+											"name": "H",
+											"value": "D"
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/CRD",
+										"wildcardFileName": {
+											"value": "@concat('*CRD-ACCT-REL-', pipeline().parameters.DateToProcess, '*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": {
+										"value": "@concat('DECLARE @DateToProcess varchar(8) = ''', replace(pipeline().parameters.DateToProcess, '''', ''''''), '''; IF LEN(@DateToProcess) <> 8 OR @DateToProcess LIKE ''%[^0-9]%'' OR TRY_CONVERT(date, @DateToProcess, 112) IS NULL THROW 50000, ''DateToProcess must be a valid yyyyMMdd date.'', 1; DELETE FROM [D360].[STG_CRD_ACCT_REL] WHERE CHARINDEX(''CRD-ACCT-REL-'' + @DateToProcess, [FILE_NAME]) > 0;')",
+										"type": "Expression"
+									},
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"ordinal": "1"
+											},
+											"sink": {
+												"name": "SOURCE"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "2"
+											},
+											"sink": {
+												"name": "ACCTNUMBER"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "3"
+											},
+											"sink": {
+												"name": "CUSTNUMBER"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "4"
+											},
+											"sink": {
+												"name": "RELATIONSHIP"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "5"
+											},
+											"sink": {
+												"name": "DATECREATED"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "6"
+											},
+											"sink": {
+												"name": "DATEMODIFIED"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "7"
+											},
+											"sink": {
+												"name": "CARDNUMBER"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "8"
+											},
+											"sink": {
+												"name": "RECORDFLAG"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "9"
+											},
+											"sink": {
+												"name": "DATEGEN"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "10"
+											},
+											"sink": {
+												"name": "CUSTOMERID"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME"
+											},
+											"sink": {
+												"name": "FILE_NAME"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm"
+											},
+											"sink": {
+												"name": "Insert_dttm"
+											}
+										},
+										{
+											"source": {
+												"name": "H"
+											},
+											"sink": {
+												"name": "H"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv_AML",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": "dev/decrypted/CRD",
+										"ColumnDelimiter": "|",
+										"FirstRowAsHeader": false,
+										"RowDelimiter": "\n",
+										"EncodingName": "UTF-8"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_CRD_ACCT_REL"
+									}
+								}
+							]
+						},
+						{
+							"name": "End_CRD_ACCT_REL_Success",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_CRD_ACCT_REL",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_CRD_ACCT_REL",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "SUCCESSFUL",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_CRD_ACCT_REL",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "End_CRD_ACCT_REL_Failed",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_CRD_ACCT_REL",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_CRD_ACCT_REL",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "FAILED",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_CRD_ACCT_REL",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Fail_CRD_ACCT_REL_Copy",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "End_CRD_ACCT_REL_Failed",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "Copy into D360.STG_CRD_ACCT_REL failed. Review the Copy activity and OM task evidence.",
+								"errorCode": "AML_COPY_FAILED"
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "GetFile_CRD_CUSTOMERS",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "IfFile_CRD_ACCT_REL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv_AML",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('*CRD-CUST-', pipeline().parameters.DateToProcess, '*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/CRD",
+							"ColumnDelimiter": "|",
+							"FirstRowAsHeader": false,
+							"RowDelimiter": "\n",
+							"EncodingName": "UTF-8"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "RequireFileOrSkip_CRD_CUSTOMERS",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "GetFile_CRD_CUSTOMERS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(not(empty(activity('GetFile_CRD_CUSTOMERS').output.childItems)), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_CRD_CUSTOMERS_MissingFile",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "No source file matched @concat('*CRD-CUST-', pipeline().parameters.DateToProcess, '*') under dev/decrypted/CRD, and MissingFilePolicy is Fail.",
+								"errorCode": "AML_SOURCE_FILE_MISSING"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Accept_CRD_CUSTOMERS_FilePolicy",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "IfFile_CRD_CUSTOMERS",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "RequireFileOrSkip_CRD_CUSTOMERS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@not(empty(activity('GetFile_CRD_CUSTOMERS').output.childItems))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Skip_CRD_CUSTOMERS_NoFile",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Start_CRD_CUSTOMERS",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_START]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_CRD_CUSTOMERS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DateToProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Copy_CRD_CUSTOMERS",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Start_CRD_CUSTOMERS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										},
+										{
+											"name": "H",
+											"value": "D"
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/CRD",
+										"wildcardFileName": {
+											"value": "@concat('*CRD-CUST-', pipeline().parameters.DateToProcess, '*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": {
+										"value": "@concat('DECLARE @DateToProcess varchar(8) = ''', replace(pipeline().parameters.DateToProcess, '''', ''''''), '''; IF LEN(@DateToProcess) <> 8 OR @DateToProcess LIKE ''%[^0-9]%'' OR TRY_CONVERT(date, @DateToProcess, 112) IS NULL THROW 50000, ''DateToProcess must be a valid yyyyMMdd date.'', 1; DELETE FROM [D360].[STG_CRD_CUSTOMERS] WHERE CHARINDEX(''CRD-CUST-'' + @DateToProcess, [FILE_NAME]) > 0;')",
+										"type": "Expression"
+									},
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"ordinal": "1"
+											},
+											"sink": {
+												"name": "CUSTOMERID"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "2"
+											},
+											"sink": {
+												"name": "CUSTOMERNUMBER"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "3"
+											},
+											"sink": {
+												"name": "CUSTOMERTYPE"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "4"
+											},
+											"sink": {
+												"name": "FIRSTNAME"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "5"
+											},
+											"sink": {
+												"name": "MIDDLENAME"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "6"
+											},
+											"sink": {
+												"name": "LASTNAME"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "7"
+											},
+											"sink": {
+												"name": "GENDER"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "8"
+											},
+											"sink": {
+												"name": "DATEOFBIRTH"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "9"
+											},
+											"sink": {
+												"name": "MARITALSTATUS"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "10"
+											},
+											"sink": {
+												"name": "NATIONALITY"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "11"
+											},
+											"sink": {
+												"name": "PRESENTADDRESS1"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "12"
+											},
+											"sink": {
+												"name": "PRESENTADDRESS2"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "13"
+											},
+											"sink": {
+												"name": "PRESENTADDRESS3"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "14"
+											},
+											"sink": {
+												"name": "NATUREOFBUSINESS"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "15"
+											},
+											"sink": {
+												"name": "OCCUPATION"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "16"
+											},
+											"sink": {
+												"name": "CONTACTNUMBER"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "17"
+											},
+											"sink": {
+												"name": "PLACEOFBIRTH"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "18"
+											},
+											"sink": {
+												"name": "IDTYPE"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "19"
+											},
+											"sink": {
+												"name": "IDNUMBER"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "20"
+											},
+											"sink": {
+												"name": "EMAILADD"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "21"
+											},
+											"sink": {
+												"name": "GENERATIONDATE"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME"
+											},
+											"sink": {
+												"name": "FILE_NAME"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm"
+											},
+											"sink": {
+												"name": "insert_dttm"
+											}
+										},
+										{
+											"source": {
+												"name": "H"
+											},
+											"sink": {
+												"name": "H"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv_AML",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": "dev/decrypted/CRD",
+										"ColumnDelimiter": "|",
+										"FirstRowAsHeader": false,
+										"RowDelimiter": "\n",
+										"EncodingName": "UTF-8"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_CRD_CUSTOMERS"
+									}
+								}
+							]
+						},
+						{
+							"name": "End_CRD_CUSTOMERS_Success",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_CRD_CUSTOMERS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_CRD_CUSTOMERS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "SUCCESSFUL",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_CRD_CUSTOMERS",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "End_CRD_CUSTOMERS_Failed",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_CRD_CUSTOMERS",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_CRD_CUSTOMERS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "FAILED",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_CRD_CUSTOMERS",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Fail_CRD_CUSTOMERS_Copy",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "End_CRD_CUSTOMERS_Failed",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "Copy into D360.STG_CRD_CUSTOMERS failed. Review the Copy activity and OM task evidence.",
+								"errorCode": "AML_COPY_FAILED"
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "GetFile_CRD_TRANSACTIONS",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "IfFile_CRD_CUSTOMERS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv_AML",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('*CRD-TXNS-', pipeline().parameters.DateToProcess, '*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/CRD",
+							"ColumnDelimiter": "|",
+							"FirstRowAsHeader": false,
+							"RowDelimiter": "\n",
+							"EncodingName": "UTF-8"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "RequireFileOrSkip_CRD_TRANSACTIONS",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "GetFile_CRD_TRANSACTIONS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(not(empty(activity('GetFile_CRD_TRANSACTIONS').output.childItems)), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_CRD_TRANSACTIONS_MissingFile",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "No source file matched @concat('*CRD-TXNS-', pipeline().parameters.DateToProcess, '*') under dev/decrypted/CRD, and MissingFilePolicy is Fail.",
+								"errorCode": "AML_SOURCE_FILE_MISSING"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Accept_CRD_TRANSACTIONS_FilePolicy",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "IfFile_CRD_TRANSACTIONS",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "RequireFileOrSkip_CRD_TRANSACTIONS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@not(empty(activity('GetFile_CRD_TRANSACTIONS').output.childItems))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Skip_CRD_TRANSACTIONS_NoFile",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Start_CRD_TRANSACTIONS",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_START]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_CRD_TRANSACTIONS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DateToProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Copy_CRD_TRANSACTIONS",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Start_CRD_TRANSACTIONS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										},
+										{
+											"name": "H",
+											"value": "D"
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/CRD",
+										"wildcardFileName": {
+											"value": "@concat('*CRD-TXNS-', pipeline().parameters.DateToProcess, '*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": {
+										"value": "@concat('DECLARE @DateToProcess varchar(8) = ''', replace(pipeline().parameters.DateToProcess, '''', ''''''), '''; IF LEN(@DateToProcess) <> 8 OR @DateToProcess LIKE ''%[^0-9]%'' OR TRY_CONVERT(date, @DateToProcess, 112) IS NULL THROW 50000, ''DateToProcess must be a valid yyyyMMdd date.'', 1; DELETE FROM [D360].[STG_CRD_TRANSACTIONS] WHERE CHARINDEX(''CRD-TXNS-'' + @DateToProcess, [FILE_NAME]) > 0;')",
+										"type": "Expression"
+									},
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"ordinal": "1"
+											},
+											"sink": {
+												"name": "SOURCE"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "2"
+											},
+											"sink": {
+												"name": "TXNDATE"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "3"
+											},
+											"sink": {
+												"name": "TXNREFNO"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "4"
+											},
+											"sink": {
+												"name": "TXNTYPE"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "5"
+											},
+											"sink": {
+												"name": "ACCTNUMBER"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "6"
+											},
+											"sink": {
+												"name": "CURRENCY"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "7"
+											},
+											"sink": {
+												"name": "TXNAMOUNT"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "8"
+											},
+											"sink": {
+												"name": "BRANCHCODE"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "9"
+											},
+											"sink": {
+												"name": "DATEGEN"
+											}
+										},
+										{
+											"source": {
+												"ordinal": "10"
+											},
+											"sink": {
+												"name": "CARDNUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME"
+											},
+											"sink": {
+												"name": "FILE_NAME"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm"
+											},
+											"sink": {
+												"name": "insert_dttm"
+											}
+										},
+										{
+											"source": {
+												"name": "H"
+											},
+											"sink": {
+												"name": "H"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv_AML",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": "dev/decrypted/CRD",
+										"ColumnDelimiter": "|",
+										"FirstRowAsHeader": false,
+										"RowDelimiter": "\n",
+										"EncodingName": "UTF-8"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_CRD_TRANSACTIONS"
+									}
+								}
+							]
+						},
+						{
+							"name": "End_CRD_TRANSACTIONS_Success",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_CRD_TRANSACTIONS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_CRD_TRANSACTIONS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "SUCCESSFUL",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_CRD_TRANSACTIONS",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "End_CRD_TRANSACTIONS_Failed",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_CRD_TRANSACTIONS",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_CRD_TRANSACTIONS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "FAILED",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_CRD_TRANSACTIONS",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Fail_CRD_TRANSACTIONS_Copy",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "End_CRD_TRANSACTIONS_Failed",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "Copy into D360.STG_CRD_TRANSACTIONS failed. Review the Copy activity and OM task evidence.",
+								"errorCode": "AML_COPY_FAILED"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"DateToProcess": {
+				"type": "String"
+			},
+			"ExecutionMode": {
+				"type": "String",
+				"defaultValue": "PlanOnly"
+			},
+			"MissingFilePolicy": {
+				"type": "String",
+				"defaultValue": "Fail"
+			}
+		},
+		"folder": {
+			"name": "AML_ETL/DecToStg"
+		},
+		"annotations": [
+			"AML",
+			"CRD",
+			"DecToStg",
+			"LIVE_PREFLIGHT_REQUIRED",
+			"MISSING_FILE_POLICY_CONFIGURABLE"
+		],
+		"lastPublishTime": "2026-07-31T05:25:12Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

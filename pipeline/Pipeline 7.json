@@ -1,0 +1,210 @@
+{
+	"name": "Pipeline 7",
+	"properties": {
+		"activities": [
+			{
+				"name": "DEP_CUSTOMCHANNELTRANSTABLE",
+				"type": "Copy",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT\n\tSTG.[ACCOUNT_NUMBER]\n\t,STG.[TRAN_DATETIME]\n\t,STG.[ATM_BANK_ID]\n\t,STG.[ATM_TERMINAL_ID]\n\t,STG.[COMMAND]\n\t,STG.[STAN]\n\t,STG.[TRAN_ID]\n\t,CONVERT(DATETIME2, STUFF(STUFF(STUFF([TRAN_DATE], 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) AS TRAN_DATE\n\t,STG.[PARTTRAN_NUM]\n\t,STG.[PARTTRAN_IND]\n\t,STG.[PARTTRAN_REM]\n\t,STG.[PARTTRAN_PART1]\n\t,STG.[PARTTRAN_PART2]\n\t,CONVERT(NUMERIC(20,4),ISNULL(NULLIF(REPLACE([TRAN_AMT],' ',''),''),0)) AS TRAN_AMT\n\t,STG.[SOURCE_APP_CODE]\n\t,STG.[ATM_CRD_NUM]\n\t,STG.[BILLER_CODE]\n\t,STG.[BILR_SUBR_NUM1]\n\t,STG.[BILR_SUBR_NUM2]\n\t,STG.[FREE_TEXT1]\n\t,STG.[FREE_TEXT2]\n\t,STG.[FREE_TEXT3]\n\t,STG.[FREE_TEXT4]\n\t,STG.[FREE_TEXT5]\n\t,STG.[TPS_USER]\n\t,STG.[TPS_TRANREF]\n\t,STG.[TPS_ACCNO]\n\t,STG.[TPS_ACCNAME]\n\t,STG.[TPS_TRAN_RMKS]\n\t,STG.[TPS_TRAN_DESC]\n\t,CONVERT(DATETIME2, STUFF(STUFF(STUFF(LCHG_TIME, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) AS LCHG_TIME\n\t,STG.[LCHG_USER_ID]\n\t,CONVERT(DATETIME2, STUFF(STUFF(STUFF(RCRE_TIME, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) AS RCRE_TIME\n\t,STG.[RCRE_USER_ID]\n\t,STG.[BANK_ID]\n\t,STG.[LAST6_ACC_NUM]\n\t,1 AS ISACTIVE\n\t,1 AS ISLATEST\n\t,LEFT(FILE_NAME, 5) AS BNK_CODE\n\t,SUBSTRING(FILE_NAME,7,3) AS SOURCE_CODE\n\t,FILE_NAME\n\t,CONVERT(DATE,STG.[INSERT_DTTM]) AS INSERT_DTTM\nFROM D360.STG_DEP_CUSTOMCHANNELTRANSTABLE STG\nWHERE H = 'D'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "SqlDWSink",
+						"allowPolyBase": true,
+						"polyBaseSettings": {
+							"rejectValue": 0,
+							"rejectType": "value",
+							"useTypeDefault": true
+						},
+						"disableMetricsCollection": false
+					},
+					"enableStaging": true,
+					"stagingSettings": {
+						"linkedServiceName": {
+							"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+							"type": "LinkedServiceReference"
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_DEP_CUSTOMCHANNELTRANSTABLE"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SQLPool_TGT",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "DEP_CUSTOMCHANNELTRANSTABLE"
+						}
+					}
+				]
+			},
+			{
+				"name": "ErrorExecutionLog_1",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "DEP_CUSTOMCHANNELTRANSTABLE",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@pipeline().TriggerTime",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": {
+								"value": "@activity('DEP_CUSTOMCHANNELTRANSTABLE').error.message",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": {
+								"value": "@activity('DEP_CUSTOMCHANNELTRANSTABLE').error.message",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "@concat('FAILED - ',activity('DEP_CUSTOMCHANNELTRANSTABLE').error.message)",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SuccessExecutionLog_1",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "DEP_CUSTOMCHANNELTRANSTABLE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@addHours(pipeline().TriggerTime,+8)",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "SUCCESS",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-03-31T10:50:13Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,20 @@
+{
+	"name": "bnkm_CustomerAccountLoanPayoff_lns",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "CREATE PROCEDURE BNKM.SP_CUSTOMERACCOUNTLOANPAYOFF_LNS\nAS\nBEGIN\n--GET DELTA FROM BUSC\nWITH TEMP_BNKM_CustomerAccountLoanPayoff\nAS(\nSELECT\nBLG.FORACID\n,BLL.BANK_ID\n,BLL.PAYOFF_DATE\n,BLL.PAYOFF_REASON_CODE\n,BLL.PAYOFF_FLG\n,BLLD.RECORD_STATUS\n,BLL.INSERT_DTTM\nFROM BUSC.LNS_LAACCTMAST_DELTA BLLD\nLEFT JOIN BUSC.LNS_LAACCTMAST BLL ON BLL.ACID = BLLD.ACID AND BLL.BANK_ID = BLLD.BANK_ID AND BLL.ISLATEST = '1'\nLEFT JOIN BUSC.LNS_GENERALACCTMAST BLG ON BLG.ACID = BLLD.ACID AND BLG.ISLATEST = '1' \nWHERE BLG.FORACID IS NOT NULL\n)\n\nSELECT * INTO #TEMP_BNKM_CustomerAccountLoanPayoff FROM TEMP_BNKM_CustomerAccountLoanPayoff;\n\n--CHECK IF THERE IS DELTA\n\nWITH TEMP_BNKM_CustomerAccountLoanPayoff_SRC\nAS\n(\nSELECT \nHASHBYTES('MD5',CONCAT(\nFORACID\n,BANK_ID\n,PAYOFF_DATE\n,PAYOFF_REASON_CODE\n,PAYOFF_FLG\n)) HASHROW, FORACID, RECORD_STATUS\nFROM #TEMP_BNKM_CustomerAccountLoanPayoff WHERE RECORD_STATUS = 'UPDATE'\n),\n\nTEMP_BNKM_CustomerAccountLoanPayoff_TGT\nAS(\nSELECT\nHASHBYTES('MD5',CONCAT(\nCustomerAccountId\n,FinancialInstitutionId\n,PayoffTimestamp\n,PayoffReasonCode\n,PayoffIndicator\n)) HASHROW, CustomerAccountId\nFROM BNKM.CustomerAccountLoanPayoff\n),\n\nTEMP_BNKM_CustomerAccountLoanPayoff_DELTA\nAS(\nSELECT\n    SRC.HASHROW AS SRC_HR\n    ,TGT.HASHROW AS TGT_HR\n    ,ISNULL(SRC.FORACID, TGT.CustomerAccountId) AS CustomerAccountId\n    ,CASE\n        WHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n        ELSE NULL END AS RECORD_STATUS\n\n    FROM TEMP_BNKM_CustomerAccountLoanPayoff_SRC SRC\n    FULL OUTER JOIN TEMP_BNKM_CustomerAccountLoanPayoff_TGT TGT\n    ON SRC.FORACID = TGT.CustomerAccountId\n    WHERE SRC.HASHROW <> TGT.HASHROW\n)\n\nSELECT * INTO #TEMP_BNKM_CustomerAccountLoanPayoff_DELTA FROM TEMP_BNKM_CustomerAccountLoanPayoff_DELTA;\n\nUPDATE TGT\nSET\nCustomerAccountId = SRC.FORACID\n,FinancialInstitutionId = SRC.BANK_ID\n,PayoffTimestamp = SRC.PAYOFF_DATE\n,PayoffReasonCode = SRC.PAYOFF_REASON_CODE\n,PayoffIndicator = SRC.PAYOFF_FLG\n,SOURCESYSTEMCODE = 'LNS'\n,WORKFLOWID = 0\n,TASKRUNID = 0\n,INSERTDTTM = SRC.INSERT_DTTM\nFROM BNKM.CustomerAccountLoanPayoff TGT\nJOIN #TEMP_BNKM_CustomerAccountLoanPayoff_DELTA DELTA ON DELTA.CustomerAccountId = TGT.CustomerAccountId AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_CustomerAccountLoanPayoff SRC ON SRC.FORACID = TGT.CustomerAccountId;\n\n\nINSERT INTO BNKM.CustomerAccountLoanPayoff\n(\n CustomerAccountId\n,FinancialInstitutionId\n,PayoffTimestamp\n,PayoffReasonCode\n,PayoffIndicator\n,SOURCESYSTEMCODE\n,WORKFLOWID\n,TASKRUNID\n,INSERTDTTM   \n)\n\nSELECT\nFORACID AS CustomerAccountId\n,BANK_ID AS FinancialInstitutionId\n,PAYOFF_DATE AS PayoffTimestamp\n,PAYOFF_REASON_CODE AS PayoffReasonCode\n,PAYOFF_FLG AS PayoffIndicator\n,'LNS' AS SOURCESYSTEMCODE\n,0 AS WORKFLOWID\n,0 AS TASKRUNID\n,INSERT_DTTM  AS INSERTDTTM\nFROM #TEMP_BNKM_CustomerAccountLoanPayoff\nWHERE RECORD_STATUS = 'INSERT'\n\nDROP TABLE #TEMP_BNKM_CustomerAccountLoanPayoff;\nDROP TABLE #TEMP_BNKM_CustomerAccountLoanPayoff_DELTA;\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

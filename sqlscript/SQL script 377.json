@@ -1,0 +1,20 @@
+{
+	"name": "SQL script 377",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "IF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'ACCTPROD_DEP') \nBEGIN\n   DROP TABLE DW.ACCTPROD_DEP;\nEND;\n\nWITH\nAccountProductSK AS (\n     SELECT ISNULL(MAX(AccountProductSK),0) RN FROM DW.DimAccountProduct\n)\n\n\nSELECT \nROW_NUMBER() OVER(ORDER BY (SELECT NULL)) + (SELECT RN FROM AccountProductSK) AS AccountProductSK\n,DDA.AccountSK AS AccountSK\n,BCAFP.CustomerAccountId AS AccountID\n,DDP.ProductSK AS ProductSK\n,CONVERT(VARCHAR,BCAFP.ProductID) AS ProductID\n,DDB.BankSK AS BankSK\n,DDBCH.BranchSK AS BranchSK\n,1 AS CurrentIndicator\n,GETDATE() AS ValidStartDate\n,'9999-01-01' AS ValidEndDate\n,BCAFP.SourceSystemCode AS SourceSystemCode\n,0 AS WorkFlowId\n,0 AS TaskRunId\n,GETDATE() AS InsertDttm    \nINTO DW.ACCTPROD_DEP             \nFROM (SELECT CustomerAccountId,ProductID,SourceSystemCode,FinancialInstitutionId FROM BNKM.CustomerAccountFinancialProduct WHERE SourceSystemCode = 'DEP' AND (PERIODENDDATE IS NULL OR  PERIODENDDATE = '1900-01-01') AND ProductId NOT LIKE ('09%') ) BCAFP\nJOIN DW.FINLPRODUCTAPP FPA ON CONVERT(VARCHAR,BCAFP.ProductId) = CONVERT(VARCHAR,FPA.FinancialProductId) AND BCAFP.FinancialInstitutionID = FPA.FinancialInstitutionId\nJOIN (SELECT BranchId,CustomerAccountId,FinancialInstitutionId,SourceSystemCode FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'DEP' ) BCA ON BCAFP.CustomerAccountId = BCA.CustomerAccountId AND BCAFP.FinancialInstitutionId = BCA.FinancialInstitutionId AND BCA.SourceSystemCode = BCAFP.SourceSystemCode\nLEFT JOIN DW.DimBank DDB ON CONVERT(VARCHAR,BCAFP.FinancialInstitutionId) = DDB.BankID\nLEFT JOIN DW.DimAccount DDA ON BCAFP.CustomerAccountId = DDA.AccountID AND DDB.BankSK = DDA.BankSK AND BCAFP.SourceSystemCode = DDA.SourceSystemCode AND DDA.CURRENTINDICATOR = 1\nLEFT JOIN DW.DimProduct DDP ON BCAFP.ProductID = DDP.ProductID AND DDP.BANKSK = DDB.BankSK AND BCAFP.SourceSystemCode = DDP.SourceSystemCode  AND DDP.CURRENTINDICATOR = 1\nLEFT JOIN DW.DimBranch DDBCH ON BCA.BranchId = DDBCH.BranchID AND DDBCH.CURRENTINDICATOR = 1\nwhere BCAFP.SourceSystemCode = 'DEP'\nAND FPA.FcbsApplicationId IN ('CAA', 'SBA', 'TDA')",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

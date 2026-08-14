@@ -1,0 +1,125 @@
+{
+	"name": "StgTo_EDS_RIB_MONITORINGLOGINHISTORYTABLE",
+	"properties": {
+		"activities": [
+			{
+				"name": "RIB_MONITORINGLOGINHISTORYTABLE_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": {
+							"value": "@concat('SELECT COUNT(1) CNT FROM D360.STG_EDS_',pipeline().parameters.tables,' WHERE H = ''D''')",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": {
+								"value": "@concat('STG_EDS_',pipeline().parameters.tables)",
+								"type": "Expression"
+							}
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "RIB_MONITORINGLOGINHISTORYTABLE_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('RIB_MONITORINGLOGINHISTORYTABLE_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "EDS_RIB_MONITORINGLOGINHISTORYTABLE",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "TestSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"parameters": [
+											{
+												"name": "DatetoProcessed",
+												"type": "Datetime",
+												"value": {
+													"value": "@pipeline().parameters.DatetoProcessed",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											}
+										],
+										"type": "Query",
+										"text": "DELETE FROM EDS.RIB_MONITORINGLOGINHISTORYTABLE WHERE AS_OF_DATE = CAST(@DatetoProcessed AS DATE);\r\n\r\nINSERT INTO EDS.RIB_MONITORINGLOGINHISTORYTABLE(\r\nAS_OF_DATE\r\n,ACTUAL_USER_ID\r\n,BANK_ID\r\n,CHANNEL_ID\r\n,DB_TS\r\n,IPADDRESS\r\n,LOGIN_TIME\r\n,LOGOFF_TIME\r\n,MSG_CODE\r\n,MSG_DESC\r\n,R_CRE_ID\r\n,R_CRE_TIME\r\n,R_MOD_ID\r\n,R_MOD_TIME\r\n,SESSION_ID\r\n,STATUS\r\n,USER_ID\r\n,USER_TYPE\r\n,isActive\r\n,isLatest\r\n,BNK_CODE\r\n,SOURCE_CODE\r\n,FILE_NAME\r\n,insert_dttm\r\n)\r\nSELECT \r\n@DatetoProcessed AS AS_OF_DATE\r\n,ACTUAL_USER_ID\r\n,BANK_ID\r\n,CHANNEL_ID\r\n,DB_TS\r\n,IPADDRESS\r\n,LOGIN_TIME\r\n,LOGOFF_TIME\r\n,MSG_CODE\r\n,MSG_DESC\r\n,R_CRE_ID\r\n,R_CRE_TIME\r\n,R_MOD_ID\r\n,R_MOD_TIME\r\n,SESSION_ID\r\n,STATUS\r\n,USER_ID\r\n,USER_TYPE\r\n,1\r\n,1\r\n,left(FILE_NAME, 5) as BNK_CODE\r\n,substring(FILE_NAME,7,3) as SOURCE_CODE\r\n,FILE_NAME\r\n,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATETIME) as insert_dttm\r\nFROM D360.STG_EDS_RIB_MONITORINGLOGINHISTORYTABLE\r\nWHERE H = 'D'\r\n"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"tables": {
+				"type": "string"
+			},
+			"DatetoProcessed": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-06-11T07:55:59Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

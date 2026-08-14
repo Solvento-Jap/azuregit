@@ -1,0 +1,116 @@
+{
+	"name": "EDS_DID_WMGLIST",
+	"properties": {
+		"activities": [
+			{
+				"name": "DID_WMGLIST_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT COUNT(1) CNT FROM D360.STG_EDS_DID_WMGLIST WHERE H = 'D'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_EDS_DID_WMGLIST"
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "DID_WMGLIST_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('DID_WMGLIST_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "DID_WMGLIST",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"parameters": [
+											{
+												"name": "DATETOPROCESS",
+												"type": "Datetime",
+												"value": {
+													"value": "@pipeline().parameters.DATETOPROCESS",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											}
+										],
+										"type": "NonQuery",
+										"text": "DELETE FROM EDS.DID_WMGLIST WHERE AS_OF_DATE = (SELECT TOP 1 CONVERT(DATE,LEFT(RIGHT(FILE_NAME, 12), 8)) FROM D360.STG_EDS_DID_WMGLIST);\n\nINSERT INTO EDS.DID_WMGLIST(\n     AS_OF_DATE\n    ,ACCOUNT_NUMBER\n    ,RM\n    ,CLUSTER\n    ,FCBS_CUSTOMER_ID\n    ,BNK_CODE\n    ,SOURCE_CODE\n    ,ACCOUNT_NUMBER_UNMASKED\n    ,FILE_NAME\n    ,INSERT_DTTM\n)\nSELECT\n    CAST(LEFT(RIGHT(FILE_NAME,12),8) AS DATE) AS AS_OF_DATE\n    ,ACCOUNT_NUMBER\n    ,RM\n    ,CLUSTER\n    ,FCBS_CUSTOMER_ID\n    ,left(FILE_NAME, 5) as BNK_CODE\n    ,substring(FILE_NAME,7,3) as SOURCE_CODE\n    ,ACCOUNT_NUMBER_UNMASKED\n    ,FILE_NAME\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATETIME) as insert_dttm\nFROM D360.STG_EDS_DID_WMGLIST\nWHERE H = 'D';"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"DATETOPROCESS": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-09-09T02:15:56Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

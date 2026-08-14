@@ -1,0 +1,669 @@
+{
+	"name": "DecToStg_EDS_CRM_CUSTOMER_WEEKEND",
+	"properties": {
+		"activities": [
+			{
+				"name": "CRM_CUSTOMER_getfile_CBC01",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('CBC01_',pipeline().parameters.tables,'_*',pipeline().parameters.DateToProcess,'*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/CRM"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "If Condition",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "CRM_CUSTOMER_getfile_CBC01",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "CRM_CUSTOMER_getfile_CBC02",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@empty(activity('CRM_CUSTOMER_getfile_CBC01').output.childItems)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "CRM_CUSTOMER",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/CRM",
+										"wildcardFileName": {
+											"value": "@concat('*',pipeline().parameters.tables,'_*',pipeline().parameters.DateToProcess,'*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"allowCopyCommand": true,
+									"tableOption": "autoCreate",
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									},
+									"path": "data360/dev/stg_synapse",
+									"enableCompression": true
+								},
+								"enableSkipIncompatibleRow": true,
+								"logSettings": {
+									"enableCopyActivityLog": true,
+									"copyActivityLogSettings": {
+										"logLevel": "Warning",
+										"enableReliableLogging": true
+									},
+									"logLocationSettings": {
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+											"type": "LinkedServiceReference"
+										},
+										"path": {
+											"value": "@concat('data360/dev/Logging/CRM/CRM_CUSTOMER/',substring(replace(replace(replace(addHours(utcnow(),+8),'-',''),'T','_'),':',''),0,15))",
+											"type": "Expression"
+										}
+									}
+								},
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "H",
+												"type": "String"
+											},
+											"sink": {
+												"name": "H",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CIF_ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CIF_ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ROLE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ROLE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CIF_TYPE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CIF_TYPE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SALE_CUST_TMDATE",
+												"type": "DateTime",
+												"format": "yyyyMMddHHmmss"
+											},
+											"sink": {
+												"name": "SALE_CUST_TMDATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "SALESID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SALESID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "BANK_ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BANK_ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCBRANCHCODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACCBRANCHCODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCOUNTNUMBER",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACCOUNTNUMBER",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "PRODCATID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PRODCATID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "PRODUCTID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PRODUCTID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "PRODUCTTYPE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PRODUCTTYPE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "PRODUCTSKEY",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PRODUCTSKEY",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "APPLCURRENCY",
+												"type": "String"
+											},
+											"sink": {
+												"name": "APPLCURRENCY",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "APPLCREATIONDATE",
+												"type": "DateTime",
+												"format": "yyyyMMddHHmmss"
+											},
+											"sink": {
+												"name": "APPLCREATIONDATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCESSOWNERBC",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACCESSOWNERBC",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCESSOWNERAGENT",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACCESSOWNERAGENT",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SALES_TMDATE",
+												"type": "DateTime",
+												"format": "yyyyMMddHHmmss"
+											},
+											"sink": {
+												"name": "SALES_TMDATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "AMOUNT1",
+												"type": "String"
+											},
+											"sink": {
+												"name": "AMOUNT1",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "AMOUNT2",
+												"type": "String"
+											},
+											"sink": {
+												"name": "AMOUNT2",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCOUNTOPENINGDATE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACCOUNTOPENINGDATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCOUNTCLOSINGDATE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACCOUNTCLOSINGDATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCOUNTSTATUS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACCOUNTSTATUS",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCSHORTNAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACCSHORTNAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SALE_BACKEND_TMDATE",
+												"type": "DateTime",
+												"format": "yyyyMMddHHmmss"
+											},
+											"sink": {
+												"name": "SALE_BACKEND_TMDATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "GAM_ACID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "GAM_ACID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "LAST6_ACCT_NUM",
+												"type": "String"
+											},
+											"sink": {
+												"name": "LAST6_ACCT_NUM",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FILE_NAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm",
+												"type": "String"
+											},
+											"sink": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": " "
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": {
+											"value": "@concat('STG_EDS_',pipeline().parameters.tables,'_WEEKEND')",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "SP_LOG_COPY_ACTIVITY_DTL",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "CRM_CUSTOMER",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_LOG_COPY_ACTIVITY_DTL]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS_STG",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DatetoProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"dataread": {
+										"value": {
+											"value": "@activity('CRM_CUSTOMER').output.dataRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"datawritten": {
+										"value": {
+											"value": "@activity('CRM_CUSTOMER').output.dataWritten",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"filesread": {
+										"value": {
+											"value": "@activity('CRM_CUSTOMER').output.filesRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"sourcepeakconnections": {
+										"value": {
+											"value": "@activity('CRM_CUSTOMER').output.sourcePeakConnections",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsread": {
+										"value": {
+											"value": "@activity('CRM_CUSTOMER').output.rowsRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowscopied": {
+										"value": {
+											"value": "@activity('CRM_CUSTOMER').output.rowsCopied",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsskipped": {
+										"value": {
+											"value": "@activity('CRM_CUSTOMER').output.rowsSkipped",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"copyduration": {
+										"value": {
+											"value": "@activity('CRM_CUSTOMER').output.copyDuration",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"throughput": {
+										"value": {
+											"value": "@activity('CRM_CUSTOMER').output.throughput",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"redirectrowpath": {
+										"value": {
+											"value": "@activity('CRM_CUSTOMER').output.redirectRowPath",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"logfilepath": {
+										"value": {
+											"value": "@activity('CRM_CUSTOMER').output.logFilePath",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "File not found for CRM_CUSTOMER",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": {
+									"value": "File not found: CRM_CUSTOMER",
+									"type": "Expression"
+								},
+								"errorCode": {
+									"value": "404",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CRM_CUSTOMER_getfile_CBC02",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('CBC02_',pipeline().parameters.tables,'_*',pipeline().parameters.DateToProcess,'*')",
+								"type": "Expression"
+							},
+							"SourceCode": {
+								"value": "dev/decrypted/CRM",
+								"type": "Expression"
+							}
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			}
+		],
+		"parameters": {
+			"DateToProcess": {
+				"type": "string"
+			},
+			"tables": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-09-20T00:27:37Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,88 @@
+{
+	"name": "Patch_CoreCustomerAccountRelatedLimitLiability",
+	"properties": {
+		"activities": [
+			{
+				"name": "ALTER SP_CoreCustomerAccountRelatedLimitLiability_DEP",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CoreCustomerAccountRelatedLimitLiability_DEP] AS\r\nBEGIN\r\n\r\n\r\n--GET DELTA FROM BUSC\r\nWITH TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability\r\nAS(\r\nSELECT\r\nBDG.FORACID AS CustomerAccountId \r\n,BDG.BANK_ID AS FinancialInstitutionId \r\n,BDG.LCHG_TIME AS PeriodStartTimestamp \r\n,'9999-12-31' AS PeriodEndTimestamp \r\n,BDG.LIMIT_B2KID AS LimitB2KId \r\n,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS [InsertDttm]\r\n,'DEP' AS SOURCESYSTEMCODE\r\nFROM BUSC.DEP_GENERALACCOUNTMASTER BDG\r\nWHERE BDG.isLatest = 1\r\n)\r\nSELECT * INTO #TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability FROM TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability;\r\n\r\n--CHECK IF THERE IS DELTA\r\nWITH TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_SRC\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5', CONCAT(\r\nconvert(varchar,CustomerAccountId)\r\n,convert(varchar,FinancialInstitutionId)\r\n,convert(varchar,LimitB2KId)\r\n)) HASHROW, CustomerAccountId, FinancialInstitutionId, SourceSystemCode\r\nFROM #TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability \r\n),\r\n\r\nTEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_TGT\r\nAS(\r\nSELECT\r\nHASHBYTES('MD5', CONCAT(\r\nconvert(varchar,CustomerAccountId)\r\n,convert(varchar,FinancialInstitutionId)\r\n,convert(varchar,LimitB2KId)\r\n)) HASHROW, CustomerAccountId, FinancialInstitutionId,   SourceSystemCode\r\nFROM BNKM.CoreCustomerAccountRelatedLimitLiability\r\nWHERE SOURCESYSTEMCODE = 'DEP' AND PeriodEndTimestamp = '9999-12-31'\r\n),\r\n\r\nTEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_DELTA\r\nAS(\r\nSELECT\r\nSRC.HASHROW AS SRC_HR\r\n,TGT.HASHROW AS TGT_HR\r\n,ISNULL(SRC.CustomerAccountId,TGT.CustomerAccountId) AS CustomerAccountId\r\n,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\r\n,CASE\r\n     WHEN TGT.HASHROW IS NULL THEN 'INSERT'\r\n    WHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n    ELSE NULL END AS RECORD_STATUS\r\n\r\nFROM TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_SRC SRC\r\nLEFT JOIN TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_TGT TGT\r\nON SRC.CustomerAccountId = TGT.CustomerAccountId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\r\n)\r\nSELECT * INTO #TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_DELTA FROM TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_DELTA;\r\n\r\n--UPDATE RECORDS TO BNKM\r\nUPDATE TGT\r\nSET\r\nPeriodEndTimestamp =  CONVERT(DATE,DATEADD(day,-1,CONVERT(VARCHAR,SRC.PeriodStartTimestamp))) \r\n\r\nFROM BNKM.CoreCustomerAccountRelatedLimitLiability TGT\r\nJOIN #TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_DELTA DELTA ON DELTA.CUSTOMERACCOUNTID = TGT.CUSTOMERACCOUNTID\r\n     AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId\r\n      AND DELTA.SourceSystemCode = TGT.SourceSystemCode\r\n     AND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability SRC ON SRC.CUSTOMERACCOUNTID = TGT.CUSTOMERACCOUNTID\r\n     AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\n     AND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE TGT.PeriodEndTimestamp = '9999-12-31'\r\n\r\n\r\n--INSERT RECORDS TO BNKM\r\nINSERT INTO BNKM.CoreCustomerAccountRelatedLimitLiability\r\n(\r\nCustomerAccountId\r\n,FinancialInstitutionId\r\n,PeriodStartTimestamp\r\n,PeriodEndTimestamp\r\n,LimitB2KId\r\n,SOURCESYSTEMCODE\r\n,WORKFLOWID\r\n,TASKRUNID\r\n,INSERTDTTM\r\n)\r\n\r\nSELECT\r\nSRC.CustomerAccountId AS CustomerAccountId \r\n,SRC.FinancialInstitutionId AS FinancialInstitutionId \r\n,SRC.PeriodStartTimestamp AS PeriodStartTimestamp \r\n,'9999-12-31' AS PeriodEndTimestamp \r\n,SRC.LimitB2KId AS LimitB2KId \r\n,'DEP' AS SOURCESYSTEMCODE \r\n,0 AS WORKFLOWID \r\n,0 AS TASKRUNID \r\n,SRC.INSERTDTTM AS INSERTDTTM \r\nFROM #TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability SRC\r\nJOIN #TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_DELTA DELTA \r\nON DELTA.CUSTOMERACCOUNTID = SRC.CUSTOMERACCOUNTID \r\nAND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId \r\nAND DELTA.SourceSystemCode = SRC.SourceSystemCode \r\nWHERE RECORD_STATUS in ('UPDATE','INSERT');\r\n\r\nDROP TABLE #TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability;\r\nDROP TABLE #TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_DELTA;\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ALTER SP_CoreCustomerAccountRelatedLimitLiability_LNS",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CoreCustomerAccountRelatedLimitLiability_LNS] AS\r\nBEGIN\r\n---------------GET DELTA FROM BUSC\r\nWITH TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability\r\nAS(\r\n\tSELECT \r\n\tBLG.FORACID AS CustomerAccountId\r\n\t,BLG.LCHG_TIME AS PeriodStartTimestamp\r\n\t,'9999-12-31' AS PeriodEndTimestamp\r\n\t,BLG.LIMIT_B2KID AS LimitB2KId\r\n\t,BLG.BANK_ID AS FinancialInstitutionId\r\n\t,'LNS' AS SourceSystemCode\r\n\t,0 AS TaskRunId\r\n\t,0 AS WorkFlowId\r\n\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS [InsertDttm]\r\nFROM BUSC.LNS_GENERALACCTMAST BLG\r\nWHERE BLG.ISLATEST = 1\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability FROM TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability;\r\n\r\n-------------CHECK IF THERE IS DELTA \r\nWITH\r\nTEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_SRC\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nconvert(varchar,CustomerAccountId)\r\n,convert(varchar,LimitB2KId)\r\n,convert(varchar,FinancialInstitutionId)\r\n)) HASHROW, CustomerAccountId, FinancialInstitutionId,  SourceSystemCode\r\nFROM #TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability \r\n)\r\n,\r\nTEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_TGT\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nconvert(varchar,CustomerAccountId)\r\n,convert(varchar,LimitB2KId)\r\n,convert(varchar,FinancialInstitutionId)\r\n)) HASHROW, CustomerAccountId, FinancialInstitutionId,  SourceSystemCode\r\nFROM BNKM.CoreCustomerAccountRelatedLimitLiability WHERE SOURCESYSTEMCODE = 'LNS' AND PeriodEndTimestamp = '9999-12-31'\r\n)\r\n,\r\nTEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_DELTA\r\nAS\r\n(\r\nSELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n\t,ISNULL(SRC.CustomerAccountId,TGT.CustomerAccountId) AS CustomerAccountId\r\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n\t,ISNULL(SRC.SOURCESYSTEMCODE,TGT.SOURCESYSTEMCODE) AS SOURCESYSTEMCODE\r\n\t,CASE\r\n\t\tWHEN TGT.HASHROW IS NULL THEN 'INSERT'\r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\tELSE NULL END AS RECORD_STATUS\r\n\t\r\nFROM TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_SRC SRC\r\nLEFT JOIN TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_TGT TGT\r\nON SRC.CustomerAccountId = TGT.CustomerAccountId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SOURCESYSTEMCODE = TGT.SOURCESYSTEMCODE\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\r\n)\r\nSELECT * INTO #TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_DELTA FROM TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_DELTA;\r\n\r\n----UPDATE RECORDS to BNKM\r\nUPDATE TGT \r\nSET\r\nPeriodEndTimestamp =  CONVERT(DATE,DATEADD(day,-1,CONVERT(VARCHAR,SRC.PeriodStartTimestamp))) \r\nFROM BNKM.CoreCustomerAccountRelatedLimitLiability TGT\r\nJOIN #TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_DELTA DELTA ON DELTA.CUSTOMERACCOUNTID = TGT.CUSTOMERACCOUNTID\r\n     AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId\r\n\t AND DELTA.SOURCESYSTEMCODE = TGT.SOURCESYSTEMCODE\r\n     AND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability SRC ON SRC.CUSTOMERACCOUNTID = TGT.CUSTOMERACCOUNTID\r\n     AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\n\t AND SRC.SOURCESYSTEMCODE = TGT.SOURCESYSTEMCODE\r\nWHERE TGT.PeriodEndTimestamp = '9999-12-31'\r\n\r\n\r\n\r\n-------INSERT RECORDS TO BNKM\r\nINSERT INTO BNKM.CoreCustomerAccountRelatedLimitLiability  ( \r\nCustomerAccountId\r\n,PeriodStartTimestamp\r\n,PeriodEndTimestamp\r\n,LimitB2KId\r\n,FinancialInstitutionId\r\n,SourceSystemCode\r\n,TaskRunId\r\n,WorkFlowId\r\n,InsertDttm)\r\n\r\nSELECT\r\nSRC.CustomerAccountId AS CustomerAccountId\r\n,CONVERT(DATE,CONVERT(VARCHAR,SRC.PeriodStartTimestamp)) AS PeriodStartTimestamp\r\n,'9999-12-31' AS PeriodEndTimestamp\r\n,SRC.LimitB2KId AS LimitB2KId\r\n,SRC.FinancialInstitutionId AS FinancialInstitutionId\r\n,'LNS' AS SourceSystemCode\r\n,0 AS TaskRunId\r\n,0 AS WorkFlowId\r\n,SRC.InsertDttm AS InsertDttm\r\nFROM #TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability SRC\r\nJOIN #TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_DELTA DELTA \r\nON DELTA.CUSTOMERACCOUNTID = SRC.CUSTOMERACCOUNTID \r\nAND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId \r\nAND DELTA.SOURCESYSTEMCODE = SRC.SOURCESYSTEMCODE \r\nWHERE RECORD_STATUS in ('UPDATE','INSERT');\r\n\r\nDROP TABLE #TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability;\r\nDROP TABLE #TEMP_BNKM_CoreCustomerAccountRelatedLimitLiability_DELTA;\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Execute Patch",
+				"type": "ExecutePipeline",
+				"dependsOn": [],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Patch",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"table": "BNKM.CoreCustomerAccountRelatedLimitLiability",
+						"col": "PeriodEndTimestamp"
+					}
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-02-20T01:35:59Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

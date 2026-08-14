@@ -1,0 +1,20 @@
+{
+	"name": "dw_DimInstitutionalBankingGroupList",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nALTER PROC [DW].[SP_DW_DimInstitutionalBankingGroupList] AS BEGIN\n\n\t\t\t\nWITH IBGLIST_SK\nAS(\nSELECT ISNULL(MAX(InstitutionalBankingGroupListSK),0) RN FROM DW.DimInstitutionalBankingGroupList\n\n)\n,\nTEMP_DW_DimInstitutionalBankingGroupList\nAS (\nSELECT\nROW_NUMBER() OVER(ORDER BY (SELECT NULL)) + (SELECT RN FROM IBGLIST_SK) AS InstitutionalBankingGroupListSK\n, * from ( \n\t\tSELECT\n\t\tDDW.CustomerSK\n\t\t,BIL.CustomerID\n\t\t,BIL.BusinessUnit\n\t\t,1 AS CurrentIndicator\n\t\t,Getdate() AS ValidStartDate\n        ,'9999-12-31' AS ValidEndDate\n\t\t,BIL.SourceSystemCode\n\t\t,0 AS WorkFlowId\n\t\t,0 AS TaskRunId\n\t\t,Getdate() AS InsertDttm\n\t\tFROM BNKM.InstitutionalBankingGroupList BIL\n\t\tLEFT JOIN DW.DimCustomer DDW ON BIL.CustomerId = DDW.CustomerID\n\t\tWHERE BIL.PeriodEndDate = '9999-12-31'\n        ) A\n)\n\n\nSELECT * INTO #TEMP_DW_DimInstitutionalBankingGroupList FROM TEMP_DW_DimInstitutionalBankingGroupList;\n\nWITH\nTEMP_DW_DimInstitutionalBankingGroupList_SRC\nAS(\n    SELECT HASHBYTES('MD5',CONCAT(\n\tCONVERT(VARCHAR,CustomerSK)\n\t,CONVERT(VARCHAR,CustomerID)\n\t,CONVERT(VARCHAR,BusinessUnit)\n\t,CONVERT(VARCHAR,SourceSystemCode)\n\t)) HASHROW, CustomerSK, CustomerID \n    FROM #TEMP_DW_DimInstitutionalBankingGroupList\n)\n,\nTEMP_DW_DimInstitutionalBankingGroupList_TGT\nAS(\n    SELECT HASHBYTES('MD5',CONCAT(\n\tCONVERT(VARCHAR,CustomerSK)\n\t,CONVERT(VARCHAR,CustomerID)\n\t,CONVERT(VARCHAR,BusinessUnit)\n\t,CONVERT(VARCHAR,SourceSystemCode)\n\t)) HASHROW, CustomerSK, CustomerID \n    FROM DW.DimInstitutionalBankingGroupList  WHERE CurrentIndicator = 1\n)\n,\nTEMP_DW_DimInstitutionalBankingGroupList_DELTA\nAS\n(\n    SELECT\t\n\tSRC.HASHROW AS SRC_HR\n\t,TGT.HASHROW AS TGT_HR\n    ,ISNULL(SRC.CustomerSK,TGT.CustomerSK) AS CustomerSK\n\t,ISNULL(SRC.CustomerID,TGT.CustomerID) AS CustomerID\n\t,CASE\n\t\tWHEN TGT.CustomerSK IS NULL AND TGT.CustomerID IS NULL THEN 'INSERT'\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n        ELSE NULL END AS RECORD_STATUS\n\t\nFROM TEMP_DW_DimInstitutionalBankingGroupList_SRC SRC\nFULL OUTER JOIN TEMP_DW_DimInstitutionalBankingGroupList_TGT\tTGT\nON\tSRC.CustomerSK = TGT.CustomerSK\nAND SRC.CustomerID = TGT.CustomerID\nWHERE SRC.HASHROW <> TGT.HASHROW --OR (TGT.CustomerSK IS NULL AND TGT.CustomerID IS NULL)\nOR TGT.HASHROW IS NULL\n)\n--SELECT *  FROM TEMP_DW_DimInstitutionalBankingGroupList_DELTA\n--WHERE RECORD_STATUS = 'UPDATE';\n\nSELECT * INTO #TEMP_DW_DimInstitutionalBankingGroupList_DELTA FROM TEMP_DW_DimInstitutionalBankingGroupList_DELTA;\n\n\n\n--------UPDATE\nUPDATE TGT \nSET\n    ValidEndDate = GETDATE()\n    ,CurrentIndicator = 0\nFROM DW.DimInstitutionalBankingGroupList TGT\nJOIN #TEMP_DW_DimInstitutionalBankingGroupList_DELTA DELTA ON DELTA.CustomerSK = TGT.CustomerSK  AND DELTA.CustomerID = TGT.CustomerID AND  DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_DW_DimInstitutionalBankingGroupList SRC ON SRC.CustomerSK = TGT.CustomerSK AND SRC.CustomerID = TGT.CustomerID\nWHERE TGT.CurrentIndicator = 1;\n\n\nINSERT INTO DW.DimInstitutionalBankingGroupList (\n\tInstitutionalBankingGroupListSK\n\t,CustomerSK\n\t,CustomerID\n\t,BusinessUnit\n\t,CurrentIndicator\n\t,ValidStartDate\n\t,ValidEndDate\n\t,SourceSystemCode\n\t,WorkFlowId\n\t,TaskRunId\n\t,InsertDttm)\nSELECT\n\tInstitutionalBankingGroupListSK\n\t,SRC.CustomerSK\n\t,SRC.CustomerID\n\t,BusinessUnit\n\t,CurrentIndicator\n\t,ValidStartDate\n\t,ValidEndDate\n\t,SourceSystemCode\n\t,WorkFlowId\n\t,TaskRunId\n\t,InsertDttm\nFROM #TEMP_DW_DimInstitutionalBankingGroupList SRC\nJOIN #TEMP_DW_DimInstitutionalBankingGroupList_DELTA DELTA ON DELTA.CustomerSK = SRC.CustomerSK  AND DELTA.CustomerID = SRC.CustomerID AND  DELTA.RECORD_STATUS IN ('UPDATE','INSERT');\n\nEND\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

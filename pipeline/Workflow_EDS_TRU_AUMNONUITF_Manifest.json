@@ -1,0 +1,1080 @@
+{
+	"name": "Workflow_EDS_TRU_AUMNONUITF_Manifest",
+	"properties": {
+		"activities": [
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(variables('V_endDate')),ticks(variables('V_startDate'))),864000000000),1))\n",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append Process Date",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Iterate Execution of Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "OM_SRC_CHECK",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Condition Success Count",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@replace(substring(item(),0,10),'-','')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Manifest_file",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Workflow_Manifest",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"MaxPipelineCalls": 5,
+									"RetryInterval": 120,
+									"DatetoProcessed": {
+										"value": "@substring(item(),0,10)",
+										"type": "Expression"
+									},
+									"tables": {
+										"value": "@concat('''',pipeline().parameters.tables,'''')",
+										"type": "Expression"
+									},
+									"EndTime": "07:00",
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "Get Success Count",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_STG_EDS_',pipeline().parameters.tables,''',''EDS_STG'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Manifest_file",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "END_TASK_STG_EDS_SUCCESSFUL",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_TRU_AUMNONUITF",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												},
+												"tablename": {
+													"value": {
+														"value": "@concat('D360.STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_STG_EDS_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_TRU_AUMNONUITF",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												},
+												"tablename": {
+													"value": {
+														"value": "@concat('D360.STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "START_TASK_STG_EDS",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "Onprem",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_STG_EDS",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "OnPremToADLS_EDS_v2",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"DatetoProcessed": {
+													"value": "@replace(substring(item(),0,10),'-','')",
+													"type": "Expression"
+												},
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												},
+												"src_sys": {
+													"value": "@pipeline().parameters.src_sys",
+													"type": "Expression"
+												},
+												"Bank_ID": {
+													"value": "@pipeline().parameters.Bank_id",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "PGP Decrypt",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "Onprem",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "PGPDecrypt_EDS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												},
+												"src_sys": {
+													"value": "@pipeline().parameters.src_sys",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "DecToStg_TRU_AUMNONUITF",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "Truncate Staging",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "DecToStg_EDS_TRU_AUMNONUITF",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"DateToProcess": {
+													"value": "@replace(substring(item(),0,10),'-','')",
+													"type": "Expression"
+												},
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												},
+												"Bank_id": {
+													"value": "@pipeline().parameters.Bank_id",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "MovToArchive",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_TRU_AUMNONUITF",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "MovToArchive_EDS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												},
+												"src_sys": {
+													"value": "@pipeline().parameters.src_sys",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "Truncate Staging",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "PGP Decrypt",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 3,
+											"retryIntervalInSeconds": 60,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"type": "NonQuery",
+													"text": {
+														"value": "@concat('TRUNCATE TABLE d360.STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													}
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									},
+									{
+										"name": "Hashlog_TRU_AUMNONUITF",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_TRU_AUMNONUITF",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "TestSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"parameters": [
+														{
+															"name": "HashLog_SQL",
+															"type": "String",
+															"value": {
+																"value": "@pipeline().parameters.HashLog_SQL",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														}
+													],
+													"type": "Query",
+													"text": "EXEC sp_executesql @HashLog_SQL;"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "Get Success Count EDS",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "OM_SRC_CHECK",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_EDS_',pipeline().parameters.tables,''',''EDS'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count EDS",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count EDS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count EDS').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "START_TASK_EDS",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_SUCCESSFUL",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_TRU_AUMNONUITF",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_TRU_AUMNONUITF",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "EDS_TRU_AUMNONUITF",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_EDS",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "TestSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"parameters": [
+														{
+															"name": "EDS_SQL",
+															"type": "String",
+															"value": {
+																"value": "@pipeline().parameters.EDS_SQL",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														}
+													],
+													"type": "Query",
+													"text": "EXEC sp_executesql @EDS_SQL;"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('select fulldate\nfrom \n    eds.eds_ctl ect\ninner join \n    eds.date_dim dd\n    on \n    ect.',pipeline().parameters.src_sys,'_DATE=dd.previous_business_day\n    and dd.business_day_flag=''Y''')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"tables": {
+				"type": "string",
+				"defaultValue": "TRU_AUMNONUITF"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "TRU"
+			},
+			"Bank_id": {
+				"type": "string",
+				"defaultValue": "CBC01"
+			},
+			"HashLog_SQL": {
+				"type": "string",
+				"defaultValue": "WITH CTE1 AS (     SELECT          CONVERT(NUMERIC(25,5), COUNT(*)) AS COUNT_tgt,         ISNULL(SUM(INVESTMENT_AMT),0) AS INVESTMENT_AMT_tgt,         ISNULL(SUM(HOLDING_UNITS),0) AS HOLDING_UNITS_tgt,         ISNULL(SUM(CURRENT_VALUE),0) AS CURRENT_VALUE_tgt,         ISNULL(SUM(REVENUE),0) AS REVENUE_tgt,         ISNULL(SUM(VOLUME),0) AS VOLUME_tgt,         ISNULL(SUM(SEC_PRICE),0) AS SEC_PRICE_tgt,         ISNULL(SUM(CURRENT_VALUE_BR_CCY),0) AS CURRENT_VALUE_BR_CCY_tgt,         ISNULL(SUM(REVENUE_BR_CCY),0) AS REVENUE_BR_CCY_tgt,         ISNULL(SUM(BOOK_RATE),0) AS BOOK_RATE_tgt,         ISNULL(SUM(MATURITY_AMT),0) AS MATURITY_AMT_tgt,         ISNULL(SUM(INT_RATE),0) AS INT_RATE_tgt,         ISNULL(SUM(EARMARK_VALUE),0) AS EARMARK_VALUE_tgt,         ISNULL(SUM(PREV_CURRENT_VALUE),0) AS PREV_CURRENT_VALUE_tgt,         ISNULL(SUM(PREV_CURRENT_VALUE_BR_CCY),0) AS PREV_CURRENT_VALUE_BR_CCY_tgt,         ISNULL(SUM(PREV_REVENUE),0) AS PREV_REVENUE_tgt,         ISNULL(SUM(PREV_REVENUE_BR_CCY),0) AS PREV_REVENUE_BR_CCY_tgt,         ISNULL(SUM(ACCRUED_INTEREST),0) AS ACCRUED_INTEREST_tgt,         ISNULL(SUM(ACCRUED_INTEREST_BR_CCY),0) AS ACCRUED_INTEREST_BR_CCY_tgt,         ISNULL(SUM(AVG_PRICE),0) AS AVG_PRICE_tgt,         ISNULL(SUM(AVG_PRICE_INCLUDING_FEE),0) AS AVG_PRICE_INCLUDING_FEE_tgt,         ISNULL(SUM(BOOK_RATE_BASE),0) AS BOOK_RATE_BASE_tgt,         ISNULL(SUM(P1_UN_REALIZED_GAIN),0) AS P1_UN_REALIZED_GAIN_tgt,         ISNULL(SUM(POSN_SEQ_NBR),0) AS POSN_SEQ_NBR_tgt,         ISNULL(SUM(ANL_PCT_RT),0) AS ANL_PCT_RT_tgt,         ISNULL(SUM(COMT_AMT),0) AS COMT_AMT_tgt,         ISNULL(SUM(CURR_YLD_PCT),0) AS CURR_YLD_PCT_tgt,         ISNULL(SUM(DIST_TILL_DT_AMT),0) AS DIST_TILL_DT_AMT_tgt,         ISNULL(SUM(ESTIMATED_ANL_INCM_AM),0) AS ESTIMATED_ANL_INCM_AM_tgt,         ISNULL(SUM(DAILY_INT_ACCR_AMT),0) AS DAILY_INT_ACCR_AMT_tgt,         ISNULL(SUM(TOT_AVL_BAL_AMT),0) AS TOT_AVL_BAL_AMT_tgt,         ISNULL(SUM(OUTSTANDING_STRIPS),0) AS OUTSTANDING_STRIPS_tgt,         ISNULL(SUM(MONTHLY_ACC_INT_PAID),0) AS MONTHLY_ACC_INT_PAID_tgt,         ISNULL(SUM(PREV_MONTH_END_UR_GAIN),0) AS PREV_MONTH_END_UR_GAIN_tgt,         ISNULL(SUM(PREV_MONTH_END_ACC_INT),0) AS PREV_MONTH_END_ACC_INT_tgt,         ISNULL(SUM(MOD_COST_VALUE_REP_CCY),0) AS MOD_COST_VALUE_REP_CCY_tgt,         ISNULL(SUM(MOD_ACC_INT_REP_CCY),0) AS MOD_ACC_INT_REP_CCY_tgt,         ISNULL(SUM(INS_SUM_ASSURED_AMT),0) AS INS_SUM_ASSURED_AMT_tgt,         ISNULL(SUM(SELL_PROVISIONAL_AMT),0) AS SELL_PROVISIONAL_AMT_tgt,         ISNULL(SUM(TOT_BUY_UNITS),0) AS TOT_BUY_UNITS_tgt,         ISNULL(SUM(TOT_EXE_IN_UNITS),0) AS TOT_EXE_IN_UNITS_tgt,         ISNULL(SUM(TOT_EXE_OUT_UNITS),0) AS TOT_EXE_OUT_UNITS_tgt,         ISNULL(SUM(AVG_WGTD_FX_RATE),0) AS AVG_WGTD_FX_RATE_tgt,         ISNULL(SUM(PREV_MONTH_END_FX_UR_GAIN),0) AS PREV_MONTH_END_FX_UR_GAIN_tgt,         ISNULL(SUM(PREV_MONTH_END_FX_ACC_GAIN),0) AS PREV_MONTH_END_FX_ACC_GAIN_tgt,         ISNULL(SUM(P_IN_UNITS),0) AS P_IN_UNITS_tgt,         ISNULL(SUM(P_OUT_UNITS),0) AS P_OUT_UNITS_tgt,         ISNULL(SUM(P_IN_CUR_VAL),0) AS P_IN_CUR_VAL_tgt,         ISNULL(SUM(P_OUT_CUR_VAL),0) AS P_OUT_CUR_VAL_tgt,         ISNULL(SUM(NON_STL_IN_CUR_VAL),0) AS NON_STL_IN_CUR_VAL_tgt,         ISNULL(SUM(NON_STL_OUT_CUR_VAL),0) AS NON_STL_OUT_CUR_VAL_tgt,         ISNULL(SUM(SETTLED_UNITS),0) AS SETTLED_UNITS_tgt,         ISNULL(SUM(SETTLED_VALUE),0) AS SETTLED_VALUE_tgt,         ISNULL(SUM(SHARE_CAP_ISSUED),0) AS SHARE_CAP_ISSUED_tgt,         ISNULL(SUM(TOT_DISTRIBUTION),0) AS TOT_DISTRIBUTION_tgt,         ISNULL(SUM(PUP_PENDING_IN),0) AS PUP_PENDING_IN_tgt,         ISNULL(SUM(PUP_PENDING_OUT),0) AS PUP_PENDING_OUT_tgt,         ISNULL(SUM(PUP_NON_SETT_IN),0) AS PUP_NON_SETT_IN_tgt,         ISNULL(SUM(PUP_NON_SETT_OUT),0) AS PUP_NON_SETT_OUT_tgt,         ISNULL(SUM(PUP_SETTLED),0) AS PUP_SETTLED_tgt,         ISNULL(SUM(NNM),0) AS NNM_tgt,         ISNULL(SUM(NNM_BR_CCY),0) AS NNM_BR_CCY_tgt,         ISNULL(SUM(PUP_AGGR),0) AS PUP_AGGR_tgt,         ISNULL(SUM(COMMITMENT),0) AS COMMITMENT_tgt,         ISNULL(SUM(UNITS_ALLOTTED),0) AS UNITS_ALLOTTED_tgt,         ISNULL(SUM(DRAWDOWN_CALLED),0) AS DRAWDOWN_CALLED_tgt,         ISNULL(SUM(PUP_IN_TXN),0) AS PUP_IN_TXN_tgt,         ISNULL(SUM(COMT_REDEEM),0) AS COMT_REDEEM_tgt,         ISNULL(SUM(COMMITMENT_PAID),0) AS COMMITMENT_PAID_tgt,         ISNULL(SUM(PUP_NON_RED),0) AS PUP_NON_RED_tgt,         ISNULL(SUM(UNAMTZD_DIS_PREM_AMT),0) AS UNAMTZD_DIS_PREM_AMT_tgt,         ISNULL(SUM(DLY_ACCRETION_AMT),0) AS DLY_ACCRETION_AMT_tgt,         ISNULL(SUM(CUM_ACCRETION_AMT),0) AS CUM_ACCRETION_AMT_tgt,         ISNULL(SUM(SOI_COUP_RT),0) AS SOI_COUP_RT_tgt,         ISNULL(SUM(SOI_YIELD),0) AS SOI_YIELD_tgt,         ISNULL(SUM(SOI_MKT_VAL),0) AS SOI_MKT_VAL_tgt,         ISNULL(SUM(SOI_PRINCIP_AQ_COST),0) AS SOI_PRINCIP_AQ_COST_tgt,         ISNULL(SUM(SOI_MKT_GAIN_LOSS),0) AS SOI_MKT_GAIN_LOSS_tgt,          FILE_NAME, INSERT_DTTM     FROM d360.STG_EDS_TRU_AUMNONUITF     WHERE H = 'D'     GROUP BY FILE_NAME, INSERT_DTTM ),  CTE2 AS (     SELECT          REPLACE(H,'F-','') AS COUNT_src,         TRY_CAST(INVESTMENT_AMT AS NUMERIC(25,5)) AS INVESTMENT_AMT_src,         TRY_CAST(HOLDING_UNITS AS NUMERIC(25,5)) AS HOLDING_UNITS_src,         TRY_CAST(CURRENT_VALUE AS NUMERIC(25,5)) AS CURRENT_VALUE_src,         TRY_CAST(REVENUE AS NUMERIC(25,5)) AS REVENUE_src,         TRY_CAST(VOLUME AS NUMERIC(25,5)) AS VOLUME_src,         TRY_CAST(SEC_PRICE AS NUMERIC(25,5)) AS SEC_PRICE_src,         TRY_CAST(CURRENT_VALUE_BR_CCY AS NUMERIC(25,5)) AS CURRENT_VALUE_BR_CCY_src,         TRY_CAST(REVENUE_BR_CCY AS NUMERIC(25,5)) AS REVENUE_BR_CCY_src,         TRY_CAST(BOOK_RATE AS NUMERIC(25,5)) AS BOOK_RATE_src,         TRY_CAST(MATURITY_AMT AS NUMERIC(25,5)) AS MATURITY_AMT_src,         TRY_CAST(INT_RATE AS NUMERIC(25,5)) AS INT_RATE_src,         TRY_CAST(EARMARK_VALUE AS NUMERIC(25,5)) AS EARMARK_VALUE_src,         TRY_CAST(PREV_CURRENT_VALUE AS NUMERIC(25,5)) AS PREV_CURRENT_VALUE_src,         TRY_CAST(PREV_CURRENT_VALUE_BR_CCY AS NUMERIC(25,5)) AS PREV_CURRENT_VALUE_BR_CCY_src,         TRY_CAST(PREV_REVENUE AS NUMERIC(25,5)) AS PREV_REVENUE_src,         TRY_CAST(PREV_REVENUE_BR_CCY AS NUMERIC(25,5)) AS PREV_REVENUE_BR_CCY_src,         TRY_CAST(ACCRUED_INTEREST AS NUMERIC(25,5)) AS ACCRUED_INTEREST_src,         TRY_CAST(ACCRUED_INTEREST_BR_CCY AS NUMERIC(25,5)) AS ACCRUED_INTEREST_BR_CCY_src,         TRY_CAST(AVG_PRICE AS NUMERIC(25,5)) AS AVG_PRICE_src,         TRY_CAST(AVG_PRICE_INCLUDING_FEE AS NUMERIC(25,5)) AS AVG_PRICE_INCLUDING_FEE_src,         TRY_CAST(BOOK_RATE_BASE AS NUMERIC(25,5)) AS BOOK_RATE_BASE_src,         TRY_CAST(P1_UN_REALIZED_GAIN AS NUMERIC(25,5)) AS P1_UN_REALIZED_GAIN_src,         TRY_CAST(POSN_SEQ_NBR AS NUMERIC(25,5)) AS POSN_SEQ_NBR_src,         TRY_CAST(ANL_PCT_RT AS NUMERIC(25,5)) AS ANL_PCT_RT_src,         TRY_CAST(COMT_AMT AS NUMERIC(25,5)) AS COMT_AMT_src,         TRY_CAST(CURR_YLD_PCT AS NUMERIC(25,5)) AS CURR_YLD_PCT_src,         TRY_CAST(DIST_TILL_DT_AMT AS NUMERIC(25,5)) AS DIST_TILL_DT_AMT_src,         TRY_CAST(ESTIMATED_ANL_INCM_AM AS NUMERIC(25,5)) AS ESTIMATED_ANL_INCM_AM_src,         TRY_CAST(DAILY_INT_ACCR_AMT AS NUMERIC(25,5)) AS DAILY_INT_ACCR_AMT_src,         TRY_CAST(TOT_AVL_BAL_AMT AS NUMERIC(25,5)) AS TOT_AVL_BAL_AMT_src,         TRY_CAST(OUTSTANDING_STRIPS AS NUMERIC(25,5)) AS OUTSTANDING_STRIPS_src,         TRY_CAST(MONTHLY_ACC_INT_PAID AS NUMERIC(25,5)) AS MONTHLY_ACC_INT_PAID_src,         TRY_CAST(PREV_MONTH_END_UR_GAIN AS NUMERIC(25,5)) AS PREV_MONTH_END_UR_GAIN_src,         TRY_CAST(PREV_MONTH_END_ACC_INT AS NUMERIC(25,5)) AS PREV_MONTH_END_ACC_INT_src,         TRY_CAST(MOD_COST_VALUE_REP_CCY AS NUMERIC(25,5)) AS MOD_COST_VALUE_REP_CCY_src,         TRY_CAST(MOD_ACC_INT_REP_CCY AS NUMERIC(25,5)) AS MOD_ACC_INT_REP_CCY_src,         TRY_CAST(INS_SUM_ASSURED_AMT AS NUMERIC(25,5)) AS INS_SUM_ASSURED_AMT_src,         TRY_CAST(SELL_PROVISIONAL_AMT AS NUMERIC(25,5)) AS SELL_PROVISIONAL_AMT_src,         TRY_CAST(TOT_BUY_UNITS AS NUMERIC(25,5)) AS TOT_BUY_UNITS_src,         TRY_CAST(TOT_EXE_IN_UNITS AS NUMERIC(25,5)) AS TOT_EXE_IN_UNITS_src,         TRY_CAST(TOT_EXE_OUT_UNITS AS NUMERIC(25,5)) AS TOT_EXE_OUT_UNITS_src,         TRY_CAST(AVG_WGTD_FX_RATE AS NUMERIC(25,5)) AS AVG_WGTD_FX_RATE_src,         TRY_CAST(PREV_MONTH_END_FX_UR_GAIN AS NUMERIC(25,5)) AS PREV_MONTH_END_FX_UR_GAIN_src,         TRY_CAST(PREV_MONTH_END_FX_ACC_GAIN AS NUMERIC(25,5)) AS PREV_MONTH_END_FX_ACC_GAIN_src,         TRY_CAST(P_IN_UNITS AS NUMERIC(25,5)) AS P_IN_UNITS_src,         TRY_CAST(P_OUT_UNITS AS NUMERIC(25,5)) AS P_OUT_UNITS_src,         TRY_CAST(P_IN_CUR_VAL AS NUMERIC(25,5)) AS P_IN_CUR_VAL_src,         TRY_CAST(P_OUT_CUR_VAL AS NUMERIC(25,5)) AS P_OUT_CUR_VAL_src,         TRY_CAST(NON_STL_IN_CUR_VAL AS NUMERIC(25,5)) AS NON_STL_IN_CUR_VAL_src,         TRY_CAST(NON_STL_OUT_CUR_VAL AS NUMERIC(25,5)) AS NON_STL_OUT_CUR_VAL_src,         TRY_CAST(SETTLED_UNITS AS NUMERIC(25,5)) AS SETTLED_UNITS_src,         TRY_CAST(SETTLED_VALUE AS NUMERIC(25,5)) AS SETTLED_VALUE_src,         TRY_CAST(SHARE_CAP_ISSUED AS NUMERIC(25,5)) AS SHARE_CAP_ISSUED_src,         TRY_CAST(TOT_DISTRIBUTION AS NUMERIC(25,5)) AS TOT_DISTRIBUTION_src,         TRY_CAST(PUP_PENDING_IN AS NUMERIC(25,5)) AS PUP_PENDING_IN_src,         TRY_CAST(PUP_PENDING_OUT AS NUMERIC(25,5)) AS PUP_PENDING_OUT_src,         TRY_CAST(PUP_NON_SETT_IN AS NUMERIC(25,5)) AS PUP_NON_SETT_IN_src,         TRY_CAST(PUP_NON_SETT_OUT AS NUMERIC(25,5)) AS PUP_NON_SETT_OUT_src,         TRY_CAST(PUP_SETTLED AS NUMERIC(25,5)) AS PUP_SETTLED_src,         TRY_CAST(NNM AS NUMERIC(25,5)) AS NNM_src,         TRY_CAST(NNM_BR_CCY AS NUMERIC(25,5)) AS NNM_BR_CCY_src,         TRY_CAST(PUP_AGGR AS NUMERIC(25,5)) AS PUP_AGGR_src,         TRY_CAST(COMMITMENT AS NUMERIC(25,5)) AS COMMITMENT_src,         TRY_CAST(UNITS_ALLOTTED AS NUMERIC(25,5)) AS UNITS_ALLOTTED_src,         TRY_CAST(DRAWDOWN_CALLED AS NUMERIC(25,5)) AS DRAWDOWN_CALLED_src,         TRY_CAST(PUP_IN_TXN AS NUMERIC(25,5)) AS PUP_IN_TXN_src,         TRY_CAST(COMT_REDEEM AS NUMERIC(25,5)) AS COMT_REDEEM_src,         TRY_CAST(COMMITMENT_PAID AS NUMERIC(25,5)) AS COMMITMENT_PAID_src,         TRY_CAST(PUP_NON_RED AS NUMERIC(25,5)) AS PUP_NON_RED_src,         TRY_CAST(UNAMTZD_DIS_PREM_AMT AS NUMERIC(25,5)) AS UNAMTZD_DIS_PREM_AMT_src,         TRY_CAST(DLY_ACCRETION_AMT AS NUMERIC(25,5)) AS DLY_ACCRETION_AMT_src,         TRY_CAST(CUM_ACCRETION_AMT AS NUMERIC(25,5)) AS CUM_ACCRETION_AMT_src,         TRY_CAST(SOI_COUP_RT AS NUMERIC(25,5)) AS SOI_COUP_RT_src,         TRY_CAST(SOI_YIELD AS NUMERIC(25,5)) AS SOI_YIELD_src,         TRY_CAST(SOI_MKT_VAL AS NUMERIC(25,5)) AS SOI_MKT_VAL_src,         TRY_CAST(SOI_PRINCIP_AQ_COST AS NUMERIC(25,5)) AS SOI_PRINCIP_AQ_COST_src,         TRY_CAST(SOI_MKT_GAIN_LOSS AS NUMERIC(25,5)) AS SOI_MKT_GAIN_LOSS_src,         FILE_NAME, INSERT_DTTM     FROM d360.STG_EDS_TRU_AUMNONUITF     WHERE H <> 'D' ),  CTE12 AS (     SELECT          A.FILE_NAME,         A.INSERT_DTTM,         CONVERT(DATE,(LEFT(RIGHT(A.FILE_NAME, 12),8))) AS [DATE],         B.COUNT_src AS COUNT_src,         A.COUNT_tgt AS COUNT_tgt,         B.INVESTMENT_AMT_src, A.INVESTMENT_AMT_tgt,         B.HOLDING_UNITS_src, A.HOLDING_UNITS_tgt,         B.CURRENT_VALUE_src, A.CURRENT_VALUE_tgt,         B.REVENUE_src, A.REVENUE_tgt,         B.VOLUME_src, A.VOLUME_tgt,         B.SEC_PRICE_src, A.SEC_PRICE_tgt,         B.CURRENT_VALUE_BR_CCY_src, A.CURRENT_VALUE_BR_CCY_tgt,         B.REVENUE_BR_CCY_src, A.REVENUE_BR_CCY_tgt,         B.BOOK_RATE_src, A.BOOK_RATE_tgt,         B.MATURITY_AMT_src, A.MATURITY_AMT_tgt,         B.INT_RATE_src, A.INT_RATE_tgt,         B.EARMARK_VALUE_src, A.EARMARK_VALUE_tgt,         B.PREV_CURRENT_VALUE_src, A.PREV_CURRENT_VALUE_tgt,         B.PREV_CURRENT_VALUE_BR_CCY_src, A.PREV_CURRENT_VALUE_BR_CCY_tgt,         B.PREV_REVENUE_src, A.PREV_REVENUE_tgt,         B.PREV_REVENUE_BR_CCY_src, A.PREV_REVENUE_BR_CCY_tgt,         B.ACCRUED_INTEREST_src, A.ACCRUED_INTEREST_tgt,         B.ACCRUED_INTEREST_BR_CCY_src, A.ACCRUED_INTEREST_BR_CCY_tgt,         B.AVG_PRICE_src, A.AVG_PRICE_tgt,         B.AVG_PRICE_INCLUDING_FEE_src, A.AVG_PRICE_INCLUDING_FEE_tgt,         B.BOOK_RATE_BASE_src, A.BOOK_RATE_BASE_tgt,         B.P1_UN_REALIZED_GAIN_src, A.P1_UN_REALIZED_GAIN_tgt,         B.POSN_SEQ_NBR_src, A.POSN_SEQ_NBR_tgt,         B.ANL_PCT_RT_src, A.ANL_PCT_RT_tgt,         B.COMT_AMT_src, A.COMT_AMT_tgt,         B.CURR_YLD_PCT_src, A.CURR_YLD_PCT_tgt,         B.DIST_TILL_DT_AMT_src, A.DIST_TILL_DT_AMT_tgt,         B.ESTIMATED_ANL_INCM_AM_src, A.ESTIMATED_ANL_INCM_AM_tgt,         B.DAILY_INT_ACCR_AMT_src, A.DAILY_INT_ACCR_AMT_tgt,         B.TOT_AVL_BAL_AMT_src, A.TOT_AVL_BAL_AMT_tgt,         B.OUTSTANDING_STRIPS_src, A.OUTSTANDING_STRIPS_tgt,         B.MONTHLY_ACC_INT_PAID_src, A.MONTHLY_ACC_INT_PAID_tgt,         B.PREV_MONTH_END_UR_GAIN_src, A.PREV_MONTH_END_UR_GAIN_tgt,         B.PREV_MONTH_END_ACC_INT_src, A.PREV_MONTH_END_ACC_INT_tgt,         B.MOD_COST_VALUE_REP_CCY_src, A.MOD_COST_VALUE_REP_CCY_tgt,         B.MOD_ACC_INT_REP_CCY_src, A.MOD_ACC_INT_REP_CCY_tgt,         B.INS_SUM_ASSURED_AMT_src, A.INS_SUM_ASSURED_AMT_tgt,         B.SELL_PROVISIONAL_AMT_src, A.SELL_PROVISIONAL_AMT_tgt,         B.TOT_BUY_UNITS_src, A.TOT_BUY_UNITS_tgt,         B.TOT_EXE_IN_UNITS_src, A.TOT_EXE_IN_UNITS_tgt,         B.TOT_EXE_OUT_UNITS_src, A.TOT_EXE_OUT_UNITS_tgt,         B.AVG_WGTD_FX_RATE_src, A.AVG_WGTD_FX_RATE_tgt,         B.PREV_MONTH_END_FX_UR_GAIN_src, A.PREV_MONTH_END_FX_UR_GAIN_tgt,         B.PREV_MONTH_END_FX_ACC_GAIN_src, A.PREV_MONTH_END_FX_ACC_GAIN_tgt,         B.P_IN_UNITS_src, A.P_IN_UNITS_tgt,         B.P_OUT_UNITS_src, A.P_OUT_UNITS_tgt,         B.P_IN_CUR_VAL_src, A.P_IN_CUR_VAL_tgt,         B.P_OUT_CUR_VAL_src, A.P_OUT_CUR_VAL_tgt,         B.NON_STL_IN_CUR_VAL_src, A.NON_STL_IN_CUR_VAL_tgt,         B.NON_STL_OUT_CUR_VAL_src, A.NON_STL_OUT_CUR_VAL_tgt,         B.SETTLED_UNITS_src, A.SETTLED_UNITS_tgt,         B.SETTLED_VALUE_src, A.SETTLED_VALUE_tgt,         B.SHARE_CAP_ISSUED_src, A.SHARE_CAP_ISSUED_tgt,         B.TOT_DISTRIBUTION_src, A.TOT_DISTRIBUTION_tgt,         B.PUP_PENDING_IN_src, A.PUP_PENDING_IN_tgt,         B.PUP_PENDING_OUT_src, A.PUP_PENDING_OUT_tgt,         B.PUP_NON_SETT_IN_src, A.PUP_NON_SETT_IN_tgt,         B.PUP_NON_SETT_OUT_src, A.PUP_NON_SETT_OUT_tgt,         B.PUP_SETTLED_src, A.PUP_SETTLED_tgt,         B.NNM_src, A.NNM_tgt,         B.NNM_BR_CCY_src, A.NNM_BR_CCY_tgt,         B.PUP_AGGR_src, A.PUP_AGGR_tgt,         B.COMMITMENT_src, A.COMMITMENT_tgt,         B.UNITS_ALLOTTED_src, A.UNITS_ALLOTTED_tgt,         B.DRAWDOWN_CALLED_src, A.DRAWDOWN_CALLED_tgt,         B.PUP_IN_TXN_src, A.PUP_IN_TXN_tgt,         B.COMT_REDEEM_src, A.COMT_REDEEM_tgt,         B.COMMITMENT_PAID_src, A.COMMITMENT_PAID_tgt,         B.PUP_NON_RED_src, A.PUP_NON_RED_tgt,         B.UNAMTZD_DIS_PREM_AMT_src, A.UNAMTZD_DIS_PREM_AMT_tgt,         B.DLY_ACCRETION_AMT_src, A.DLY_ACCRETION_AMT_tgt,         B.CUM_ACCRETION_AMT_src, A.CUM_ACCRETION_AMT_tgt,         B.SOI_COUP_RT_src, A.SOI_COUP_RT_tgt,         B.SOI_YIELD_src, A.SOI_YIELD_tgt,         B.SOI_MKT_VAL_src, A.SOI_MKT_VAL_tgt,         B.SOI_PRINCIP_AQ_COST_src, A.SOI_PRINCIP_AQ_COST_tgt,         B.SOI_MKT_GAIN_LOSS_src, A.SOI_MKT_GAIN_LOSS_tgt     FROM CTE1 A     JOIN CTE2 B       ON A.FILE_NAME = B.FILE_NAME      AND A.INSERT_DTTM = B.INSERT_DTTM )  INSERT INTO [EDS].[EDS_HASH_LOG_TBL] SELECT      FILE_NAME,     [DATE],     INSERT_DTTM,     REPLACE(METRICS,'_SRC','') AS METRICS,     SRC,     TGT FROM (     SELECT          TRY_CAST(COUNT_SRC AS NUMERIC(25,5)) AS COUNT_SRC,         TRY_CAST(COUNT_TGT AS NUMERIC(25,5)) AS COUNT_TGT,         TRY_CAST(INVESTMENT_AMT_src AS NUMERIC(25,5)) AS INVESTMENT_AMT_src,         TRY_CAST(INVESTMENT_AMT_tgt AS NUMERIC(25,5)) AS INVESTMENT_AMT_tgt,         TRY_CAST(HOLDING_UNITS_src AS NUMERIC(25,5)) AS HOLDING_UNITS_src,         TRY_CAST(HOLDING_UNITS_tgt AS NUMERIC(25,5)) AS HOLDING_UNITS_tgt,         TRY_CAST(CURRENT_VALUE_src AS NUMERIC(25,5)) AS CURRENT_VALUE_src,         TRY_CAST(CURRENT_VALUE_tgt AS NUMERIC(25,5)) AS CURRENT_VALUE_tgt,         TRY_CAST(REVENUE_src AS NUMERIC(25,5)) AS REVENUE_src,         TRY_CAST(REVENUE_tgt AS NUMERIC(25,5)) AS REVENUE_tgt,         TRY_CAST(VOLUME_src AS NUMERIC(25,5)) AS VOLUME_src,         TRY_CAST(VOLUME_tgt AS NUMERIC(25,5)) AS VOLUME_tgt,         TRY_CAST(SEC_PRICE_src AS NUMERIC(25,5)) AS SEC_PRICE_src,         TRY_CAST(SEC_PRICE_tgt AS NUMERIC(25,5)) AS SEC_PRICE_tgt,         TRY_CAST(CURRENT_VALUE_BR_CCY_src AS NUMERIC(25,5)) AS CURRENT_VALUE_BR_CCY_src,         TRY_CAST(CURRENT_VALUE_BR_CCY_tgt AS NUMERIC(25,5)) AS CURRENT_VALUE_BR_CCY_tgt,         TRY_CAST(REVENUE_BR_CCY_src AS NUMERIC(25,5)) AS REVENUE_BR_CCY_src,         TRY_CAST(REVENUE_BR_CCY_tgt AS NUMERIC(25,5)) AS REVENUE_BR_CCY_tgt,         TRY_CAST(BOOK_RATE_src AS NUMERIC(25,5)) AS BOOK_RATE_src,         TRY_CAST(BOOK_RATE_tgt AS NUMERIC(25,5)) AS BOOK_RATE_tgt,         TRY_CAST(MATURITY_AMT_src AS NUMERIC(25,5)) AS MATURITY_AMT_src,         TRY_CAST(MATURITY_AMT_tgt AS NUMERIC(25,5)) AS MATURITY_AMT_tgt,         TRY_CAST(INT_RATE_src AS NUMERIC(25,5)) AS INT_RATE_src,         TRY_CAST(INT_RATE_tgt AS NUMERIC(25,5)) AS INT_RATE_tgt,         TRY_CAST(EARMARK_VALUE_src AS NUMERIC(25,5)) AS EARMARK_VALUE_src,         TRY_CAST(EARMARK_VALUE_tgt AS NUMERIC(25,5)) AS EARMARK_VALUE_tgt,         TRY_CAST(PREV_CURRENT_VALUE_src AS NUMERIC(25,5)) AS PREV_CURRENT_VALUE_src,         TRY_CAST(PREV_CURRENT_VALUE_tgt AS NUMERIC(25,5)) AS PREV_CURRENT_VALUE_tgt,         TRY_CAST(PREV_CURRENT_VALUE_BR_CCY_src AS NUMERIC(25,5)) AS PREV_CURRENT_VALUE_BR_CCY_src,         TRY_CAST(PREV_CURRENT_VALUE_BR_CCY_tgt AS NUMERIC(25,5)) AS PREV_CURRENT_VALUE_BR_CCY_tgt,         TRY_CAST(PREV_REVENUE_src AS NUMERIC(25,5)) AS PREV_REVENUE_src,         TRY_CAST(PREV_REVENUE_tgt AS NUMERIC(25,5)) AS PREV_REVENUE_tgt,         TRY_CAST(PREV_REVENUE_BR_CCY_src AS NUMERIC(25,5)) AS PREV_REVENUE_BR_CCY_src,         TRY_CAST(PREV_REVENUE_BR_CCY_tgt AS NUMERIC(25,5)) AS PREV_REVENUE_BR_CCY_tgt,         TRY_CAST(ACCRUED_INTEREST_src AS NUMERIC(25,5)) AS ACCRUED_INTEREST_src,         TRY_CAST(ACCRUED_INTEREST_tgt AS NUMERIC(25,5)) AS ACCRUED_INTEREST_tgt,         TRY_CAST(ACCRUED_INTEREST_BR_CCY_src AS NUMERIC(25,5)) AS ACCRUED_INTEREST_BR_CCY_src,         TRY_CAST(ACCRUED_INTEREST_BR_CCY_tgt AS NUMERIC(25,5)) AS ACCRUED_INTEREST_BR_CCY_tgt,         TRY_CAST(AVG_PRICE_src AS NUMERIC(25,5)) AS AVG_PRICE_src,         TRY_CAST(AVG_PRICE_tgt AS NUMERIC(25,5)) AS AVG_PRICE_tgt,         TRY_CAST(AVG_PRICE_INCLUDING_FEE_src AS NUMERIC(25,5)) AS AVG_PRICE_INCLUDING_FEE_src,         TRY_CAST(AVG_PRICE_INCLUDING_FEE_tgt AS NUMERIC(25,5)) AS AVG_PRICE_INCLUDING_FEE_tgt,         TRY_CAST(BOOK_RATE_BASE_src AS NUMERIC(25,5)) AS BOOK_RATE_BASE_src,         TRY_CAST(BOOK_RATE_BASE_tgt AS NUMERIC(25,5)) AS BOOK_RATE_BASE_tgt,         TRY_CAST(P1_UN_REALIZED_GAIN_src AS NUMERIC(25,5)) AS P1_UN_REALIZED_GAIN_src,         TRY_CAST(P1_UN_REALIZED_GAIN_tgt AS NUMERIC(25,5)) AS P1_UN_REALIZED_GAIN_tgt,         TRY_CAST(POSN_SEQ_NBR_src AS NUMERIC(25,5)) AS POSN_SEQ_NBR_src,         TRY_CAST(POSN_SEQ_NBR_tgt AS NUMERIC(25,5)) AS POSN_SEQ_NBR_tgt,         TRY_CAST(ANL_PCT_RT_src AS NUMERIC(25,5)) AS ANL_PCT_RT_src,         TRY_CAST(ANL_PCT_RT_tgt AS NUMERIC(25,5)) AS ANL_PCT_RT_tgt,         TRY_CAST(COMT_AMT_src AS NUMERIC(25,5)) AS COMT_AMT_src,         TRY_CAST(COMT_AMT_tgt AS NUMERIC(25,5)) AS COMT_AMT_tgt,         TRY_CAST(CURR_YLD_PCT_src AS NUMERIC(25,5)) AS CURR_YLD_PCT_src,         TRY_CAST(CURR_YLD_PCT_tgt AS NUMERIC(25,5)) AS CURR_YLD_PCT_tgt,         TRY_CAST(DIST_TILL_DT_AMT_src AS NUMERIC(25,5)) AS DIST_TILL_DT_AMT_src,         TRY_CAST(DIST_TILL_DT_AMT_tgt AS NUMERIC(25,5)) AS DIST_TILL_DT_AMT_tgt,         TRY_CAST(ESTIMATED_ANL_INCM_AM_src AS NUMERIC(25,5)) AS ESTIMATED_ANL_INCM_AM_src,         TRY_CAST(ESTIMATED_ANL_INCM_AM_tgt AS NUMERIC(25,5)) AS ESTIMATED_ANL_INCM_AM_tgt,         TRY_CAST(DAILY_INT_ACCR_AMT_src AS NUMERIC(25,5)) AS DAILY_INT_ACCR_AMT_src,         TRY_CAST(DAILY_INT_ACCR_AMT_tgt AS NUMERIC(25,5)) AS DAILY_INT_ACCR_AMT_tgt,         TRY_CAST(TOT_AVL_BAL_AMT_src AS NUMERIC(25,5)) AS TOT_AVL_BAL_AMT_src,         TRY_CAST(TOT_AVL_BAL_AMT_tgt AS NUMERIC(25,5)) AS TOT_AVL_BAL_AMT_tgt,         TRY_CAST(OUTSTANDING_STRIPS_src AS NUMERIC(25,5)) AS OUTSTANDING_STRIPS_src,         TRY_CAST(OUTSTANDING_STRIPS_tgt AS NUMERIC(25,5)) AS OUTSTANDING_STRIPS_tgt,         TRY_CAST(MONTHLY_ACC_INT_PAID_src AS NUMERIC(25,5)) AS MONTHLY_ACC_INT_PAID_src,         TRY_CAST(MONTHLY_ACC_INT_PAID_tgt AS NUMERIC(25,5)) AS MONTHLY_ACC_INT_PAID_tgt,         TRY_CAST(PREV_MONTH_END_UR_GAIN_src AS NUMERIC(25,5)) AS PREV_MONTH_END_UR_GAIN_src,         TRY_CAST(PREV_MONTH_END_UR_GAIN_tgt AS NUMERIC(25,5)) AS PREV_MONTH_END_UR_GAIN_tgt,         TRY_CAST(PREV_MONTH_END_ACC_INT_src AS NUMERIC(25,5)) AS PREV_MONTH_END_ACC_INT_src,         TRY_CAST(PREV_MONTH_END_ACC_INT_tgt AS NUMERIC(25,5)) AS PREV_MONTH_END_ACC_INT_tgt,         TRY_CAST(MOD_COST_VALUE_REP_CCY_src AS NUMERIC(25,5)) AS MOD_COST_VALUE_REP_CCY_src,         TRY_CAST(MOD_COST_VALUE_REP_CCY_tgt AS NUMERIC(25,5)) AS MOD_COST_VALUE_REP_CCY_tgt,         TRY_CAST(MOD_ACC_INT_REP_CCY_src AS NUMERIC(25,5)) AS MOD_ACC_INT_REP_CCY_src,         TRY_CAST(MOD_ACC_INT_REP_CCY_tgt AS NUMERIC(25,5)) AS MOD_ACC_INT_REP_CCY_tgt,         TRY_CAST(INS_SUM_ASSURED_AMT_src AS NUMERIC(25,5)) AS INS_SUM_ASSURED_AMT_src,         TRY_CAST(INS_SUM_ASSURED_AMT_tgt AS NUMERIC(25,5)) AS INS_SUM_ASSURED_AMT_tgt,         TRY_CAST(SELL_PROVISIONAL_AMT_src AS NUMERIC(25,5)) AS SELL_PROVISIONAL_AMT_src,         TRY_CAST(SELL_PROVISIONAL_AMT_tgt AS NUMERIC(25,5)) AS SELL_PROVISIONAL_AMT_tgt,         TRY_CAST(TOT_BUY_UNITS_src AS NUMERIC(25,5)) AS TOT_BUY_UNITS_src,         TRY_CAST(TOT_BUY_UNITS_tgt AS NUMERIC(25,5)) AS TOT_BUY_UNITS_tgt,         TRY_CAST(TOT_EXE_IN_UNITS_src AS NUMERIC(25,5)) AS TOT_EXE_IN_UNITS_src,         TRY_CAST(TOT_EXE_IN_UNITS_tgt AS NUMERIC(25,5)) AS TOT_EXE_IN_UNITS_tgt,         TRY_CAST(TOT_EXE_OUT_UNITS_src AS NUMERIC(25,5)) AS TOT_EXE_OUT_UNITS_src,         TRY_CAST(TOT_EXE_OUT_UNITS_tgt AS NUMERIC(25,5)) AS TOT_EXE_OUT_UNITS_tgt,         TRY_CAST(AVG_WGTD_FX_RATE_src AS NUMERIC(25,5)) AS AVG_WGTD_FX_RATE_src,         TRY_CAST(AVG_WGTD_FX_RATE_tgt AS NUMERIC(25,5)) AS AVG_WGTD_FX_RATE_tgt,         TRY_CAST(PREV_MONTH_END_FX_UR_GAIN_src AS NUMERIC(25,5)) AS PREV_MONTH_END_FX_UR_GAIN_src,         TRY_CAST(PREV_MONTH_END_FX_UR_GAIN_tgt AS NUMERIC(25,5)) AS PREV_MONTH_END_FX_UR_GAIN_tgt,         TRY_CAST(PREV_MONTH_END_FX_ACC_GAIN_src AS NUMERIC(25,5)) AS PREV_MONTH_END_FX_ACC_GAIN_src,         TRY_CAST(PREV_MONTH_END_FX_ACC_GAIN_tgt AS NUMERIC(25,5)) AS PREV_MONTH_END_FX_ACC_GAIN_tgt,         TRY_CAST(P_IN_UNITS_src AS NUMERIC(25,5)) AS P_IN_UNITS_src,         TRY_CAST(P_IN_UNITS_tgt AS NUMERIC(25,5)) AS P_IN_UNITS_tgt,         TRY_CAST(P_OUT_UNITS_src AS NUMERIC(25,5)) AS P_OUT_UNITS_src,         TRY_CAST(P_OUT_UNITS_tgt AS NUMERIC(25,5)) AS P_OUT_UNITS_tgt,         TRY_CAST(P_IN_CUR_VAL_src AS NUMERIC(25,5)) AS P_IN_CUR_VAL_src,         TRY_CAST(P_IN_CUR_VAL_tgt AS NUMERIC(25,5)) AS P_IN_CUR_VAL_tgt,         TRY_CAST(P_OUT_CUR_VAL_src AS NUMERIC(25,5)) AS P_OUT_CUR_VAL_src,         TRY_CAST(P_OUT_CUR_VAL_tgt AS NUMERIC(25,5)) AS P_OUT_CUR_VAL_tgt,         TRY_CAST(NON_STL_IN_CUR_VAL_src AS NUMERIC(25,5)) AS NON_STL_IN_CUR_VAL_src,         TRY_CAST(NON_STL_IN_CUR_VAL_tgt AS NUMERIC(25,5)) AS NON_STL_IN_CUR_VAL_tgt,         TRY_CAST(NON_STL_OUT_CUR_VAL_src AS NUMERIC(25,5)) AS NON_STL_OUT_CUR_VAL_src,         TRY_CAST(NON_STL_OUT_CUR_VAL_tgt AS NUMERIC(25,5)) AS NON_STL_OUT_CUR_VAL_tgt,         TRY_CAST(SETTLED_UNITS_src AS NUMERIC(25,5)) AS SETTLED_UNITS_src,         TRY_CAST(SETTLED_UNITS_tgt AS NUMERIC(25,5)) AS SETTLED_UNITS_tgt,         TRY_CAST(SETTLED_VALUE_src AS NUMERIC(25,5)) AS SETTLED_VALUE_src,         TRY_CAST(SETTLED_VALUE_tgt AS NUMERIC(25,5)) AS SETTLED_VALUE_tgt,         TRY_CAST(SHARE_CAP_ISSUED_src AS NUMERIC(25,5)) AS SHARE_CAP_ISSUED_src,         TRY_CAST(SHARE_CAP_ISSUED_tgt AS NUMERIC(25,5)) AS SHARE_CAP_ISSUED_tgt,         TRY_CAST(TOT_DISTRIBUTION_src AS NUMERIC(25,5)) AS TOT_DISTRIBUTION_src,         TRY_CAST(TOT_DISTRIBUTION_tgt AS NUMERIC(25,5)) AS TOT_DISTRIBUTION_tgt,         TRY_CAST(PUP_PENDING_IN_src AS NUMERIC(25,5)) AS PUP_PENDING_IN_src,         TRY_CAST(PUP_PENDING_IN_tgt AS NUMERIC(25,5)) AS PUP_PENDING_IN_tgt,         TRY_CAST(PUP_PENDING_OUT_src AS NUMERIC(25,5)) AS PUP_PENDING_OUT_src,         TRY_CAST(PUP_PENDING_OUT_tgt AS NUMERIC(25,5)) AS PUP_PENDING_OUT_tgt,         TRY_CAST(PUP_NON_SETT_IN_src AS NUMERIC(25,5)) AS PUP_NON_SETT_IN_src,         TRY_CAST(PUP_NON_SETT_IN_tgt AS NUMERIC(25,5)) AS PUP_NON_SETT_IN_tgt,         TRY_CAST(PUP_NON_SETT_OUT_src AS NUMERIC(25,5)) AS PUP_NON_SETT_OUT_src,         TRY_CAST(PUP_NON_SETT_OUT_tgt AS NUMERIC(25,5)) AS PUP_NON_SETT_OUT_tgt,         TRY_CAST(PUP_SETTLED_src AS NUMERIC(25,5)) AS PUP_SETTLED_src,         TRY_CAST(PUP_SETTLED_tgt AS NUMERIC(25,5)) AS PUP_SETTLED_tgt,         TRY_CAST(NNM_src AS NUMERIC(25,5)) AS NNM_src,         TRY_CAST(NNM_tgt AS NUMERIC(25,5)) AS NNM_tgt,         TRY_CAST(NNM_BR_CCY_src AS NUMERIC(25,5)) AS NNM_BR_CCY_src,         TRY_CAST(NNM_BR_CCY_tgt AS NUMERIC(25,5)) AS NNM_BR_CCY_tgt,         TRY_CAST(PUP_AGGR_src AS NUMERIC(25,5)) AS PUP_AGGR_src,         TRY_CAST(PUP_AGGR_tgt AS NUMERIC(25,5)) AS PUP_AGGR_tgt,         TRY_CAST(COMMITMENT_src AS NUMERIC(25,5)) AS COMMITMENT_src,         TRY_CAST(COMMITMENT_tgt AS NUMERIC(25,5)) AS COMMITMENT_tgt,         TRY_CAST(UNITS_ALLOTTED_src AS NUMERIC(25,5)) AS UNITS_ALLOTTED_src,         TRY_CAST(UNITS_ALLOTTED_tgt AS NUMERIC(25,5)) AS UNITS_ALLOTTED_tgt,         TRY_CAST(DRAWDOWN_CALLED_src AS NUMERIC(25,5)) AS DRAWDOWN_CALLED_src,         TRY_CAST(DRAWDOWN_CALLED_tgt AS NUMERIC(25,5)) AS DRAWDOWN_CALLED_tgt,         TRY_CAST(PUP_IN_TXN_src AS NUMERIC(25,5)) AS PUP_IN_TXN_src,         TRY_CAST(PUP_IN_TXN_tgt AS NUMERIC(25,5)) AS PUP_IN_TXN_tgt,         TRY_CAST(COMT_REDEEM_src AS NUMERIC(25,5)) AS COMT_REDEEM_src,         TRY_CAST(COMT_REDEEM_tgt AS NUMERIC(25,5)) AS COMT_REDEEM_tgt,         TRY_CAST(COMMITMENT_PAID_src AS NUMERIC(25,5)) AS COMMITMENT_PAID_src,         TRY_CAST(COMMITMENT_PAID_tgt AS NUMERIC(25,5)) AS COMMITMENT_PAID_tgt,         TRY_CAST(PUP_NON_RED_src AS NUMERIC(25,5)) AS PUP_NON_RED_src,         TRY_CAST(PUP_NON_RED_tgt AS NUMERIC(25,5)) AS PUP_NON_RED_tgt,         TRY_CAST(UNAMTZD_DIS_PREM_AMT_src AS NUMERIC(25,5)) AS UNAMTZD_DIS_PREM_AMT_src,         TRY_CAST(UNAMTZD_DIS_PREM_AMT_tgt AS NUMERIC(25,5)) AS UNAMTZD_DIS_PREM_AMT_tgt,         TRY_CAST(DLY_ACCRETION_AMT_src AS NUMERIC(25,5)) AS DLY_ACCRETION_AMT_src,         TRY_CAST(DLY_ACCRETION_AMT_tgt AS NUMERIC(25,5)) AS DLY_ACCRETION_AMT_tgt,         TRY_CAST(CUM_ACCRETION_AMT_src AS NUMERIC(25,5)) AS CUM_ACCRETION_AMT_src,         TRY_CAST(CUM_ACCRETION_AMT_tgt AS NUMERIC(25,5)) AS CUM_ACCRETION_AMT_tgt,         TRY_CAST(SOI_COUP_RT_src AS NUMERIC(25,5)) AS SOI_COUP_RT_src,         TRY_CAST(SOI_COUP_RT_tgt AS NUMERIC(25,5)) AS SOI_COUP_RT_tgt,         TRY_CAST(SOI_YIELD_src AS NUMERIC(25,5)) AS SOI_YIELD_src,         TRY_CAST(SOI_YIELD_tgt AS NUMERIC(25,5)) AS SOI_YIELD_tgt,         TRY_CAST(SOI_MKT_VAL_src AS NUMERIC(25,5)) AS SOI_MKT_VAL_src,         TRY_CAST(SOI_MKT_VAL_tgt AS NUMERIC(25,5)) AS SOI_MKT_VAL_tgt,         TRY_CAST(SOI_PRINCIP_AQ_COST_src AS NUMERIC(25,5)) AS SOI_PRINCIP_AQ_COST_src,         TRY_CAST(SOI_PRINCIP_AQ_COST_tgt AS NUMERIC(25,5)) AS SOI_PRINCIP_AQ_COST_tgt,         TRY_CAST(SOI_MKT_GAIN_LOSS_src AS NUMERIC(25,5)) AS SOI_MKT_GAIN_LOSS_src,         TRY_CAST(SOI_MKT_GAIN_LOSS_tgt AS NUMERIC(25,5)) AS SOI_MKT_GAIN_LOSS_tgt,          FILE_NAME, INSERT_DTTM, [DATE]     FROM CTE12 ) pvt  UNPIVOT (     SRC FOR METRICS IN (         COUNT_SRC,         INVESTMENT_AMT_src,         HOLDING_UNITS_src,         CURRENT_VALUE_src,         REVENUE_src,         VOLUME_src,         SEC_PRICE_src,         CURRENT_VALUE_BR_CCY_src,         REVENUE_BR_CCY_src,         BOOK_RATE_src,         MATURITY_AMT_src,         INT_RATE_src,         EARMARK_VALUE_src,         PREV_CURRENT_VALUE_src,         PREV_CURRENT_VALUE_BR_CCY_src,         PREV_REVENUE_src,         PREV_REVENUE_BR_CCY_src,         ACCRUED_INTEREST_src,         ACCRUED_INTEREST_BR_CCY_src,         AVG_PRICE_src,         AVG_PRICE_INCLUDING_FEE_src,         BOOK_RATE_BASE_src,         P1_UN_REALIZED_GAIN_src,         POSN_SEQ_NBR_src,         ANL_PCT_RT_src,         COMT_AMT_src,         CURR_YLD_PCT_src,         DIST_TILL_DT_AMT_src,         ESTIMATED_ANL_INCM_AM_src,         DAILY_INT_ACCR_AMT_src,         TOT_AVL_BAL_AMT_src,         OUTSTANDING_STRIPS_src,         MONTHLY_ACC_INT_PAID_src,         PREV_MONTH_END_UR_GAIN_src,         PREV_MONTH_END_ACC_INT_src,         MOD_COST_VALUE_REP_CCY_src,         MOD_ACC_INT_REP_CCY_src,         INS_SUM_ASSURED_AMT_src,         SELL_PROVISIONAL_AMT_src,         TOT_BUY_UNITS_src,         TOT_EXE_IN_UNITS_src,         TOT_EXE_OUT_UNITS_src,         AVG_WGTD_FX_RATE_src,         PREV_MONTH_END_FX_UR_GAIN_src,         PREV_MONTH_END_FX_ACC_GAIN_src,         P_IN_UNITS_src,         P_OUT_UNITS_src,         P_IN_CUR_VAL_src,         P_OUT_CUR_VAL_src,         NON_STL_IN_CUR_VAL_src,         NON_STL_OUT_CUR_VAL_src,         SETTLED_UNITS_src,         SETTLED_VALUE_src,         SHARE_CAP_ISSUED_src,         TOT_DISTRIBUTION_src,         PUP_PENDING_IN_src,         PUP_PENDING_OUT_src,         PUP_NON_SETT_IN_src,         PUP_NON_SETT_OUT_src,         PUP_SETTLED_src,         NNM_src,         NNM_BR_CCY_src,         PUP_AGGR_src,         COMMITMENT_src,         UNITS_ALLOTTED_src,         DRAWDOWN_CALLED_src,         PUP_IN_TXN_src,         COMT_REDEEM_src,         COMMITMENT_PAID_src,         PUP_NON_RED_src,         UNAMTZD_DIS_PREM_AMT_src,         DLY_ACCRETION_AMT_src,         CUM_ACCRETION_AMT_src,         SOI_COUP_RT_src,         SOI_YIELD_src,         SOI_MKT_VAL_src,         SOI_PRINCIP_AQ_COST_src,         SOI_MKT_GAIN_LOSS_src     ) ) pvt1  UNPIVOT (     TGT FOR METRICS2 IN (         COUNT_TGT,         INVESTMENT_AMT_tgt,         HOLDING_UNITS_tgt,         CURRENT_VALUE_tgt,         REVENUE_tgt,         VOLUME_tgt,         SEC_PRICE_tgt,         CURRENT_VALUE_BR_CCY_tgt,         REVENUE_BR_CCY_tgt,         BOOK_RATE_tgt,         MATURITY_AMT_tgt,         INT_RATE_tgt,         EARMARK_VALUE_tgt,         PREV_CURRENT_VALUE_tgt,         PREV_CURRENT_VALUE_BR_CCY_tgt,         PREV_REVENUE_tgt,         PREV_REVENUE_BR_CCY_tgt,         ACCRUED_INTEREST_tgt,         ACCRUED_INTEREST_BR_CCY_tgt,         AVG_PRICE_tgt,         AVG_PRICE_INCLUDING_FEE_tgt,         BOOK_RATE_BASE_tgt,         P1_UN_REALIZED_GAIN_tgt,         POSN_SEQ_NBR_tgt,         ANL_PCT_RT_tgt,         COMT_AMT_tgt,         CURR_YLD_PCT_tgt,         DIST_TILL_DT_AMT_tgt,         ESTIMATED_ANL_INCM_AM_tgt,         DAILY_INT_ACCR_AMT_tgt,         TOT_AVL_BAL_AMT_tgt,         OUTSTANDING_STRIPS_tgt,         MONTHLY_ACC_INT_PAID_tgt,         PREV_MONTH_END_UR_GAIN_tgt,         PREV_MONTH_END_ACC_INT_tgt,         MOD_COST_VALUE_REP_CCY_tgt,         MOD_ACC_INT_REP_CCY_tgt,         INS_SUM_ASSURED_AMT_tgt,         SELL_PROVISIONAL_AMT_tgt,         TOT_BUY_UNITS_tgt,         TOT_EXE_IN_UNITS_tgt,         TOT_EXE_OUT_UNITS_tgt,         AVG_WGTD_FX_RATE_tgt,         PREV_MONTH_END_FX_UR_GAIN_tgt,         PREV_MONTH_END_FX_ACC_GAIN_tgt,         P_IN_UNITS_tgt,         P_OUT_UNITS_tgt,         P_IN_CUR_VAL_tgt,         P_OUT_CUR_VAL_tgt,         NON_STL_IN_CUR_VAL_tgt,         NON_STL_OUT_CUR_VAL_tgt,         SETTLED_UNITS_tgt,         SETTLED_VALUE_tgt,         SHARE_CAP_ISSUED_tgt,         TOT_DISTRIBUTION_tgt,         PUP_PENDING_IN_tgt,         PUP_PENDING_OUT_tgt,         PUP_NON_SETT_IN_tgt,         PUP_NON_SETT_OUT_tgt,         PUP_SETTLED_tgt,         NNM_tgt,         NNM_BR_CCY_tgt,         PUP_AGGR_tgt,         COMMITMENT_tgt,         UNITS_ALLOTTED_tgt,         DRAWDOWN_CALLED_tgt,         PUP_IN_TXN_tgt,         COMT_REDEEM_tgt,         COMMITMENT_PAID_tgt,         PUP_NON_RED_tgt,         UNAMTZD_DIS_PREM_AMT_tgt,         DLY_ACCRETION_AMT_tgt,         CUM_ACCRETION_AMT_tgt,         SOI_COUP_RT_tgt,         SOI_YIELD_tgt,         SOI_MKT_VAL_tgt,         SOI_PRINCIP_AQ_COST_tgt,         SOI_MKT_GAIN_LOSS_tgt     ) ) pvt2  WHERE REPLACE(METRICS,'_SRC','') = REPLACE(METRICS2,'_TGT','');"
+			},
+			"EDS_SQL": {
+				"type": "string",
+				"defaultValue": "DELETE FROM [EDS].[TRU_AUMNONUITF] WHERE AS_OF_DATE IN (     SELECT TOP 1 CAST(LEFT(RIGHT(FILE_NAME, 12), 8) AS DATE)     FROM D360.STG_EDS_TRU_AUMNONUITF );  INSERT INTO [EDS].[TRU_AUMNONUITF] (     [AS_OF_DATE],     [BASE_NO],     [LAST6_BASE_NO],     [PF_NO],     [LAST6_PF_NO],     [PRODUCT_CODE],     [PRODUCT_DESC],     [SCHEME_CODE],     [SCHEME_NAME],     [INVESTMENT_AMT],     [HOLDING_UNITS],     [CURRENT_VALUE],     [INVESTMENT_CCY],     [ASOFDATE],     [SUB_PROD_CODE],     [SUB_PROD_DESC],     [PROD_CATEGORY_CODE],     [PROD_CATEGORY_DESC],     [ASSET_CD],     [ASSET_DESC],     [SUB_ASSET_CD],     [SUB_ASSET_DESC],     [BR_CD],     [GROUP_NAME],     [ASSET_FLAG],     [AC_NO],     [ISIN_CODE],     [FOLIO_NO],     [REVENUE],     [VOLUME],     [SEC_PRICE],     [CURRENT_VALUE_BR_CCY],     [REVENUE_BR_CCY],     [BOOK_RATE],     [MATURITY_AMT],     [MATURITY_DT],     [PURCHASED_ON],     [INT_RATE],     [TENURE],     [ACTUAL_AS_OF_DATE],     [SECURITY_STATUS],     [EARMARK_VALUE],     [POS_CD],     [MKR_ID],     [MKR_DT],     [AUTH_ID],     [AUTH_DT],     [PREV_CURRENT_VALUE],     [PREV_CURRENT_VALUE_BR_CCY],     [PREV_REVENUE],     [PREV_REVENUE_BR_CCY],     [ACCRUED_INTEREST],     [ACCRUED_INTEREST_BR_CCY],     [AVG_PRICE],     [AVG_PRICE_INCLUDING_FEE],     [BOOK_RATE_BASE],     [P1_UN_REALIZED_GAIN],     [POSN_SEQ_NBR],     [ACCT_KEY],     [TOTAL_NBR_OF_BLOCKED_UNITS],     [BOOK_DT],     [CON_TRD_DT],     [DPST_CD],     [MKT_PRC_DT],     [CON_REF_NBR],     [ANL_PCT_RT],     [COMT_AMT],     [CURR_YLD_PCT],     [DIST_TILL_DT_AMT],     [EST_ANL_INCM_CCY_CD],     [ESTIMATED_ANL_INCM_AM],     [DAILY_INT_ACCR_AMT],     [TOT_AVL_BAL_AMT],     [OUTSTANDING_STRIPS],     [RECON_STATUS],     [MONTHLY_ACC_INT_PAID],     [PREV_MONTH_END_UR_GAIN],     [PREV_MONTH_END_ACC_INT],     [MOD_COST_VALUE_REP_CCY],     [MOD_ACC_INT_REP_CCY],     [REGION_CODE],     [INS_SUM_ASSURED_AMT],     [IS_BUY_FINAL_RECIEVED],     [SELL_PROVISIONAL_AMT],     [TOT_BUY_UNITS],     [TOT_EXE_IN_UNITS],     [TOT_EXE_OUT_UNITS],     [AVG_WGTD_FX_RATE],     [PREV_MONTH_END_FX_UR_GAIN],     [PREV_MONTH_END_FX_ACC_GAIN],     [MONTH_END_EXECUTED_DATE],     [SUB_SECTOR_CODE],     [SECTOR_CODE],     [SUB_SECTOR_DESC],     [SECTOR_NAME],     [P_IN_UNITS],     [P_OUT_UNITS],     [P_IN_CUR_VAL],     [P_OUT_CUR_VAL],     [NON_STL_IN_CUR_VAL],     [NON_STL_OUT_CUR_VAL],     [SETTLED_UNITS],     [SETTLED_VALUE],     [SHARE_CAP_ISSUED],     [START_DT],     [TOT_DISTRIBUTION],     [MAKER_DT],     [MAKER_ID],     [PUP_PENDING_IN],     [PUP_PENDING_OUT],     [PUP_NON_SETT_IN],     [PUP_NON_SETT_OUT],     [PUP_SETTLED],     [NNM],     [NNM_BR_CCY],     [RM_ID],     [PUP_AGGR],     [COMMITMENT],     [UNITS_ALLOTTED],     [DRAWDOWN_CALLED],     [PUP_IN_TXN],     [COMT_REDEEM],     [COMMITMENT_PAID],     [PUP_NON_RED],     [UNAMTZD_DIS_PREM_AMT],     [DLY_ACCRETION_AMT],     [CUM_ACCRETION_AMT],     [BASE_NO_UNMASKED],     [PORTFOLIO_NO_UNMASKED],     [BNK_CODE],     [SOURCE_CODE],     [FILE_NAME],     [INSERT_DTTM] )  SELECT \tDISTINCT     CAST(LEFT(RIGHT(FILE_NAME, 12), 8) AS DATE) AS [AS_OF_DATE],     [BASE_NO],     [LAST6_BASE_NO],     [PF_NO],     [LAST6_PF_NO],     [PRODUCT_CODE],     [PRODUCT_DESC],     [SCHEME_CODE],     [SCHEME_NAME],     [INVESTMENT_AMT],     [HOLDING_UNITS],     [CURRENT_VALUE],     [INVESTMENT_CCY],     [ASOFDATE],     [SUB_PROD_CODE],     [SUB_PROD_DESC],     [PROD_CATEGORY_CODE],     [PROD_CATEGORY_DESC],     [ASSET_CD],     [ASSET_DESC],     [SUB_ASSET_CD],     [SUB_ASSET_DESC],     [BR_CD],     [GROUP_NAME],     [ASSET_FLAG],     [AC_NO],     [ISIN_CODE],     [FOLIO_NO],     [REVENUE],     [VOLUME],     [SEC_PRICE],     [CURRENT_VALUE_BR_CCY],     [REVENUE_BR_CCY],     [BOOK_RATE],     [MATURITY_AMT],     [MATURITY_DT],     [PURCHASED_ON],     [INT_RATE],     [TENURE],     [ACTUAL_AS_OF_DATE],     [SECURITY_STATUS],     [EARMARK_VALUE],     [POS_CD],     [MKR_ID],     [MKR_DT],     [AUTH_ID],     [AUTH_DT],     [PREV_CURRENT_VALUE],     [PREV_CURRENT_VALUE_BR_CCY],     [PREV_REVENUE],     [PREV_REVENUE_BR_CCY],     [ACCRUED_INTEREST],     [ACCRUED_INTEREST_BR_CCY],     [AVG_PRICE],     [AVG_PRICE_INCLUDING_FEE],     [BOOK_RATE_BASE],     [P1_UN_REALIZED_GAIN],     [POSN_SEQ_NBR],     [ACCT_KEY],     [TOTAL_NBR_OF_BLOCKED_UNITS],     [BOOK_DT],     [CON_TRD_DT],     [DPST_CD],     [MKT_PRC_DT],     [CON_REF_NBR],     [ANL_PCT_RT],     [COMT_AMT],     [CURR_YLD_PCT],     [DIST_TILL_DT_AMT],     [EST_ANL_INCM_CCY_CD],     [ESTIMATED_ANL_INCM_AM],     [DAILY_INT_ACCR_AMT],     [TOT_AVL_BAL_AMT],     [OUTSTANDING_STRIPS],     [RECON_STATUS],     [MONTHLY_ACC_INT_PAID],     [PREV_MONTH_END_UR_GAIN],     [PREV_MONTH_END_ACC_INT],     [MOD_COST_VALUE_REP_CCY],     [MOD_ACC_INT_REP_CCY],     [REGION_CODE],     [INS_SUM_ASSURED_AMT],     [IS_BUY_FINAL_RECIEVED],     [SELL_PROVISIONAL_AMT],     [TOT_BUY_UNITS],     [TOT_EXE_IN_UNITS],     [TOT_EXE_OUT_UNITS],     [AVG_WGTD_FX_RATE],     [PREV_MONTH_END_FX_UR_GAIN],     [PREV_MONTH_END_FX_ACC_GAIN],     [MONTH_END_EXECUTED_DATE],     [SUB_SECTOR_CODE],     [SECTOR_CODE],     [SUB_SECTOR_DESC],     [SECTOR_NAME],     [P_IN_UNITS],     [P_OUT_UNITS],     [P_IN_CUR_VAL],     [P_OUT_CUR_VAL],     [NON_STL_IN_CUR_VAL],     [NON_STL_OUT_CUR_VAL],     [SETTLED_UNITS],     [SETTLED_VALUE],     [SHARE_CAP_ISSUED],     [START_DT],     [TOT_DISTRIBUTION],     [MAKER_DT],     [MAKER_ID],     [PUP_PENDING_IN],     [PUP_PENDING_OUT],     [PUP_NON_SETT_IN],     [PUP_NON_SETT_OUT],     [PUP_SETTLED],     [NNM],     [NNM_BR_CCY],     [RM_ID],     [PUP_AGGR],     [COMMITMENT],     [UNITS_ALLOTTED],     [DRAWDOWN_CALLED],     [PUP_IN_TXN],     [COMT_REDEEM],     [COMMITMENT_PAID],     [PUP_NON_RED],     [UNAMTZD_DIS_PREM_AMT],     [DLY_ACCRETION_AMT],     [CUM_ACCRETION_AMT],     [BASE_NO_UNMASKED],     [PORTFOLIO_NO_UNMASKED],     LEFT([FILE_NAME], 5),     SUBSTRING([FILE_NAME], 7, 3),     [FILE_NAME],     CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATETIME) FROM [D360].[STG_EDS_TRU_AUMNONUITF] WHERE [H] = 'D'     AND CAST(ASOFDATE AS DATE) = CAST(LEFT(RIGHT(FILE_NAME, 12), 8) AS DATE)     AND NOT (INVESTMENT_AMT = 0 AND HOLDING_UNITS = 0 AND CURRENT_VALUE = 0);"
+			}
+		},
+		"variables": {
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"CheckFEstatus": {
+				"type": "String",
+				"defaultValue": "True"
+			},
+			"Source": {
+				"type": "String",
+				"defaultValue": "TRU"
+			},
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-08-07T07:19:30Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

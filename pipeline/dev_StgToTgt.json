@@ -1,0 +1,125 @@
+{
+	"name": "dev_StgToTgt",
+	"properties": {
+		"activities": [
+			{
+				"name": "Get Table List",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlPoolSource",
+						"sqlReaderQuery": "SELECT DISTINCT TABLENAME FROM TBL_LIST WHERE TABLENAME = 'DEP_GENERALACCOUNTMASTER'",
+						"queryTimeout": "02:00:00"
+					},
+					"dataset": {
+						"referenceName": "SqlPool_TableList",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "Staging to Target",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Get Table List",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Get Table List').output.value",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Staging Name",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "staging_tables",
+								"value": {
+									"value": "@concat('STG_',item().TABLENAME)",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "DF Staging To Target",
+							"type": "ExecuteDataFlow",
+							"dependsOn": [
+								{
+									"activity": "Staging Name",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "1.00:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataflow": {
+									"referenceName": "df_dev_StgToTgt",
+									"type": "DataFlowReference",
+									"datasetParameters": {
+										"STG": {
+											"table_name": "@variables('table_name')"
+										},
+										"TGTDIM": {
+											"tgtdim_name": "@variables('table_name')"
+										}
+									}
+								},
+								"staging": {
+									"linkedService": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									},
+									"folderPath": "data360/dev"
+								},
+								"compute": {
+									"coreCount": 8,
+									"computeType": "General"
+								},
+								"traceLevel": "Fine"
+							}
+						}
+					]
+				}
+			}
+		],
+		"variables": {
+			"staging_tables": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2022-08-17T10:51:42Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

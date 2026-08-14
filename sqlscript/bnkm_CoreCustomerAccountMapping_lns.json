@@ -1,0 +1,20 @@
+{
+	"name": "bnkm_CoreCustomerAccountMapping_lns",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "CREATE PROCEDURE BNKM.SP_CORECUSTOMERACCOUNTMAPPING_LNS\nAS\nBEGIN\n--GET DELTA FROM BUSC\nWITH TEMP_BNKM_CoreCustomerAccountMapping\nAS(\nSELECT\nBLG.FORACID\n,BLG.BANK_ID\n,BLG.ACID\n,BLG.LCHG_TIME\n,BLGD.RECORD_STATUS\n,BLG.INSERT_DTTM\nFROM BUSC.LNS_GENERALACCTMAST_DELTA BLGD\nLEFT JOIN BUSC.LNS_GENERALACCTMAST BLG ON BLG.ACID = BLGD.ACID AND BLG.BANK_ID = BLGD.BANK_ID AND BLG.ISLATEST = '1'\n)\n\nSELECT * INTO #TEMP_BNKM_CoreCustomerAccountMapping FROM TEMP_BNKM_CoreCustomerAccountMapping;\n\n\n--CHECK IF THERE IS DELTA\nWITH TEMP_BNKM_CoreCustomerAccountMapping_SRC\nAS(\nSELECT\nHASHBYTES('MD5', CONCAT(\nFORACID\n,BANK_ID\n,ACID\n,LCHG_TIME\n)) HASHROW, FORACID, RECORD_STATUS\nFROM #TEMP_BNKM_CoreCustomerAccountMapping WHERE RECORD_STATUS = 'UPDATE'\n),\n\nTEMP_BNKM_CoreCustomerAccountMapping_TGT\nAS(\nSELECT\nHASHBYTES('MD5', CONCAT(\n[CustomerAccountId]\n,[FinancialInstitutionId]\n,[CoreAccountId]\n,[Timestamp]\n)) HASHROW, CustomerAccountId\nFROM BNKM.CoreCustomerAccountMapping\n),\n\nTEMP_BNKM_CoreCustomerAccountMapping_DELTA\nAS(\nSELECT\n    SRC.HASHROW AS SRC_HR\n    ,TGT.HASHROW AS TGT_HR\n    ,ISNULL(SRC.FORACID, TGT.CustomerAccountId) AS CustomerAccountId\n    ,CASE\n        WHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n        ELSE NULL END AS RECORD_STATUS\nFROM TEMP_BNKM_CoreCustomerAccountMapping_SRC SRC\nFULL OUTER JOIN TEMP_BNKM_CoreCustomerAccountMapping_TGT TGT\nON SRC.FORACID = TGT.CustomerAccountId\nWHERE SRC.HASHROW <> TGT.HASHROW\n)\n\nSELECT * INTO #TEMP_BNKM_CoreCustomerAccountMapping_DELTA FROM TEMP_BNKM_CoreCustomerAccountMapping_DELTA;\n\n\nUPDATE TGT\nSET\n[CustomerAccountId] = SRC.FORACID\n,[FinancialInstitutionId] = SRC.BANK_ID\n,[CoreAccountId] = SRC.ACID\n,[Timestamp] = SRC.LCHG_TIME\n,[SOURCESYSTEMCODE] = 'LNS'\n,[WORKFLOWID] = 0\n,[TASKRUNID] = 0\n,[INSERTDTTM] = SRC.INSERT_DTTM\nFROM BNKM.CoreCustomerAccountMapping TGT\nJOIN #TEMP_BNKM_CoreCustomerAccountMapping_DELTA DELTA ON DELTA.CustomerAccountId = TGT.CustomerAccountId AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_coreCustomerAccountMapping SRC ON SRC.FORACID = TGT.CustomerAccountId;\n\n\nINSERT INTO BNKM.CoreCustomerAccountMapping\n(\n[CustomerAccountId]\n,[FinancialInstitutionId]\n,[CoreAccountId]\n,[Timestamp]\n,[SOURCESYSTEMCODE]\n,[WORKFLOWID]\n,[TASKRUNID]\n,[INSERTDTTM]\n)\n\nSELECT\nFORACID AS [CustomerAccountId]\n,BANK_ID AS [FinancialInstitutionId]\n,ACID AS [CoreAccountId]\n,LCHG_TIME AS [Timestamp]\n,'LNS' AS [SOURCESYSTEMCODE]\n,0 AS [WORKFLOWID]\n,0 AS [TASKRUNID]\n,INSERT_DTTM AS [INSERTDTTM]\nFROM #TEMP_BNKM_CoreCustomerAccountMapping\nWHERE RECORD_STATUS = 'INSERT'\n\nDROP TABLE #TEMP_BNKM_CoreCustomerAccountMapping\nDROP TABLE #TEMP_BNKM_CoreCustomerAccountMapping_DELTA;\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

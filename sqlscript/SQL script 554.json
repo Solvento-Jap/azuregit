@@ -1,0 +1,20 @@
+{
+	"name": "SQL script 554",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nCREATE PROC [DW].[SP_AGGREGATE_TOTAL_CUSTOMER_HOLDINGS_FACT] @DateProcessed [date] AS\nBEGIN\n\n\nTRUNCATE TABLE dw.AGGREGATE_TOTAL_CUSTOMER_HOLDINGS_FACT;\n\nwith DEPOSITS_FACT AS(\n    SELECT * FROM DW.DEPOSITS_FACT WHERE AS_OF_DATE =  CAST(@DateProcessed AS DATE)\n)\n\n\nINSERT INTO dw.AGGREGATE_TOTAL_CUSTOMER_HOLDINGS_FACT (\nCustomerSK\n,CustomerID\n,GlobalCIF\n,FCBSCIF\n,BankSK\n,SourceSystemCode\n,as_of_date\n,Deposits_Outstanding_Balance\n,Deposits_Previous_Monthend_Average_Daily_Balance\n,Deposits_Year_To_Date_Average_Daily_Balance\n,Total_Relationship_Balance\n,MarketSegment\n,WorkFlowId\n,TaskRunId\n,InsertDttm\n)\nSELECT A.*\n,CASE WHEN Deposits_Year_To_Date_Average_Daily_Balance <= 0 THEN 'MM' \n      WHEN Deposits_Year_To_Date_Average_Daily_Balance >= 10000000 THEN 'VIP'\n      ELSE MarketSegmentName END AS MarketSegment\n,0 AS WorkFlowId\n,0 AS TaskRunId\n,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\nFROM (\nSELECT\n DCA.CustomerSK AS CustomerSK\n,DCA.CustomerID AS CustomerID\n,DC.GlobalCIF AS GlobalCIF\n,DC.FCBSCIF AS FCBSCIF\n,DC.BankSK AS BankSK\n,DC.SourceSystemCode AS SourceSystemCode\n,Convert(CHAR(8),@DateProcessed,112) AS as_of_date\n,SUM(CASE WHEN DCA.ShareIndicator = 'Y' THEN DEP_F.Outstanding_Balance_PHP ELSE 0 END) AS Deposits_Outstanding_Balance\n,SUM(CASE WHEN DCA.ShareIndicator = 'Y' THEN DEP_F.Previous_Monthend_Average_Daily_Balance_PHP ELSE 0 END) AS Deposits_Previous_Monthend_Average_Daily_Balance\n,SUM(CASE WHEN DCA.ShareIndicator = 'Y' THEN DEP_F.Year_To_Date_Average_Daily_Balance_PHP ELSE 0 END) AS Deposits_Year_To_Date_Average_Daily_Balance\n,SUM(CASE WHEN DCA.ShareIndicator = 'Y' THEN DEP_F.Year_To_Date_Average_Daily_Balance_PHP ELSE 0 END) AS Total_Relationship_Balance\nFROM DEPOSITS_FACT DEP_F\nINNER JOIN DW.DIMCUSTOMERACCOUNT DCA ON DCA.AccountID = DEP_F.FORACID \nINNER JOIN DW.DimAccount DA ON DA.AccountSK = DCA.AccountSK  AND ISNULL(DA.ACCOUNTSTATUS,'1') <> 'Closed'\nINNER JOIN DW.DIMCUSTOMER DC ON DC.CUSTOMERSK = DCA.CUSTOMERSK\nWHERE isnull(DA.ACCOUNTSTATUS,'1') not in ('Closed')\nAND @DateProcessed BETWEEN DC.ValidStartDate AND DC.ValidEndDate\nAND @DateProcessed BETWEEN DCA.ValidStartDate AND DCA.ValidEndDate\nAND @DateProcessed BETWEEN DA.ValidStartDate AND DA.ValidEndDate\nGROUP BY  DCA.CustomerSK \n,DCA.CustomerID \n,DC.GlobalCIF \n,DC.FCBSCIF \n,DC.BankSK \n,DC.SourceSystemCode\n,DEP_F.AS_OF_DATE ) A\n--INNER JOIN DW.DimMarketSegment DMS ON DMS.LowerLimit <= A.Deposits_Year_To_Date_Average_Daily_Balance AND A.Deposits_Year_To_Date_Average_Daily_Balance < DMS.UpperLimit\nINNER JOIN DW.DimMarketSegment DMS ON DMS.LowerLimit <= ISNULL(A.Deposits_Year_To_Date_Average_Daily_Balance,\n0\n) AND ISNULL(A.Deposits_Year_To_Date_Average_Daily_Balance,\n0\n) < ISNULL(DMS.UpperLimit,\n9999999999999\n)\nEND\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

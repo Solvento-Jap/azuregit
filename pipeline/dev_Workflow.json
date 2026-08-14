@@ -1,0 +1,275 @@
+{
+	"name": "dev_Workflow",
+	"properties": {
+		"activities": [
+			{
+				"name": "dev_OnPremToADLS",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "START_WORKFLOW",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "dev_PGPDecrypt",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "dev_OnPremToADLS",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PGPDecrypt_AllSourceCode",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "dev_DecToStg",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "dev_PGPDecrypt",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "DecToStg",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "dev_StgToSyn",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "dev_DecToStg",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "dev_StgToSyn",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "START_WORKFLOW",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "pipeline_runid",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().RunId",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "SET IDENTITY_INSERT  [OM].[OM_WORKFLOW_RUN] ON;\r\n\r\nINSERT INTO [OM].[OM_WORKFLOW_RUN] (WORKFLOW_RUN_ID,PIPELINE_RUNID,START_DATETIME,END_DATETIME,STATUS_ID,CREATE_DATETIME)\r\nSELECT  ROW_NUMBER() OVER(ORDER BY (SELECT NULL))+ (SELECT ISNULL(MAX(WORKFLOW_RUN_ID),0) FROM [OM].[OM_WORKFLOW_RUN]) \r\n,@pipeline_runid\r\n,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime)\r\n,NULL\r\n,(SELECT STATUS_ID FROM OM.OM_STATUS WHERE STATUS = 'RUNNING')\r\n,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime)\r\n\r\nSET IDENTITY_INSERT  [OM].[OM_WORKFLOW_RUN] OFF;"
+						}
+					]
+				}
+			},
+			{
+				"name": "END_WORKFLOW",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "dev_StgToSyn",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "pipeline_runid",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().RunId",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "UPDATE [OM].[OM_WORKFLOW_RUN] SET STATUS_ID = (SELECT STATUS_ID FROM OM.OM_STATUS WHERE STATUS = 'SUCCESSFUL'), END_DATETIME = CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) WHERE PIPELINE_RUNID = @pipeline_runid;"
+						}
+					]
+				}
+			},
+			{
+				"name": "dev_Failed_Workflow1",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "dev_OnPremToADLS",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Workflow",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "dev_Failed_Workflow2",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "dev_PGPDecrypt",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Workflow",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "dev_Failed_Workflow3",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "dev_DecToStg",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Workflow",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "dev_Failed_Workflow4",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "dev_StgToSyn",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Workflow",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-08-02T01:06:09Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

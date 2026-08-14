@@ -1,0 +1,631 @@
+{
+	"name": "CI_Agg_Prod_Count_Retail_EDS",
+	"properties": {
+		"description": "Sources data from EDS tables",
+		"activities": [
+			{
+				"name": "Aggregated Prod Count Retail",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "START_TASK_CI",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": {
+							"value": "@concat('WITH DEP AS\n(\n    SELECT\n     EDA.AS_OF_DATE AS AS_OF_DATE\n    ,ORGKEY AS CUSTOMER_ID\n    ,COUNT(FORACID) AS DEP_ACCT_CNT\n\tFROM EDS.DEP_ACCOUNTRELATIONSHIP EDA\n\tINNER JOIN EDS.DEPOSIT_FACT EDF\n\t\tON EDA.ACID = EDF.GAM_ACID\n\t\tAND EDA.BANK_ID = EDF.GAM_BANK_ID\n\t\tAND EDA.AS_OF_DATE = EDF.AS_OF_DATE\n\tINNER JOIN EDS.CUSTOMER_DIM ECD\n\t\tON EDA.CUST_ID = ECD.CORE_CUST_ID\n\t\tAND EDA.BANK_ID = ECD.BANK_ID\n\t\tAND EDA.AS_OF_DATE BETWEEN ECD.SCD_START_DATE AND ECD.SCD_END_DATE\n\tWHERE \n\t\tEDA.DEL_FLG <> ''Y''\n\t\tAND EDA.ENTITY_CRE_FLG = ''Y''\n\t\tAND GAM_ACID IS NOT NULL\n\t\tAND EDA.BANK_ID = ''CBC01''\n\t\tAND (DEP_ACCOUNT_STATUS <> ''C'')\n\t\tAND EDA.AS_OF_DATE = CAST(''',variables('v_date'),''' AS DATE)\n\t\tAND LEFT(ECD.ORGKEY,1) = ''R''\n\tGROUP BY \n\t\tEDA.AS_OF_DATE\n\t\t,ORGKEY\n)\n\n\n, LNS AS \n(\n    SELECT\n    A.AS_OF_DATE AS AS_OF_DATE\n    ,C.ORGKEY AS CUSTOMER_ID\n\t,COUNT(B.FORACID) AS LNS_ACCT_CNT\n    FROM EDS.LNS_ACCTAUTHSIGN A\n\tINNER JOIN EDS.LOAN_FACT B\n\t\tON A.AS_OF_DATE = B.AS_OF_DATE\n\t\tAND A.ACID = B.GAM_ACID\n\t\tAND A.BANK_ID = B.GAM_BANK_ID\n\tINNER JOIN EDS.CUSTOMER_DIM C\n\t\tON A.AS_OF_DATE BETWEEN C.SCD_START_DATE AND C.SCD_END_DATE\n\t\tAND A.CUST_ID = C.CORE_CUST_ID\n\t\tAND A.BANK_ID = C.BANK_ID\n    WHERE A.DEL_FLG <> ''Y''\n        AND A.ENTITY_CRE_FLG = ''Y''\n        AND B.GAM_ACID IS NOT NULL\n        AND (LNS_ACCOUNT_STATUS <> ''C'')\n        AND A.BANK_ID = ''CBC01''\n\t\tAND A.AS_OF_DATE = CAST(''',variables('v_date'),''' AS DATE)\n\t\tAND LEFT(C.ORGKEY,1) = ''R''\n\tGROUP BY \n\t    A.AS_OF_DATE\n\t\t,C.ORGKEY\n)\n, CCD AS \n(\n    SELECT\n    AS_OF_DATE\n    ,CUST_CIF_NBR AS CUSTOMER_ID\n\t,COUNT(CRDACCT_NBR) AS CCD_ACCT_CNT\n    FROM EDS.CCD_CREDIT_CARDS_FACT A\n\tWHERE\n\tA.AS_OF_DATE = CAST(''',variables('v_date'),''' AS DATE)\n\tAND A.CRDACCT_STATUS <> 8\n\tAND LEFT(CUST_CIF_NBR,1) = ''R''\n\tGROUP BY\n\t AS_OF_DATE\n    ,CUST_CIF_NBR\n)\n, TRU AS\n(\n\tSELECT\n\t\tCAST(''',variables('v_date'),''' AS DATE) AS AS_OF_DATE\n\t   ,CUST.UNIQUE_ID AS CUSTOMER_ID\n\t   ,COUNT(PORTFOLIO_NO) AS TRU_ACCT_CNT\n\tFROM\n\tEDS.TRU_CUST CUST\n\tINNER JOIN EDS.TRU_BASELINK BASE\n\t\tON CUST.CUST_NO = BASE.CIF_NO\n\t\tAND CAST(''',variables('v_date'),''' AS DATE) BETWEEN BASE.SCD_START_DATE AND BASE.SCD_END_DATE\n\tINNER JOIN EDS.TRU_PORTFOLIO PORT\n\t\tON BASE.CUST_NO = PORT.BASE_NO\n\t\tAND PORT.STATUS = ''A''\n\t\tAND CAST(''',variables('v_date'),''' AS DATE) BETWEEN PORT.SCD_START_DATE AND PORT.SCD_END_DATE\n\tINNER JOIN EDS.TRU_PFSUBSCRIPTION PFSUB\n\t\tON PORT.SUBSCRIPTION_ID = PFSUB.SUBSCRIPTION_ID\n\t\tAND PORT.BASE_NO = PFSUB.BASE_NO\n\t\tAND CAST(''',variables('v_date'),''' AS DATE) BETWEEN PFSUB.SCD_START_DATE AND PFSUB.SCD_END_DATE\n\t\t\n\tWHERE\n\t\tCAST(''',variables('v_date'),''' AS DATE) BETWEEN CUST.SCD_START_DATE AND CUST.SCD_END_DATE\n\t\tAND LEFT(CUST.UNIQUE_ID,1) = ''R''\n\tGROUP BY \n\t   CUST.UNIQUE_ID\n)\n\n, TRY AS\n(\n\tSELECT\n\t\tCAST(''',variables('v_date'),''' AS DATE) AS AS_OF_DATE,\n\t\tvalue AS CUSTOMER_ID,\n\t\tCOUNT( LE.ID) AS TRY_ACCT_CNT\n    FROM EDS.TRY_LEGALENTITY AS LE\n\tCROSS APPLY STRING_SPLIT(LE.EXTERNAL_REF, ''|'')\n    WHERE \n\t\tLE.STATUS = ''ENABLED'' AND LE.BNK_CODE = ''CBC01''\n\t\tAND CAST(''',variables('v_date'),''' AS DATE) BETWEEN LE.SCD_START_DATE AND LE.SCD_END_DATE\n\t\tAND LEFT(LE.EXTERNAL_REF,1)=''R''\n\tGROUP BY \n\t\tvalue\n)\nSELECT AS_OF_DATE, CUSTOMER_ID, SUM(DEP_ACCT_CNT) DEP_COUNT,  SUM(LNS_ACCT_CNT) LNS_COUNT,  SUM(CCD_ACCT_CNT) CCD_COUNT, \nSUM(TRU_ACCT_CNT) TRU_COUNT, SUM(TRY_ACCT_CNT) TRY_COUNT\nFROM \n(\n    SELECT AS_OF_DATE, CUSTOMER_ID, DEP_ACCT_CNT, 0 LNS_ACCT_CNT, 0 CCD_ACCT_CNT, 0 TRU_ACCT_CNT, 0 TRY_ACCT_CNT FROM DEP\n    UNION ALL\n    SELECT AS_OF_DATE, CUSTOMER_ID, 0 DEP_ACCT_CNT, LNS_ACCT_CNT, 0 CCD_ACCT_CNT, 0 TRU_ACCT_CNT, 0 TRY_ACCT_CNT FROM LNS\n    UNION ALL\n    SELECT AS_OF_DATE, CUSTOMER_ID, 0 DEP_ACCT_CNT, 0 LNS_ACCT_CNT, CCD_ACCT_CNT, 0 TRU_ACCT_CNT, 0 TRY_ACCT_CNT FROM CCD\n    UNION ALL\n    SELECT AS_OF_DATE, CUSTOMER_ID, 0 DEP_ACCT_CNT, 0 LNS_ACCT_CNT, 0 CCD_ACCT_CNT, TRU_ACCT_CNT, 0 TRY_ACCT_CNT  FROM TRU\n    UNION ALL\n    SELECT AS_OF_DATE, CUSTOMER_ID, 0 DEP_ACCT_CNT, 0 LNS_ACCT_CNT, 0 CCD_ACCT_CNT, 0 TRU_ACCT_CNT, TRY_ACCT_CNT FROM TRY ) A\nINNER JOIN EDS.CUSTOMER_DIM ECD\n\tON A.CUSTOMER_ID = ECD.ORGKEY\n\tAND ECD.BANK_ID = ''CBC01''\n\tAND CAST(''',variables('v_date'),''' AS DATE) BETWEEN ECD.SCD_START_DATE AND ECD.SCD_END_DATE\nGROUP BY AS_OF_DATE, CUSTOMER_ID')\n\n",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "DelimitedTextSink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"formatSettings": {
+							"type": "DelimitedTextWriteSettings",
+							"quoteAllText": true,
+							"fileExtension": ".txt"
+						}
+					},
+					"enableStaging": false,
+					"translator": {
+						"type": "TabularTranslator",
+						"typeConversion": true,
+						"typeConversionSettings": {
+							"allowDataTruncation": true,
+							"treatBooleanAsNumber": false
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_EDS",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "-"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "CI_csv_gen",
+						"type": "DatasetReference",
+						"parameters": {
+							"Table": {
+								"value": "CI_Agg_Prod_Cnt_Retail",
+								"type": "Expression"
+							},
+							"Source": "AGGREGATE",
+							"Types": "Retail"
+						}
+					}
+				]
+			},
+			{
+				"name": "START_TASK_CI",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "OM_SRC_CHECK",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_START]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@variables('v_date')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_SUCCESSFUL",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Aggregated Prod Count Retail",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "SUCCESSFUL",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_FAILED",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Aggregated Prod Count Retail",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "FAILED",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.date,'9999-12-31')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_date",
+								"value": {
+									"value": "@pipeline().parameters.date",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "select least(crm_date,deposits_date,loans_date,ccd_date,try_date,tru_date) fulldate from eds.eds_ctl",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_date",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_GET",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Set v_error_desc_get",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@variables('v_date')",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_CI_AGG_PROD_COUNT_RETAIL",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "SP_LOG_TASK_ERROR_DTL_GET",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": {
+						"value": "@variables('v_error_desc')",
+						"type": "Expression"
+					},
+					"errorCode": "500"
+				}
+			},
+			{
+				"name": "Set v_error_desc_get",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Aggregated Prod Count Retail",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_error_desc",
+					"value": {
+						"value": "@activity('Aggregated Prod Count Retail').Error.message",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "SP_LOG_COPY_ACTIVITY_DTL",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Aggregated Prod Count Retail",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_COPY_ACTIVITY_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@variables('v_date')",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"dataread": {
+							"value": {
+								"value": "@activity('Aggregated Prod Count Retail').output.dataRead",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"datawritten": {
+							"value": {
+								"value": "@activity('Aggregated Prod Count Retail').output.dataWritten",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"sourcepeakconnections": {
+							"value": {
+								"value": "@activity('Aggregated Prod Count Retail').output.sourcePeakConnections",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowsread": {
+							"value": {
+								"value": "@activity('Aggregated Prod Count Retail').output.rowsRead",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowscopied": {
+							"value": {
+								"value": "@activity('Aggregated Prod Count Retail').output.rowsCopied",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowsskipped": {
+							"value": null,
+							"type": "String"
+						},
+						"copyduration": {
+							"value": {
+								"value": "@activity('Aggregated Prod Count Retail').output.copyDuration",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"throughput": {
+							"value": {
+								"value": "@activity('Aggregated Prod Count Retail').output.throughput",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"redirectrowpath": {
+							"value": null,
+							"type": "String"
+						},
+						"logfilepath": {
+							"value": null,
+							"type": "String"
+						},
+						"filesread": {
+							"value": null,
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "OM_SRC_CHECK",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@replace(substring(variables('v_date'),0,10),'-','')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			}
+		],
+		"parameters": {
+			"tables": {
+				"type": "string",
+				"defaultValue": "CI_AGG_PROD_COUNT_RETAIL"
+			},
+			"date": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			}
+		},
+		"variables": {
+			"v_date": {
+				"type": "String"
+			},
+			"v_error_desc": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-05-13T06:05:46Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

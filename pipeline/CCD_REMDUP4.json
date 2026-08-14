@@ -1,0 +1,788 @@
+{
+	"name": "CCD_REMDUP4",
+	"properties": {
+		"activities": [
+			{
+				"name": "CCD_MCUSTOMER",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) DUP_CNT FROM (\nSELECT CUST_NBR, CUST_CIF_NBR, count(1) CNT FROM BUSC.CCD_MCUSTOMER\nWHERE ISLATEST = 1\nGROUP BY CUST_NBR, CUST_CIF_NBR\nHAVING count(1) > 1  ) A"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CCD_CBCEXAPPFP",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) DUP_CNT FROM (\nSELECT APPM_NBR ,APPM_PRIN_APPM_NBR ,APPM_PRIN_CARD_NBR ,APPM_CUST_NBR ,APPM_ACCT_NBR ,APPM_CARD_NBR ,APPM_CIF_NBR, count(1) CNT FROM BUSC.CCD_CBCEXAPPFP \nWHERE islatest = 1 \nGROUP BY APPM_NBR ,APPM_PRIN_APPM_NBR ,APPM_PRIN_CARD_NBR ,APPM_CUST_NBR ,APPM_ACCT_NBR ,APPM_CARD_NBR ,APPM_CIF_NBR\nHAVING count(1) > 1 ) A"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DCU_RANKED",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CCD_MCUSTOMER",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT ROW_NUMBER() OVER(PARTITION BY  CUST_NBR, CUST_CIF_NBR ORDER BY CUST_NBR DESC, INSERT_DTTM DESC) RN , --define PKs in partition by\n* INTO BUSC.CCD_MCUSTOMER_WITH_DUP_20240305\nFROM BUSC.CCD_MCUSTOMER"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "APP_RANKED",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CCD_CBCEXAPPFP",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT ROW_NUMBER() OVER(PARTITION BY  APPM_NBR ,APPM_PRIN_APPM_NBR ,APPM_PRIN_CARD_NBR ,APPM_CUST_NBR ,APPM_ACCT_NBR ,APPM_CARD_NBR ,APPM_CIF_NBR ORDER BY APPM_NBR DESC, INSERT_DTTM DESC) RN , --define PKs in partition by\n* INTO BUSC.CCD_CBCEXAPPFP_WITH_DUP_20240305\nFROM BUSC.CCD_CBCEXAPPFP"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DCU_COUNT RECORDS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DCU_RANKED",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.CCD_MCUSTOMER"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DCU_COUNT RECORDS WITH DUPS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DCU_COUNT RECORDS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.CCD_MCUSTOMER_WITH_DUP_20240305"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DCU_BACKUP TABLE",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DCU_COUNT RECORDS WITH DUPS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT * INTO BUSC.CCD_MCUSTOMER_BU_20240305 FROM BUSC.CCD_MCUSTOMER"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DCU_UPDATE ISLATEST",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DCU_BACKUP TABLE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "UPDATE BUSC.CCD_MCUSTOMER_WITH_DUP_20240305 SET ISLATEST = 0 WHERE RN > 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DCU_INSERT RANKED",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DCU_TRUNCATE TABLE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "INSERT INTO BUSC.CCD_MCUSTOMER\n(\nCUST_BANK_NBR\n,CUST_NBR\n,CUST_STATUS\n,CUST_BRANCH_NBR\n,CUST_OPER_CODE\n,CUST_TYPE\n,CUST_LOCAL_NAME\n,CUST_ENG_NAME\n,CUST_ADDR1\n,CUST_ADDR2\n,CUST_ADD_CITY\n,CUST_ADD_PROVINCE\n,CUST_ADD_ZIPCODE\n,CUST_PHONE\n,CUST_RES_TYPE\n,CUST_RES_PERIOD\n,CUST_SEX\n,CUST_MARITAL_ST\n,CUST_QUALIFICATION\n,CUST_ID_NBR\n,CUST_DTE_BIRTH\n,CUST_MOM_NAME\n,CUST_WORK_ID\n,CUST_NATIONALITY\n,CUST_SUPP_RLNSHIP\n,CUST_EMP_NAME\n,CUST_EMP_ADDR1\n,CUST_EMP_ADDR2\n,CUST_EMP_ZIP\n,CUST_OCC_CODE\n,CUST_OCC_PER\n,CUST_EMP_PHONE\n,CUST_ANN_SALARY\n,CUST_GRLNSHIP\n,CUST_GLOCAL_NAME\n,CUST_GENG_NAME\n,CUST_GADDR1\n,CUST_GADDR2\n,CUST_GADD_CITY\n,CUST_GADD_PROVINCE\n,CUST_GADD_ZIPCODE\n,CUST_GPHONE\n,CUST_GSEX\n,CUST_GMARITAL_ST\n,CUST_GQUALIFICATION\n,CUST_GID_NBR\n,CUST_GDTE_BIRTH\n,CUST_GWORK_ID\n,CUST_GEMP_NAME\n,CUST_GEMP_ADDR1\n,CUST_GEMP_ADDR2\n,CUST_GEMP_ZIP\n,CUST_GOCC_CODE\n,CUST_GOCC_PER\n,CUST_GEMP_PHONE\n,CUST_GANN_SALARY\n,CUST_MADDR1\n,CUST_MADDR2\n,CUST_MADD_CITY\n,CUST_MADD_PROVINCE\n,CUST_MADD_ZIPCODE\n,CUST_CNAME\n,CUST_CPHONE\n,CUST_CREG_DATE\n,CUST_CREG_NBR\n,CUST_CBUSINESS\n,CUST_CBANK\n,CUST_CBANK_ACCT\n,CUST_CCONTACT\n,CUST_COLLECTOR\n,CUST_MEMO\n,FLAG_CUST_CRLIMIT\n,CUST_CRLIMIT\n,FLAG_CUST_AVAIL_CREDIT\n,CUST_AVAIL_CREDIT\n,FLAG_CUST_CASH_LIMIT\n,CUST_CASH_LIMIT\n,FLAG_CUST_AVAIL_CASH\n,CUST_AVAIL_CASH\n,FLAG_CUST_TEMP_CRLIMIT\n,CUST_TEMP_CRLIMIT\n,FLAG_CUST_PERM_CRLIMIT\n,CUST_PERM_CRLIMIT\n,CUST_DATE_TEMP_CRLIMIT_EFF\n,CUST_DATE_TEMP_CRLIMIT_EXP\n,CUST_CURR_CODE\n,CUST_ADDR3\n,CUST_ADDR4\n,CUST_MADDR3\n,CUST_MADDR4\n,CUST_EMAIL_ADDR\n,CUST_MOBILE_PHONE\n,CUST_ADDR_CODE\n,CUST_FILE_BUFFER\n,FLAG_CUST_INSTL_LIMIT\n,CUST_INSTL_LIMIT\n,FLAG_CUST_AVAIL_INSTL\n,CUST_AVAIL_INSTL\n,FLAG_CUST_STDALN_INSTL\n,CUST_STDALN_INSTL\n,FLAG_CUST_AVAIL_STDALN_INS\n,CUST_AVAIL_STDALN_INS\n,CUST_NODE_ID\n,CUST_SOCIAL_ID\n,CUST_GS_ID\n,CUST_DRIVE_LICENSE\n,CUST_TAX_ID\n,CUST_UM_ID\n,CUST_OTHER_ID\n,CUST_CIF_NBR\n,CUST_FIRST_NAME\n,CUST_MIDDLE_NAME\n,CUST_LAST_NAME\n,CUST_EMAIL_ADDR2\n,CUST_EMAIL_ADDR3\n,CUST_EMP_ADDR3\n,CUST_EMP_ADDR4\n,CUST_EMP_CITY\n,CUST_EMP_PROVINCE\n,CUST_PHONE_CTY\n,CUST_PHONE_AREA\n,CUST_MOBILE_CTY\n,CUST_MOBILE_AREA\n,CUST_OFFICE_CTY\n,CUST_OFFICE_AREA\n,CUST_NATIONALITY_CDE\n,CUST_BORROW_TYPE\n,CUST_RELATION\n,CUST_EMP_TYPE\n,CUST_EMP_CODE\n,CUST_BIRTH_PLACE\n,CUST_EMP_NATURE\n,CUST_FUND_SRC\n,CUST_FUND_SRC_OTHER\n,CUST_DELTA_DATE\n,CUST_CLASS_CODE\n,CUST_TITLE\n,CUST_STAFF_ID\n,CUST_DATE_MAINT\n,CUST_USER_MAINT\n,CUST_TIME_MAINT\n,CUST_FILE_DATE\n,isActive\n,isLatest\n,BNK_CODE\n,SOURCE_CODE\n,FILE_NAME\n,insert_dttm\n) \nSELECT  \nCUST_BANK_NBR\n,CUST_NBR\n,CUST_STATUS\n,CUST_BRANCH_NBR\n,CUST_OPER_CODE\n,CUST_TYPE\n,CUST_LOCAL_NAME\n,CUST_ENG_NAME\n,CUST_ADDR1\n,CUST_ADDR2\n,CUST_ADD_CITY\n,CUST_ADD_PROVINCE\n,CUST_ADD_ZIPCODE\n,CUST_PHONE\n,CUST_RES_TYPE\n,CUST_RES_PERIOD\n,CUST_SEX\n,CUST_MARITAL_ST\n,CUST_QUALIFICATION\n,CUST_ID_NBR\n,CUST_DTE_BIRTH\n,CUST_MOM_NAME\n,CUST_WORK_ID\n,CUST_NATIONALITY\n,CUST_SUPP_RLNSHIP\n,CUST_EMP_NAME\n,CUST_EMP_ADDR1\n,CUST_EMP_ADDR2\n,CUST_EMP_ZIP\n,CUST_OCC_CODE\n,CUST_OCC_PER\n,CUST_EMP_PHONE\n,CUST_ANN_SALARY\n,CUST_GRLNSHIP\n,CUST_GLOCAL_NAME\n,CUST_GENG_NAME\n,CUST_GADDR1\n,CUST_GADDR2\n,CUST_GADD_CITY\n,CUST_GADD_PROVINCE\n,CUST_GADD_ZIPCODE\n,CUST_GPHONE\n,CUST_GSEX\n,CUST_GMARITAL_ST\n,CUST_GQUALIFICATION\n,CUST_GID_NBR\n,CUST_GDTE_BIRTH\n,CUST_GWORK_ID\n,CUST_GEMP_NAME\n,CUST_GEMP_ADDR1\n,CUST_GEMP_ADDR2\n,CUST_GEMP_ZIP\n,CUST_GOCC_CODE\n,CUST_GOCC_PER\n,CUST_GEMP_PHONE\n,CUST_GANN_SALARY\n,CUST_MADDR1\n,CUST_MADDR2\n,CUST_MADD_CITY\n,CUST_MADD_PROVINCE\n,CUST_MADD_ZIPCODE\n,CUST_CNAME\n,CUST_CPHONE\n,CUST_CREG_DATE\n,CUST_CREG_NBR\n,CUST_CBUSINESS\n,CUST_CBANK\n,CUST_CBANK_ACCT\n,CUST_CCONTACT\n,CUST_COLLECTOR\n,CUST_MEMO\n,FLAG_CUST_CRLIMIT\n,CUST_CRLIMIT\n,FLAG_CUST_AVAIL_CREDIT\n,CUST_AVAIL_CREDIT\n,FLAG_CUST_CASH_LIMIT\n,CUST_CASH_LIMIT\n,FLAG_CUST_AVAIL_CASH\n,CUST_AVAIL_CASH\n,FLAG_CUST_TEMP_CRLIMIT\n,CUST_TEMP_CRLIMIT\n,FLAG_CUST_PERM_CRLIMIT\n,CUST_PERM_CRLIMIT\n,CUST_DATE_TEMP_CRLIMIT_EFF\n,CUST_DATE_TEMP_CRLIMIT_EXP\n,CUST_CURR_CODE\n,CUST_ADDR3\n,CUST_ADDR4\n,CUST_MADDR3\n,CUST_MADDR4\n,CUST_EMAIL_ADDR\n,CUST_MOBILE_PHONE\n,CUST_ADDR_CODE\n,CUST_FILE_BUFFER\n,FLAG_CUST_INSTL_LIMIT\n,CUST_INSTL_LIMIT\n,FLAG_CUST_AVAIL_INSTL\n,CUST_AVAIL_INSTL\n,FLAG_CUST_STDALN_INSTL\n,CUST_STDALN_INSTL\n,FLAG_CUST_AVAIL_STDALN_INS\n,CUST_AVAIL_STDALN_INS\n,CUST_NODE_ID\n,CUST_SOCIAL_ID\n,CUST_GS_ID\n,CUST_DRIVE_LICENSE\n,CUST_TAX_ID\n,CUST_UM_ID\n,CUST_OTHER_ID\n,CUST_CIF_NBR\n,CUST_FIRST_NAME\n,CUST_MIDDLE_NAME\n,CUST_LAST_NAME\n,CUST_EMAIL_ADDR2\n,CUST_EMAIL_ADDR3\n,CUST_EMP_ADDR3\n,CUST_EMP_ADDR4\n,CUST_EMP_CITY\n,CUST_EMP_PROVINCE\n,CUST_PHONE_CTY\n,CUST_PHONE_AREA\n,CUST_MOBILE_CTY\n,CUST_MOBILE_AREA\n,CUST_OFFICE_CTY\n,CUST_OFFICE_AREA\n,CUST_NATIONALITY_CDE\n,CUST_BORROW_TYPE\n,CUST_RELATION\n,CUST_EMP_TYPE\n,CUST_EMP_CODE\n,CUST_BIRTH_PLACE\n,CUST_EMP_NATURE\n,CUST_FUND_SRC\n,CUST_FUND_SRC_OTHER\n,CUST_DELTA_DATE\n,CUST_CLASS_CODE\n,CUST_TITLE\n,CUST_STAFF_ID\n,CUST_DATE_MAINT\n,CUST_USER_MAINT\n,CUST_TIME_MAINT\n,CUST_FILE_DATE\n,isActive\n,isLatest\n,BNK_CODE\n,SOURCE_CODE\n,FILE_NAME\n,insert_dttm\nFROM BUSC.CCD_MCUSTOMER_WITH_DUP_20240305"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DCU_COUNT RECORDS ISLATEST",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DCU_CHECK FOR DUPS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.CCD_MCUSTOMER\nWHERE ISLATEST = 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DCU_COUNT DUPS ISLATEST",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DCU_COUNT RECORDS ISLATEST",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.CCD_MCUSTOMER_WITH_DUP_20240305\nWHERE ISLATEST = 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DCU_CHECK FOR DUPS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DCU_INSERT RANKED",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT CUST_NBR, CUST_CIF_NBR, count(1) CNT FROM BUSC.CCD_MCUSTOMER\nWHERE ISLATEST = 1\nGROUP BY CUST_NBR, CUST_CIF_NBR\nHAVING count(1) > 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DCU_TRUNCATE TABLE",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DCU_UPDATE ISLATEST",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "TRUNCATE TABLE BUSC.CCD_MCUSTOMER"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "APP_COUNT RECORDS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "APP_RANKED",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.CCD_CBCEXAPPFP"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "APP_COUNT RECORDS WITH DUPS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "APP_COUNT RECORDS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.CCD_CBCEXAPPFP_WITH_DUP_20240305"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "APP_BACKUP TABLE",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "APP_COUNT RECORDS WITH DUPS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT * INTO BUSC.CCD_CBCEXAPPFP_BU_20240305 FROM BUSC.CCD_CBCEXAPPFP"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "APP_UPDATE ISLATEST",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "APP_BACKUP TABLE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "UPDATE BUSC.CCD_CBCEXAPPFP_WITH_DUP_20240305 SET ISLATEST = 0 WHERE RN > 1;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "APP_INSERT RANKED",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "APP_TRUNCATE TABLE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "INSERT INTO BUSC.CCD_CBCEXAPPFP\n(\nAPPM_BANK_NBR\n,APPM_NBR\n,APPM_REFERENCE\n,APPM_PDT_NBR\n,APPM_CRITERIA_NBR\n,APPM_BRANCH_NBR\n,APPM_OPER_CODE\n,APPM_CARD_IND\n,APPM_PRIN_ID_NBR\n,APPM_PRIN_APPM_NBR\n,APPM_PRIN_CARD_NBR\n,APPM_CURRENT_STEP\n,APPM_ACC_DCL_IND\n,APPM_ACC_DCL_IND_SYS\n,APPM_ACC_DCL_IND_POL\n,APPM_ACC_DCL_IND_CR\n,APPM_CUST_TYPE\n,APPM_LOCAL_NAME\n,APPM_ENG_NAME\n,APPM_ADDR1\n,APPM_ADDR2\n,APPM_ADD_CITY\n,APPM_ADD_PROVINCE\n,APPM_ADD_ZIPCODE\n,APPM_PHONE\n,APPM_RES_TYPE\n,APPM_RES_PERIOD\n,APPM_OWN_PROPTY\n,APPM_SEX\n,APPM_MARITAL_ST\n,APPM_QUALIFICATION\n,APPM_ID_NBR\n,APPM_DTE_BIRTH\n,APPM_MOM_NAME\n,APPM_WORK_ID\n,APPM_NATIONALITY\n,APPM_SUPP_RLNSHIP\n,APPM_EMP_NAME\n,APPM_EMP_ADDR1\n,APPM_EMP_ADDR2\n,APPM_EMP_ZIP\n,APPM_OCC_CODE\n,APPM_OCC_PER\n,APPM_EMP_PHONE\n,APPM_ANN_SALARY\n,APPM_PEMP_NAME\n,APPM_PEMP_ADDR1\n,APPM_PEMP_ADDR2\n,APPM_PEMP_ZIP\n,APPM_POCC_CODE\n,APPM_POCC_PER\n,APPM_PEMP_PHONE\n,APPM_PANN_SALARY\n,APPM_DEP_BANK1\n,APPM_DEP_ACCT_TYPE1\n,APPM_DEP_ACCT1\n,APPM_DEP_BANK2\n,APPM_DEP_ACCT_TYPE2\n,APPM_DEP_ACCT2\n,APPM_DEP_BANK3\n,APPM_DEP_ACCT_TYPE3\n,APPM_DEP_ACCT3\n,APPM_CURR_CARD_TYPE1\n,APPM_CURR_CARD_NBR1\n,APPM_CURR_CARD_TYPE2\n,APPM_CURR_CARD_NBR2\n,APPM_CURR_CARD_TYPE3\n,APPM_CURR_CARD_NBR3\n,APPM_LOAN\n,APPM_GRLNSHIP\n,APPM_GLOCAL_NAME\n,APPM_GENG_NAME\n,APPM_GADDR1\n,APPM_GADDR2\n,APPM_GADD_CITY\n,APPM_GADD_PROVINCE\n,APPM_GADD_ZIPCODE\n,APPM_GPHONE\n,APPM_GSEX\n,APPM_GMARITAL_ST\n,APPM_GQUALIFICATION\n,APPM_GID_NBR\n,APPM_GDTE_BIRTH\n,APPM_GWORK_ID\n,APPM_GEMP_NAME\n,APPM_GEMP_ADDR1\n,APPM_GEMP_ADDR2\n,APPM_GEMP_ZIP\n,APPM_GOCC_CODE\n,APPM_GOCC_PER\n,APPM_GEMP_PHONE\n,APPM_GANN_SALARY\n,APPM_MADDR1\n,APPM_MADDR2\n,APPM_MADD_CITY\n,APPM_MADD_PROVINCE\n,APPM_MADD_ZIPCODE\n,APPM_CNAME\n,APPM_CPHONE\n,APPM_CREG_DATE\n,APPM_CREG_NBR\n,APPM_CBUSINESS\n,APPM_CBANK\n,APPM_CBANK_ACCT\n,APPM_CCONTACT\n,APPM_MEMO\n,APPM_BUS_CODE\n,APPM_POS_CODE\n,APPM_DEP_CODE\n,APPM_SUPP_BUS_CODE\n,APPM_CUST_NBR\n,APPM_COR_CUST_NBR\n,FLAG_APPM_CUST_CRLIMIT\n,APPM_CUST_CRLIMIT\n,FLAG_APPM_CUST_CASHLIMIT\n,APPM_CUST_CASHLIMIT\n,APPM_ACCT_NBR\n,FLAG_APPM_ACCT_CRLIMIT\n,APPM_ACCT_CRLIMIT\n,FLAG_APPM_ACCT_CASHLIMIT\n,APPM_ACCT_CASHLIMIT\n,APPM_STMT_CYC\n,APPM_STMT_BIL\n,APPM_PAY_DD_FLAG\n,APPM_DD_BANK\n,APPM_DD_ACC\n,APPM_ACCT_BLK_CODE\n,APPM_PERM_PGM_1\n,APPM_PERM_PGM_EFF1\n,APPM_PERM_PGM_EXP1\n,APPM_PERM_PGM_2\n,APPM_PERM_PGM_EFF2\n,APPM_PERM_PGM_EXP2\n,APPM_PERM_PGM_3\n,APPM_PERM_PGM_EFF3\n,APPM_PERM_PGM_EXP3\n,APPM_PERM_PGM_4\n,APPM_PERM_PGM_EFF4\n,APPM_PERM_PGM_EXP4\n,APPM_PERM_PGM_5\n,APPM_PERM_PGM_EFF5\n,APPM_PERM_PGM_EXP5\n,APPM_CARD_NBR\n,APPM_EMB_NAME\n,APPM_CARD_EMB_REQ\n,APPM_CARD_TERM\n,APPM_EXP_DATE\n,APPM_CARD_BLK_CODE\n,APPM_AUTH_USG_LMTCDE\n,APPM_DATE_INPUT\n,APPM_TIME_INPUT\n,APPM_DATE_INPUT_END\n,APPM_TIME_INPUT_END\n,APPM_INPUT_OPERATOR\n,APPM_DATE_VERIFY\n,APPM_TIME_VERIFY\n,APPM_DATE_VERIFY_END\n,APPM_TIME_VERIFY_END\n,APPM_VERIFY_OPERATOR\n,APPM_VERIFY_DOC1_IND\n,APPM_DATE_REQ_DOC1\n,APPM_DATE_CFM_DOC1\n,APPM_VERIFY_DOC2_IND\n,APPM_DATE_REQ_DOC2\n,APPM_DATE_CFM_DOC2\n,APPM_VERIFY_DOC3_IND\n,APPM_DATE_REQ_DOC3\n,APPM_DATE_CFM_DOC3\n,APPM_VERIFY_DOC4_IND\n,APPM_DATE_REQ_DOC4\n,APPM_DATE_CFM_DOC4\n,APPM_VERIFY_DOC5_IND\n,APPM_DATE_REQ_DOC5\n,APPM_DATE_CFM_DOC5\n,APPM_VERIFY_DOC6_IND\n,APPM_DATE_REQ_DOC6\n,APPM_DATE_CFM_DOC6\n,APPM_VERIFY_DOC7_IND\n,APPM_DATE_REQ_DOC7\n,APPM_DATE_CFM_DOC7\n,APPM_VERIFY_DOC8_IND\n,APPM_DATE_REQ_DOC8\n,APPM_DATE_CFM_DOC8\n,APPM_VERIFY_DOC9_IND\n,APPM_DATE_REQ_DOC9\n,APPM_DATE_CFM_DOC9\n,APPM_VERIFY_DOC10_IND\n,APPM_DATE_REQ_DOC10\n,APPM_DATE_CFM_DOC10\n,APPM_VERIFY_DOC11_IND\n,APPM_DATE_REQ_DOC11\n,APPM_DATE_CFM_DOC11\n,APPM_VERIFY_DOC12_IND\n,APPM_DATE_REQ_DOC12\n,APPM_DATE_CFM_DOC12\n,APPM_VERIFY_LETTER\n,APPM_VERIFY_LETTER_DATE\n,APPM_DATE_CRB\n,APPM_TIME_CRB\n,APPM_DATE_CRB_END\n,APPM_TIME_CRB_END\n,APPM_DATE_FJ\n,APPM_TIME_FJ\n,APPM_DATE_FJ_END\n,APPM_TIME_FJ_END\n,APPM_FJ_OPERATOR\n,APPM_FJ_LETTER\n,APPM_FJ_LETTER_DATE\n,APPM_AGE_CHECK_STATUS\n,APPM_SAL_CHECK_STATUS\n,APPM_YRSVC_CHECK_STATUS\n,APPM_REJ_CHECK_STATUS\n,APPM_BLACKLIST_CHECK_STATUS\n,APPM_CRDT_BUR_CHECK_STATUS\n,APPM_USER1_CHECK_STATUS\n,APPM_USER2_CHECK_STATUS\n,APPM_USER3_CHECK_STATUS\n,APPM_TOT_SCORE_PNT\n,APPM_RGRADE\n,FLAG_APPM_RCUST_CRLIMIT\n,APPM_RCUST_CRLIMIT\n,FLAG_APPM_RACCT_CRLIMIT\n,APPM_RACCT_CRLIMIT\n,APPM_INTR_CARD_NBR\n,APPM_FORMAT_ID\n,APPM_ADDR3\n,APPM_ADDR4\n,APPM_MADDR3\n,APPM_MADDR4\n,APPM_SUPP_CRLIMIT\n,FLAG_APPM_SUPP_CRLIMIT_AMT\n,APPM_SUPP_CRLIMIT_AMT\n,APPM_SUPP_CSHLIMIT\n,FLAG_APPM_SUPP_CSHLIMIT_AMT\n,APPM_SUPP_CSHLIMIT_AMT\n,APPM_EMAIL_ADDR\n,APPM_MOBILE_PHONE\n,FLAG_APPM_CUST_INSTL_LMT\n,APPM_CUST_INSTL_LMT\n,FLAG_APPM_CUST_STDALN_INST\n,APPM_CUST_STDALN_INST\n,FLAG_APPM_ACCT_INSTL_LMT\n,APPM_ACCT_INSTL_LMT\n,FLAG_APPM_ACCT_STDALN_INST\n,APPM_ACCT_STDALN_INST\n,APPM_NODE_ID\n,APPM_FILE_BUFFER\n,APPM_FAMILY_PRI_CARD\n,APPM_FAMILY_APPM_NBR\n,APPM_NEW_FAMILY\n,APPM_DATE_MAINT\n,APPM_USER_MAINT\n,APPM_TIME_MAINT\n,APPM_PRIN_FNAME\n,APPM_PRIN_MNAME\n,APPM_PRIN_LNAME\n,APPM_SOURCE\n,APPM_BILL_ADDR\n,APPM_EMAIL_ADDR2\n,APPM_EMAIL_ADDR3\n,APPM_EMP_ADDR3\n,APPM_EMP_ADDR4\n,APPM_EMP_CITY\n,APPM_EMP_CTY\n,APPM_PHONE_CTY\n,APPM_PHONE_AREA\n,APPM_MOBILE_CTY\n,APPM_MOBILE_AREA\n,APPM_OFFICE_CTY\n,APPM_OFFICE_AREA\n,APPM_SOCIAL_ID\n,APPM_GS_ID\n,APPM_DRIVE_LICENSE\n,APPM_TAX_ID\n,APPM_UM_ID\n,APPM_OTHER_ID\n,APPM_CIF_NBR\n,APPM_BIRTH_PLACE\n,APPM_NATIONALITY_CDE\n,APPM_SOA_IND\n,APPM_NOTIFY_IND\n,APPM_EMP_TYPE\n,APPM_RANK\n,APPM_EMP_CODE\n,APPM_EMP_NATURE\n,APPM_FUND_SRC\n,APPM_FUND_SRC_OTHER\n,APPM_DOSRI1\n,APPM_DOSRI2\n,APPM_DOSRI3\n,APPM_PEP1\n,APPM_PEP2\n,APPM_PEP3\n,APPM_OTHER_DETAIL\n,APPM_DELIVERY\n,APPM_DECLINE_CODE\n,APPM_DECLINE_REASON\n,APPM_BORROWER_TYPE\n,APPM_CARD_REL\n,APPM_SUPP_CNT\n,APPM_CLASS_CODE\n,APPM_CHKQ_DATE\n,APPM_CHKQ_TIME\n,APPM_CHKQ_OPR\n,APPM_OFCQ_DATE\n,APPM_OFCQ_TIME\n,APPM_OFCQ_OPR\n,APPM_EMB_NAME2\n,APPM_CAR_TYPE\n,APPM_DELTA_DATE\n,APPM_OTHER_INCOME\n,APPM_INCOME\n,APPM_CBC_CARD\n,APPM_CBC_ACCT\n,APPM_US_ACCT\n,APPM_SPECIAL_IND\n,APPM_PRE_CRED_LMT\n,APPM_CARD_STS\n,APPM_LOAN_STS\n,APPM_BAP_YEAR\n,APPM_BAP_TYPE\n,APPM_BAP_BANK\n,APPM_BAP_AMT\n,APPM_TU_ACCT\n,APPM_TOT_CRED_LIM\n,APPM_USED_CL\n,APPM_PAST_DUE\n,APPM_PORA_CUR_ADDR\n,APPM_PERM_CUR_ADDR\n,APPM_PORA_BPLACE\n,APPM_ITR\n,APPM_EXT_ISSUER1\n,APPM_EXT_CARD1\n,APPM_EXT_CRED_LIM1\n,APPM_EXT_CARD_STS1\n,APPM_EXT_ISS_DTE1\n,APPM_EXT_CARD_VLD1\n,APPM_EXT_ISSUER2\n,APPM_EXT_CARD2\n,APPM_EXT_CRED_LIM2\n,APPM_EXT_CARD_STS2\n,APPM_EXT_ISS_DTE2\n,APPM_EXT_CARD_VLD2\n,APPM_EXT_ISSUER3\n,APPM_EXT_CARD3\n,APPM_EXT_CRED_LIM3\n,APPM_EXT_CARD_STS3\n,APPM_EXT_ISS_DTE3\n,APPM_EXT_CARD_VLD3\n,APPM_TITLE\n,APPM_STAFF_ID\n,APPM_RISK_RATING\n,APPM_HOLD_ACCT\n,APPM_HOLD_AMT\n,APPM_AGENT_CODE\n,APPM_REF_NAME\n,APPM_MCUST_CRLIMIT\n,FLAG_APPM_MCUST_CRLIMIT\n,LAST6_APPM_ACCT_NBR\n,isActive\n,isLatest\n,BNK_CODE\n,SOURCE_CODE\n,FILE_NAME\n,insert_dttm\n) \nSELECT  \nAPPM_BANK_NBR\n,APPM_NBR\n,APPM_REFERENCE\n,APPM_PDT_NBR\n,APPM_CRITERIA_NBR\n,APPM_BRANCH_NBR\n,APPM_OPER_CODE\n,APPM_CARD_IND\n,APPM_PRIN_ID_NBR\n,APPM_PRIN_APPM_NBR\n,APPM_PRIN_CARD_NBR\n,APPM_CURRENT_STEP\n,APPM_ACC_DCL_IND\n,APPM_ACC_DCL_IND_SYS\n,APPM_ACC_DCL_IND_POL\n,APPM_ACC_DCL_IND_CR\n,APPM_CUST_TYPE\n,APPM_LOCAL_NAME\n,APPM_ENG_NAME\n,APPM_ADDR1\n,APPM_ADDR2\n,APPM_ADD_CITY\n,APPM_ADD_PROVINCE\n,APPM_ADD_ZIPCODE\n,APPM_PHONE\n,APPM_RES_TYPE\n,APPM_RES_PERIOD\n,APPM_OWN_PROPTY\n,APPM_SEX\n,APPM_MARITAL_ST\n,APPM_QUALIFICATION\n,APPM_ID_NBR\n,APPM_DTE_BIRTH\n,APPM_MOM_NAME\n,APPM_WORK_ID\n,APPM_NATIONALITY\n,APPM_SUPP_RLNSHIP\n,APPM_EMP_NAME\n,APPM_EMP_ADDR1\n,APPM_EMP_ADDR2\n,APPM_EMP_ZIP\n,APPM_OCC_CODE\n,APPM_OCC_PER\n,APPM_EMP_PHONE\n,APPM_ANN_SALARY\n,APPM_PEMP_NAME\n,APPM_PEMP_ADDR1\n,APPM_PEMP_ADDR2\n,APPM_PEMP_ZIP\n,APPM_POCC_CODE\n,APPM_POCC_PER\n,APPM_PEMP_PHONE\n,APPM_PANN_SALARY\n,APPM_DEP_BANK1\n,APPM_DEP_ACCT_TYPE1\n,APPM_DEP_ACCT1\n,APPM_DEP_BANK2\n,APPM_DEP_ACCT_TYPE2\n,APPM_DEP_ACCT2\n,APPM_DEP_BANK3\n,APPM_DEP_ACCT_TYPE3\n,APPM_DEP_ACCT3\n,APPM_CURR_CARD_TYPE1\n,APPM_CURR_CARD_NBR1\n,APPM_CURR_CARD_TYPE2\n,APPM_CURR_CARD_NBR2\n,APPM_CURR_CARD_TYPE3\n,APPM_CURR_CARD_NBR3\n,APPM_LOAN\n,APPM_GRLNSHIP\n,APPM_GLOCAL_NAME\n,APPM_GENG_NAME\n,APPM_GADDR1\n,APPM_GADDR2\n,APPM_GADD_CITY\n,APPM_GADD_PROVINCE\n,APPM_GADD_ZIPCODE\n,APPM_GPHONE\n,APPM_GSEX\n,APPM_GMARITAL_ST\n,APPM_GQUALIFICATION\n,APPM_GID_NBR\n,APPM_GDTE_BIRTH\n,APPM_GWORK_ID\n,APPM_GEMP_NAME\n,APPM_GEMP_ADDR1\n,APPM_GEMP_ADDR2\n,APPM_GEMP_ZIP\n,APPM_GOCC_CODE\n,APPM_GOCC_PER\n,APPM_GEMP_PHONE\n,APPM_GANN_SALARY\n,APPM_MADDR1\n,APPM_MADDR2\n,APPM_MADD_CITY\n,APPM_MADD_PROVINCE\n,APPM_MADD_ZIPCODE\n,APPM_CNAME\n,APPM_CPHONE\n,APPM_CREG_DATE\n,APPM_CREG_NBR\n,APPM_CBUSINESS\n,APPM_CBANK\n,APPM_CBANK_ACCT\n,APPM_CCONTACT\n,APPM_MEMO\n,APPM_BUS_CODE\n,APPM_POS_CODE\n,APPM_DEP_CODE\n,APPM_SUPP_BUS_CODE\n,APPM_CUST_NBR\n,APPM_COR_CUST_NBR\n,FLAG_APPM_CUST_CRLIMIT\n,APPM_CUST_CRLIMIT\n,FLAG_APPM_CUST_CASHLIMIT\n,APPM_CUST_CASHLIMIT\n,APPM_ACCT_NBR\n,FLAG_APPM_ACCT_CRLIMIT\n,APPM_ACCT_CRLIMIT\n,FLAG_APPM_ACCT_CASHLIMIT\n,APPM_ACCT_CASHLIMIT\n,APPM_STMT_CYC\n,APPM_STMT_BIL\n,APPM_PAY_DD_FLAG\n,APPM_DD_BANK\n,APPM_DD_ACC\n,APPM_ACCT_BLK_CODE\n,APPM_PERM_PGM_1\n,APPM_PERM_PGM_EFF1\n,APPM_PERM_PGM_EXP1\n,APPM_PERM_PGM_2\n,APPM_PERM_PGM_EFF2\n,APPM_PERM_PGM_EXP2\n,APPM_PERM_PGM_3\n,APPM_PERM_PGM_EFF3\n,APPM_PERM_PGM_EXP3\n,APPM_PERM_PGM_4\n,APPM_PERM_PGM_EFF4\n,APPM_PERM_PGM_EXP4\n,APPM_PERM_PGM_5\n,APPM_PERM_PGM_EFF5\n,APPM_PERM_PGM_EXP5\n,APPM_CARD_NBR\n,APPM_EMB_NAME\n,APPM_CARD_EMB_REQ\n,APPM_CARD_TERM\n,APPM_EXP_DATE\n,APPM_CARD_BLK_CODE\n,APPM_AUTH_USG_LMTCDE\n,APPM_DATE_INPUT\n,APPM_TIME_INPUT\n,APPM_DATE_INPUT_END\n,APPM_TIME_INPUT_END\n,APPM_INPUT_OPERATOR\n,APPM_DATE_VERIFY\n,APPM_TIME_VERIFY\n,APPM_DATE_VERIFY_END\n,APPM_TIME_VERIFY_END\n,APPM_VERIFY_OPERATOR\n,APPM_VERIFY_DOC1_IND\n,APPM_DATE_REQ_DOC1\n,APPM_DATE_CFM_DOC1\n,APPM_VERIFY_DOC2_IND\n,APPM_DATE_REQ_DOC2\n,APPM_DATE_CFM_DOC2\n,APPM_VERIFY_DOC3_IND\n,APPM_DATE_REQ_DOC3\n,APPM_DATE_CFM_DOC3\n,APPM_VERIFY_DOC4_IND\n,APPM_DATE_REQ_DOC4\n,APPM_DATE_CFM_DOC4\n,APPM_VERIFY_DOC5_IND\n,APPM_DATE_REQ_DOC5\n,APPM_DATE_CFM_DOC5\n,APPM_VERIFY_DOC6_IND\n,APPM_DATE_REQ_DOC6\n,APPM_DATE_CFM_DOC6\n,APPM_VERIFY_DOC7_IND\n,APPM_DATE_REQ_DOC7\n,APPM_DATE_CFM_DOC7\n,APPM_VERIFY_DOC8_IND\n,APPM_DATE_REQ_DOC8\n,APPM_DATE_CFM_DOC8\n,APPM_VERIFY_DOC9_IND\n,APPM_DATE_REQ_DOC9\n,APPM_DATE_CFM_DOC9\n,APPM_VERIFY_DOC10_IND\n,APPM_DATE_REQ_DOC10\n,APPM_DATE_CFM_DOC10\n,APPM_VERIFY_DOC11_IND\n,APPM_DATE_REQ_DOC11\n,APPM_DATE_CFM_DOC11\n,APPM_VERIFY_DOC12_IND\n,APPM_DATE_REQ_DOC12\n,APPM_DATE_CFM_DOC12\n,APPM_VERIFY_LETTER\n,APPM_VERIFY_LETTER_DATE\n,APPM_DATE_CRB\n,APPM_TIME_CRB\n,APPM_DATE_CRB_END\n,APPM_TIME_CRB_END\n,APPM_DATE_FJ\n,APPM_TIME_FJ\n,APPM_DATE_FJ_END\n,APPM_TIME_FJ_END\n,APPM_FJ_OPERATOR\n,APPM_FJ_LETTER\n,APPM_FJ_LETTER_DATE\n,APPM_AGE_CHECK_STATUS\n,APPM_SAL_CHECK_STATUS\n,APPM_YRSVC_CHECK_STATUS\n,APPM_REJ_CHECK_STATUS\n,APPM_BLACKLIST_CHECK_STATUS\n,APPM_CRDT_BUR_CHECK_STATUS\n,APPM_USER1_CHECK_STATUS\n,APPM_USER2_CHECK_STATUS\n,APPM_USER3_CHECK_STATUS\n,APPM_TOT_SCORE_PNT\n,APPM_RGRADE\n,FLAG_APPM_RCUST_CRLIMIT\n,APPM_RCUST_CRLIMIT\n,FLAG_APPM_RACCT_CRLIMIT\n,APPM_RACCT_CRLIMIT\n,APPM_INTR_CARD_NBR\n,APPM_FORMAT_ID\n,APPM_ADDR3\n,APPM_ADDR4\n,APPM_MADDR3\n,APPM_MADDR4\n,APPM_SUPP_CRLIMIT\n,FLAG_APPM_SUPP_CRLIMIT_AMT\n,APPM_SUPP_CRLIMIT_AMT\n,APPM_SUPP_CSHLIMIT\n,FLAG_APPM_SUPP_CSHLIMIT_AMT\n,APPM_SUPP_CSHLIMIT_AMT\n,APPM_EMAIL_ADDR\n,APPM_MOBILE_PHONE\n,FLAG_APPM_CUST_INSTL_LMT\n,APPM_CUST_INSTL_LMT\n,FLAG_APPM_CUST_STDALN_INST\n,APPM_CUST_STDALN_INST\n,FLAG_APPM_ACCT_INSTL_LMT\n,APPM_ACCT_INSTL_LMT\n,FLAG_APPM_ACCT_STDALN_INST\n,APPM_ACCT_STDALN_INST\n,APPM_NODE_ID\n,APPM_FILE_BUFFER\n,APPM_FAMILY_PRI_CARD\n,APPM_FAMILY_APPM_NBR\n,APPM_NEW_FAMILY\n,APPM_DATE_MAINT\n,APPM_USER_MAINT\n,APPM_TIME_MAINT\n,APPM_PRIN_FNAME\n,APPM_PRIN_MNAME\n,APPM_PRIN_LNAME\n,APPM_SOURCE\n,APPM_BILL_ADDR\n,APPM_EMAIL_ADDR2\n,APPM_EMAIL_ADDR3\n,APPM_EMP_ADDR3\n,APPM_EMP_ADDR4\n,APPM_EMP_CITY\n,APPM_EMP_CTY\n,APPM_PHONE_CTY\n,APPM_PHONE_AREA\n,APPM_MOBILE_CTY\n,APPM_MOBILE_AREA\n,APPM_OFFICE_CTY\n,APPM_OFFICE_AREA\n,APPM_SOCIAL_ID\n,APPM_GS_ID\n,APPM_DRIVE_LICENSE\n,APPM_TAX_ID\n,APPM_UM_ID\n,APPM_OTHER_ID\n,APPM_CIF_NBR\n,APPM_BIRTH_PLACE\n,APPM_NATIONALITY_CDE\n,APPM_SOA_IND\n,APPM_NOTIFY_IND\n,APPM_EMP_TYPE\n,APPM_RANK\n,APPM_EMP_CODE\n,APPM_EMP_NATURE\n,APPM_FUND_SRC\n,APPM_FUND_SRC_OTHER\n,APPM_DOSRI1\n,APPM_DOSRI2\n,APPM_DOSRI3\n,APPM_PEP1\n,APPM_PEP2\n,APPM_PEP3\n,APPM_OTHER_DETAIL\n,APPM_DELIVERY\n,APPM_DECLINE_CODE\n,APPM_DECLINE_REASON\n,APPM_BORROWER_TYPE\n,APPM_CARD_REL\n,APPM_SUPP_CNT\n,APPM_CLASS_CODE\n,APPM_CHKQ_DATE\n,APPM_CHKQ_TIME\n,APPM_CHKQ_OPR\n,APPM_OFCQ_DATE\n,APPM_OFCQ_TIME\n,APPM_OFCQ_OPR\n,APPM_EMB_NAME2\n,APPM_CAR_TYPE\n,APPM_DELTA_DATE\n,APPM_OTHER_INCOME\n,APPM_INCOME\n,APPM_CBC_CARD\n,APPM_CBC_ACCT\n,APPM_US_ACCT\n,APPM_SPECIAL_IND\n,APPM_PRE_CRED_LMT\n,APPM_CARD_STS\n,APPM_LOAN_STS\n,APPM_BAP_YEAR\n,APPM_BAP_TYPE\n,APPM_BAP_BANK\n,APPM_BAP_AMT\n,APPM_TU_ACCT\n,APPM_TOT_CRED_LIM\n,APPM_USED_CL\n,APPM_PAST_DUE\n,APPM_PORA_CUR_ADDR\n,APPM_PERM_CUR_ADDR\n,APPM_PORA_BPLACE\n,APPM_ITR\n,APPM_EXT_ISSUER1\n,APPM_EXT_CARD1\n,APPM_EXT_CRED_LIM1\n,APPM_EXT_CARD_STS1\n,APPM_EXT_ISS_DTE1\n,APPM_EXT_CARD_VLD1\n,APPM_EXT_ISSUER2\n,APPM_EXT_CARD2\n,APPM_EXT_CRED_LIM2\n,APPM_EXT_CARD_STS2\n,APPM_EXT_ISS_DTE2\n,APPM_EXT_CARD_VLD2\n,APPM_EXT_ISSUER3\n,APPM_EXT_CARD3\n,APPM_EXT_CRED_LIM3\n,APPM_EXT_CARD_STS3\n,APPM_EXT_ISS_DTE3\n,APPM_EXT_CARD_VLD3\n,APPM_TITLE\n,APPM_STAFF_ID\n,APPM_RISK_RATING\n,APPM_HOLD_ACCT\n,APPM_HOLD_AMT\n,APPM_AGENT_CODE\n,APPM_REF_NAME\n,APPM_MCUST_CRLIMIT\n,FLAG_APPM_MCUST_CRLIMIT\n,LAST6_APPM_ACCT_NBR\n,isActive\n,isLatest\n,BNK_CODE\n,SOURCE_CODE\n,FILE_NAME\n,insert_dttm\nFROM BUSC.CCD_CBCEXAPPFP_WITH_DUP_20240305"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "APP_COUNT RECORDS ISLATEST",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "APP_CHECK FOR DUPS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.CCD_CBCEXAPPFP\nWHERE ISLATEST = 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "APP_COUNT DUPS ISLATEST",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "APP_COUNT RECORDS ISLATEST",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.CCD_CBCEXAPPFP_WITH_DUP_20240305\nWHERE ISLATEST = 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "APP_CHECK FOR DUPS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "APP_INSERT RANKED",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT APPM_NBR ,APPM_PRIN_APPM_NBR ,APPM_PRIN_CARD_NBR ,APPM_CUST_NBR ,APPM_ACCT_NBR ,APPM_CARD_NBR ,APPM_CIF_NBR, count(1) CNT FROM BUSC.CCD_CBCEXAPPFP \nWHERE islatest = 1 \nGROUP BY APPM_NBR ,APPM_PRIN_APPM_NBR ,APPM_PRIN_CARD_NBR ,APPM_CUST_NBR ,APPM_ACCT_NBR ,APPM_CARD_NBR ,APPM_CIF_NBR\nHAVING count(1) > 1 "
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "APP_TRUNCATE TABLE",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "APP_UPDATE ISLATEST",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "TRUNCATE TABLE BUSC.CCD_CBCEXAPPFP"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-03-05T06:19:28Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

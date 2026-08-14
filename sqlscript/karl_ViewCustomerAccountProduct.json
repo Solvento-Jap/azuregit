@@ -1,0 +1,20 @@
+{
+	"name": "karl_ViewCustomerAccountProduct",
+	"properties": {
+		"folder": {
+			"name": "karl/Views"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nALTER VIEW [DW].[ViewCustomerAccountProduct] \nAS \nWITH Base AS (\n\tSELECT\n\t\tDC.CustomerSK AS CustomerSK\n\t\t,DC.CustomerID AS CustomerID\n\t\t,DC.GlobalCIF AS GlobalCIF\n\t\t,DC.FCBSCIF AS FCBSCIF\n\t\t,DC.BankSK AS BankSK\n\t\t,DC.SourceSystemCode AS CustomerSourceSystemCode\n\t\t,DCA.AccountSK AS AccountSK\n\t\t,DCA.AccountID AS AccountID\n\t\t,DA.AccountOpenedDate AS AccountOpenedDate\n\t\t,CA.CustomerAccountClosedDate AS AccountClosedDate\n\t\t,DA.AccountStatus AS AccountStatus\n\t\t,DCA.SourceSystemCode AS AccountSourceSystemCode\n\t\t,DAP.ProductSK AS ProductSK\n\t\t,DAP.ProductID AS ProductID\n\t\t,DP.ProductName AS ProductName\n\t\t,DP.ProductGroup AS ProductGroup\n\t\t,DAP.CurrentIndicator AS CurrentIndicator\n\t\t,DAP.ValidStartDate AS ValidStartDate\n\t\t,DAP.ValidEndDate AS ValidEndDate\n\t\t,0 AS WorkFlowID\n\t\t,0 AS TaskRunID\n\t\t,GETDATE() AS InsertDttm\n\tFROM DW.DimCustomer DC\n\tLEFT JOIN DW.DimCustomerAccount DCA\n\t\tON DC.CustomerSK = DCA.CustomerSK\n\tLEFT JOIN DW.DimAccount DA\n\t\tON DC.CustomerSK = DCA.CustomerSK\n\t\tAND DCA.AccountSK = DA.AccountSK\n\tLEFT JOIN BNKM.CustomerAccount CA\n\t\tON DC.CustomerSK = DCA.CustomerSK\n\t\tAND DCA.AccountID = CA.CustomerAccountID\n\tLEFT JOIN DW.DimAccountProduct DAP\n\t\tON DC.CustomerSK = DCA.CustomerSK\n\t\tAND DCA.AccountSK = DAP.AccountSK\n\tLEFT JOIN DW.DimProduct DP\n\t\tON DC.CustomerSK = DCA.CustomerSK\n\t\tAND DCA.AccountSK = DAP.AccountSK\n\t\tAND DAP.ProductSK = DP.ProductSK\n\tWHERE DC.CurrentIndicator = 1\n\t\tAND DCA.CurrentIndicator = 1\n\t\tAND DA.CurrentIndicator = 1\n\t\tAND DAP.CurrentIndicator = 1\n\t\tAND DP.CurrentIndicator = 1\n)\n, Cascade_FCBS AS (\n\tSELECT\n    A.CustomerSK,A.CustomerID,A.GlobalCIF,A.FCBSCIF,A.BankSK,A.CustomerSourceSystemCode,B.AccountSK\n    ,B.AccountID,B.AccountOpenedDate,B.AccountClosedDate,B.AccountStatus,B.AccountSourceSystemCode,B.ProductSK,B.ProductID,B.ProductName\n    ,B.ProductGroup,B.CurrentIndicator,B.ValidStartDate,B.ValidEndDate,B.WorkFlowID,B.TaskRunID,B.InsertDttm\n    FROM Base A LEFT JOIN Base B ON A.FCBSCIF = B.FCBSCIF\n\tWHERE A.FCBSCIF IS NOT NULL\n    GROUP BY\n    A.CustomerSK,A.CustomerID,A.GlobalCIF,A.FCBSCIF,A.BankSK,A.CustomerSourceSystemCode,B.AccountSK\n    ,B.AccountID,B.AccountOpenedDate,B.AccountClosedDate,B.AccountStatus,B.AccountSourceSystemCode,B.ProductSK,B.ProductID,B.ProductName\n    ,B.ProductGroup,B.CurrentIndicator,B.ValidStartDate,B.ValidEndDate,B.WorkFlowID,B.TaskRunID,B.InsertDttm\n)\n, Cascade_NoFCBS AS (\n\tSELECT *\n    FROM Base\n    WHERE FCBSCIF IS NULL\n)\n, Loans_Closed AS (\n    SELECT AccountSK FROM DW.DimAccount\n    WHERE CurrentIndicator = 1 AND SourceSystemCode = 'LNS' AND AccountStatus = 'Closed'\n)\n\n---SELECT TOP 10 * FROM Cascade_FCBS WHERE AccountSK NOT IN (SELECT * FROM Loans_Closed) AND FCBSCIF = 'R02020004'\nSELECT * FROM Cascade_FCBS WHERE AccountSK NOT IN (SELECT * FROM Loans_Closed)\nUNION\nSELECT * FROM Cascade_NoFCBS WHERE AccountSK NOT IN (SELECT * FROM Loans_Closed)\n---SELECT TOP 10 * FROM Cascade_NoFCBS WHERE AccountSK NOT IN (SELECT * FROM Loans_Closed) AND FCBSCIF = 'R02020004'\n\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

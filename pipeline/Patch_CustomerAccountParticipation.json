@@ -1,0 +1,146 @@
+{
+	"name": "Patch_CustomerAccountParticipation",
+	"properties": {
+		"activities": [
+			{
+				"name": "ALTER SP_CustomerAccountParticipation_DEP",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CustomerAccountParticipation_DEP] AS\nBEGIN\n\nWITH TEMP_BNKM_CustomerAccountParticipation\nAS(\nSELECT DISTINCT\nBDG.FORACID AS CustomerAccountId\n,'NA' AS CustomerId\n,CONVERT(datetime, BDA.START_DATE) AS PeriodStartDate\n,CONVERT(datetime, BDA.END_DATE) AS PeriodEndDate\n,BDA.CUST_ID AS CoreCustomerId\n,NULL AS CustomerAccountParticipationNote\n,BDA.DEL_FLG AS DeletedIndicator\n,BDA.GUARANTOR_LIAB_PCNT AS GuarantorLiabilityPercentage\n,BDA.BANK_ID AS FinancialInstitutionId\n,BDA.PROFIT_CERT_FLG AS ProfitCertificateIndicator\n,BDA.ENTITY_CRE_FLG AS VerifiedIndicator\n,BDA.MINOR_MAJOR_LET_GEN_FLG AS MinorToMajorLetterGenerationIndicator\n,BDA.CHNGD_DUE_TO_ASSUMPTN_FLG AS ChangedDueToAssumptionIndicator\n,BDA.ACCT_POA_AS_SRL_NUM AS SerialNumber\n,BDA.ACCT_POA_AS_AMT_ALWD AS RelatedPartyAllowedAmount\n,BDA.CUST_RELTN_CODE AS CustomerRelationCode\n,NULL AS CustomerAccountParticipationPercentage\n,NULL AS LinkCode\n,'DEP' AS SOURCESYSTEMCODE\n,0 AS WorkFlowId\n,0 AS TaskRunId\n,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS [InsertDttm]\nFROM BUSC.DEP_ACCOUNTRELATIONSHIP BDA\nLEFT JOIN BUSC.DEP_GENERALACCOUNTMASTER BDG ON BDG.ACID = BDA.ACID AND BDG.ISLATEST = '1'\nwhere BDA.ISLATEST = '1'\n)\n\n\n\nSELECT * INTO #TEMP_BNKM_CustomerAccountParticipation FROM TEMP_BNKM_CustomerAccountParticipation\nWHERE CustomerAccountId IS NOT NULL;\n\n--CHECK IF THERE IS DELTA\n\nWITH TEMP_BNKM_CustomerAccountParticipation_SRC\nAS(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerAccountId)\n,convert(varchar,CoreCustomerId)\n,convert(varchar,CustomerAccountParticipationNote)\n,convert(char,DeletedIndicator)\n,convert(integer,GuarantorLiabilityPercentage)\n,convert(varchar,FinancialInstitutionId)\n,convert(char,ProfitCertificateIndicator)\n,convert(char,VerifiedIndicator)\n,convert(char,MinorToMajorLetterGenerationIndicator)\n,convert(char,ChangedDueToAssumptionIndicator)\n,convert(varchar,SerialNumber)\n,convert(integer,RelatedPartyAllowedAmount)\n,convert(varchar,CustomerRelationCode)\n)) HASHROW, CustomerAccountId, SerialNumber,PeriodStartDate, CustomerId,FinancialInstitutionId,SourceSystemCode\nFROM #TEMP_BNKM_CustomerAccountParticipation\n)\n --2540271 2540271\n,\n\nTEMP_BNKM_CustomerAccountParticipation_TGT\nAS(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerAccountId)\n,convert(varchar,CoreCustomerId)\n,convert(varchar,CustomerAccountParticipationNote)\n,convert(char,DeletedIndicator)\n,convert(integer,GuarantorLiabilityPercentage)\n,convert(varchar,FinancialInstitutionId)\n,convert(char,ProfitCertificateIndicator)\n,convert(char,VerifiedIndicator)\n,convert(char,MinorToMajorLetterGenerationIndicator)\n,convert(char,ChangedDueToAssumptionIndicator)\n,convert(varchar,SerialNumber)\n,convert(integer,RelatedPartyAllowedAmount)\n,convert(varchar,CustomerRelationCode)\n)) HASHROW, CustomerAccountId, SerialNumber, PeriodStartDate, CustomerId,FinancialInstitutionId,SourceSystemCode\nFROM BNKM.CustomerAccountParticipation WHERE SOURCESYSTEMCODE = 'DEP'\n),\n\nTEMP_BNKM_CustomerAccountParticipation_DELTA\nAS\n(\nSELECT\nSRC.HASHROW AS SRC_HR\n,TGT.HASHROW AS TGT_HR\n,ISNULL(SRC.CustomerAccountId,TGT.CustomerAccountId) AS CustomerAccountId\n,ISNULL(SRC.SerialNumber,TGT.SerialNumber) AS SerialNumber\n,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\n,ISNULL(SRC.PeriodStartDate,TGT.PeriodStartDate) AS PeriodStartDate\n,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\n,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\n,CASE\n    WHEN TGT.HASHROW IS NULL THEN 'INSERT' \n    WHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n    ELSE NULL END AS RECORD_STATUS\n\nFROM TEMP_BNKM_CustomerAccountParticipation_SRC SRC\nLEFT JOIN TEMP_BNKM_CustomerAccountParticipation_TGT TGT\nON SRC.CustomerAccountId = TGT.CustomerAccountId\nAND SRC.SerialNumber = TGT.SerialNumber\nAND SRC.CustomerId = TGT.CustomerId\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\n)\n\nSELECT *INTO #TEMP_BNKM_CustomerAccountParticipation_DELTA FROM TEMP_BNKM_CustomerAccountParticipation_DELTA;\n\n--UPDATE RECORDS TO BNKM\nUPDATE TGT\nSET\nPeriodEndDate = DATEADD(Day, -1, SRC.PeriodStartDate)\nFROM BNKM.CustomerAccountParticipation TGT\nJOIN #TEMP_BNKM_CustomerAccountParticipation_DELTA DELTA \nON DELTA.CustomerAccountId = TGT.CustomerAccountId \nAND  DELTA.SerialNumber = TGT.SerialNumber \nAND  DELTA.CustomerId = TGT.CustomerId \nAND  DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId \nAND  DELTA.SourceSystemCode = TGT.SourceSystemCode \nAND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_CustomerAccountParticipation SRC \nON SRC.CustomerAccountId = TGT.CustomerAccountId\nAND SRC.SerialNumber = TGT.SerialNumber\nAND SRC.CustomerId = TGT.CustomerId  \nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\nWHERE TGT.PeriodEndDate = '9999-12-31'\n\n\n\n--INSERT RECORDS TO BNKM\n\nINSERT INTO BNKM.CustomerAccountParticipation\n(\nCustomerAccountId\n,CustomerId\n,PeriodStartDate\n,PeriodEndDate\n,CoreCustomerId\n,CustomerAccountParticipationNote\n,DeletedIndicator\n,GuarantorLiabilityPercentage\n,FinancialInstitutionId\n,ProfitCertificateIndicator\n,VerifiedIndicator\n,MinorToMajorLetterGenerationIndicator\n,ChangedDueToAssumptionIndicator\n,SerialNumber\n,RelatedPartyAllowedAmount\n,CustomerRelationCode\n,CustomerAccountParticipationPercentage\n,LinkCode\n,SourceSystemCode\n,WorkFlowId\n,TaskRunId\n,InsertDttm\n)\n\nSELECT DISTINCT\n SRC.CustomerAccountId\n,SRC.CustomerId\n,SRC.PeriodStartDate\n,SRC.PeriodEndDate\n,SRC.CoreCustomerId\n,SRC.CustomerAccountParticipationNote\n,SRC.DeletedIndicator\n,SRC.GuarantorLiabilityPercentage\n,SRC.FinancialInstitutionId\n,SRC.ProfitCertificateIndicator\n,SRC.VerifiedIndicator\n,SRC.MinorToMajorLetterGenerationIndicator\n,SRC.ChangedDueToAssumptionIndicator\n,SRC.SerialNumber\n,SRC.RelatedPartyAllowedAmount\n,SRC.CustomerRelationCode\n,SRC.CustomerAccountParticipationPercentage\n,SRC.LinkCode\n,SRC.SourceSystemCode\n,SRC.WorkFlowId\n,SRC.TaskRunId\n,SRC.InsertDttm\nFROM #TEMP_BNKM_CustomerAccountParticipation SRC\nJOIN #TEMP_BNKM_CustomerAccountParticipation_DELTA DELTA \nON DELTA.CustomerAccountId = SRC.CustomerAccountId\nAND DELTA.CustomerId = SRC.CustomerId\nAND DELTA.SerialNumber = SRC.SerialNumber\nAND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\nAND DELTA.SourceSystemCode = SRC.SourceSystemCode\n WHERE RECORD_STATUS IN ('INSERT');\n\nDROP TABLE #TEMP_BNKM_CustomerAccountParticipation;\nDROP TABLE #TEMP_BNKM_CustomerAccountParticipation_DELTA;\n\n\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ALTER SP_CUSTOMERACCOUNTPARTICIPATION_LNS",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CUSTOMERACCOUNTPARTICIPATION_LNS] AS\r\nBEGIN\r\n--------------GET DELTA FROM BUSC\r\nWITH TEMP_BNKM_CustomerAccountParticipation AS (\r\nSELECT\r\n\tBLG.FORACID AS CustomerAccountId\r\n\t,NULL AS CustomerId\r\n\t,BLA.START_DATE AS PeriodStartDate\r\n\t,BLA.END_DATE AS PeriodEndDate\r\n\t,NULL AS CustomerAccountParticipationPercentage\r\n\t,NULL AS CustomerAccountParticipationNote\r\n\t,NULL AS LinkCode\r\n\t,BLA.DEL_FLG AS DeletedIndicator\r\n\t,BLA.GUARANTOR_LIAB_PCNT AS GuarantorLiabilityPercentage\r\n\t,BLA.PROFIT_CERT_FLG AS ProfitCertificateIndicator\r\n\t,BLA.ENTITY_CRE_FLG AS VerifiedIndicator\r\n\t,BLA.MINOR_MAJOR_LET_GEN_FLG AS MinorToMajorLetterGenerationIndicator\r\n\t,BLA.CHNGD_DUE_TO_ASSUMPTN_FLG AS ChangedDueToAssumptionIndicator\r\n\t,BLA.ACCT_POA_AS_SRL_NUM AS SerialNumber\r\n\t,BLA.ACCT_POA_AS_AMT_ALWD AS RelatedPartyAllowedAmount\r\n\t,BLA.CUST_ID AS CoreCustomerId\r\n\t,BLA.CUST_RELTN_CODE AS CustomerRelationCode\r\n\t,BLA.BANK_ID AS FinancialInstitutionId\r\n\t,'LNS' AS SourceSystemCode\r\n\t,0 AS TaskRunId\r\n\t,0 AS WorkFlowId\r\n\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS [InsertDttm]\r\nFROM BUSC.LNS_ACCTAUTHSIGN BLA\r\nLEFT JOIN BUSC.LNS_GENERALACCTMAST BLG ON BLA.ACID = BLG.ACID AND BLG.ISLATEST = 1  \r\nwhere BLA.ISLATEST = 1 \r\n\r\n)\r\nSELECT * INTO #TEMP_BNKM_CustomerAccountParticipation FROM TEMP_BNKM_CustomerAccountParticipation;\r\n\r\n\r\n-------------CHECK IF THERE IS DELTA \r\nWITH\r\nTEMP_BNKM_CustomerAccountParticipation_SRC\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nconvert(varchar,CustomerAccountId)\r\n,convert(char,DeletedIndicator)\r\n,convert(integer,GuarantorLiabilityPercentage)\r\n,convert(char,ProfitCertificateIndicator)\r\n,convert(char,VerifiedIndicator)\r\n,convert(char,MinorToMajorLetterGenerationIndicator)\r\n,convert(char,ChangedDueToAssumptionIndicator)\r\n,convert(varchar,SerialNumber)\r\n,convert(integer,RelatedPartyAllowedAmount)\r\n,convert(varchar,CoreCustomerId)\r\n,convert(varchar,CustomerRelationCode)\r\n)) HASHROW, CustomerAccountId, SerialNumber, CustomerId,FinancialInstitutionId,SourceSystemCode\r\nFROM #TEMP_BNKM_CustomerAccountParticipation\r\n)\r\n,\r\nTEMP_BNKM_CustomerAccountParticipation_TGT\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nconvert(varchar,CustomerAccountId)\r\n,convert(char,DeletedIndicator)\r\n,convert(integer,GuarantorLiabilityPercentage)\r\n,convert(char,ProfitCertificateIndicator)\r\n,convert(char,VerifiedIndicator)\r\n,convert(char,MinorToMajorLetterGenerationIndicator)\r\n,convert(char,ChangedDueToAssumptionIndicator)\r\n,convert(varchar,SerialNumber)\r\n,convert(integer,RelatedPartyAllowedAmount)\r\n,convert(varchar,CoreCustomerId)\r\n,convert(varchar,CustomerRelationCode)\r\n)) HASHROW,  CustomerAccountId, SerialNumber, CustomerId,FinancialInstitutionId,SourceSystemCode\r\nFROM BNKM.CustomerAccountParticipation WHERE SourceSystemCode = 'LNS' \r\n)\r\n,\r\nTEMP_BNKM_CustomerAccountParticipation_DELTA\r\nAS\r\n(\r\nSELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n\t,ISNULL(SRC.CustomerAccountId,TGT.CustomerAccountId) AS CustomerAccountId\r\n\t,ISNULL(SRC.SerialNumber,TGT.SerialNumber) AS SerialNumber\r\n,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\r\n,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\r\n\t,CASE\r\n\t\tWHEN TGT.HASHROW IS NULL THEN 'INSERT' \r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\tELSE NULL END AS RECORD_STATUS\r\n\t\r\nFROM TEMP_BNKM_CustomerAccountParticipation_SRC\tSRC\r\nLEFT JOIN TEMP_BNKM_CustomerAccountParticipation_TGT\tTGT\r\nON\tSRC.CustomerAccountId = TGT.CustomerAccountId\r\nAND SRC.SerialNumber = TGT.SerialNumber\r\nAND ISNULL(SRC.CustomerId,'1') = ISNULL(TGT.CustomerId,'1')\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\r\n)\r\nSELECT * INTO #TEMP_BNKM_CustomerAccountParticipation_DELTA FROM TEMP_BNKM_CustomerAccountParticipation_DELTA;\r\n\r\n\r\n----UPDATE RECORDS to BNKM\r\nUPDATE TGT \r\nSET\r\nPeriodEndDate =  CONVERT(DATE,DATEADD(day,-1,CONVERT(VARCHAR,SRC.PeriodStartDate)))\r\nFROM BNKM.CustomerAccountParticipation TGT\r\nJOIN #TEMP_BNKM_CustomerAccountParticipation_DELTA DELTA \r\nON DELTA.CustomerAccountId = TGT.CustomerAccountId  \r\nAND  DELTA.SerialNumber = TGT.SerialNumber \r\nAND  ISNULL(DELTA.CustomerId,'1') = ISNULL(TGT.CustomerId,'1') \r\nAND  DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId \r\nAND  DELTA.SourceSystemCode = TGT.SourceSystemCode \r\nAND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CustomerAccountParticipation SRC \r\nON SRC.CustomerAccountId = TGT.CustomerAccountId \r\n AND SRC.SerialNumber = TGT.SerialNumber\r\n  AND ISNULL(SRC.CustomerId,'1') = ISNULL(TGT.CustomerId,'1')  \r\n   AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\n    AND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE TGT.PeriodEndDate = '9999-12-31T00:00:00.0000000'\r\n\r\n\r\n\r\n\r\n-------------INSERT RECORDS TO BNKM\r\nINSERT INTO BNKM.CustomerAccountParticipation  ( \r\nCustomerAccountId\r\n,CustomerId\r\n,PeriodStartDate\r\n,PeriodEndDate\r\n,CustomerAccountParticipationPercentage\r\n,CustomerAccountParticipationNote\r\n,LinkCode\r\n,DeletedIndicator\r\n,GuarantorLiabilityPercentage\r\n,ProfitCertificateIndicator\r\n,VerifiedIndicator\r\n,MinorToMajorLetterGenerationIndicator\r\n,ChangedDueToAssumptionIndicator\r\n,SerialNumber\r\n,RelatedPartyAllowedAmount\r\n,CoreCustomerId\r\n,CustomerRelationCode\r\n,FinancialInstitutionId\r\n,SourceSystemCode\r\n,TaskRunId\r\n,WorkFlowId\r\n,InsertDttm)\r\n\r\nSELECT DISTINCT\r\nSRC.CustomerAccountId AS CustomerAccountId\r\n,NULL AS CustomerId\r\n,CONVERT(DATE,CONVERT(VARCHAR,SRC.PeriodStartDate)) AS PeriodStartDate\r\n,'9999-12-31' AS PeriodEndDate\r\n,NULL AS CustomerAccountParticipationPercentage\r\n,NULL AS CustomerAccountParticipationNote\r\n,NULL AS LinkCode\r\n,SRC.DeletedIndicator AS DeletedIndicator\r\n,SRC.GuarantorLiabilityPercentage AS GuarantorLiabilityPercentage\r\n,SRC.ProfitCertificateIndicator AS ProfitCertificateIndicator\r\n,SRC.VerifiedIndicator AS VerifiedIndicator\r\n,SRC.MinorToMajorLetterGenerationIndicator AS MinorToMajorLetterGenerationIndicator\r\n,SRC.ChangedDueToAssumptionIndicator AS ChangedDueToAssumptionIndicator\r\n,SRC.SerialNumber AS SerialNumber\r\n,SRC.RelatedPartyAllowedAmount AS RelatedPartyAllowedAmount\r\n,SRC.CoreCustomerId AS CoreCustomerId\r\n,SRC.CustomerRelationCode AS CustomerRelationCode\r\n,SRC.FinancialInstitutionId AS FinancialInstitutionId\r\n,'LNS' AS SourceSystemCode\r\n,0 AS TaskRunId\r\n,0 AS WorkFlowId\r\n,SRC.InsertDttm AS InsertDttm\r\nFROM #TEMP_BNKM_CustomerAccountParticipation SRC\r\nJOIN #TEMP_BNKM_CustomerAccountParticipation_DELTA DELTA \r\n ON DELTA.CustomerAccountId = SRC.CustomerAccountId\r\n  AND DELTA.SerialNumber = SRC.SerialNumber\r\n   AND ISNULL(DELTA.CustomerId,'1') = ISNULL(SRC.CustomerId,'1')\r\n    AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\r\n    AND DELTA.SourceSystemCode = SRC.SourceSystemCode\r\n WHERE RECORD_STATUS IN ('UPDATE','INSERT');\r\n\r\nDROP TABLE #TEMP_BNKM_CustomerAccountParticipation;\r\nDROP TABLE #TEMP_BNKM_CustomerAccountParticipation_DELTA;\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ALTER SP_CustomerAccountParticipation_TRY",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CustomerAccountParticipation_TRY] AS\r\nBEGIN\r\n\r\n--GET DELTA FROM BUSC\r\nWITH TEMP_BNKM_CustomerAccountParticipation\r\nAS(\r\nSELECT\r\nconvert(varchar,BTL.ID) AS CustomerAccountId\r\n,VALUE AS CustomerId\r\n,convert(date,convert(varchar,BTL.INSERT_DTTM)) AS PeriodStartDate\r\n,'9999-12-31' AS PeriodEndDate\r\n,NULL AS CustomerAccountParticipationPercentage\r\n,NULL AS CustomerAccountParticipationNote\r\n,BTL.BNK_CODE AS FinancialInstitutionId\r\n,'TRY'AS SourceSystemCode\r\n,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS [InsertDttm]\r\nFROM (SELECT * FROM (\r\nSELECT ROW_NUMBER() OVER(PARTITION BY ID ORDER BY ID) RN, * FROM BUSC.TRY_LegalEntity BTL --ON BTLD.ID = BTL.ID AND BTLD.Status = BTL.Status AND BTL.ISLATEST = 1\r\nCROSS APPLY STRING_SPLIT(BTL.External_Ref, '|')\r\nwhere BTL.STATUS != 'Disabled'\r\nAND (BTL.ROLES LIKE '%Client%' OR BTL.ROLES LIKE '%CounterParty%')\r\nAND (BTL.FULL_NAME not like 'GROUP-%' OR BTL.FULL_NAME not like 'SETTLEMENT BANK%') AND BTL.ISLATEST = 1 AND VALUE <> ''  )A\r\n--WHERE A.RN = 1\r\n) BTL \r\nWHERE BTL.ID IS NOT NULL\r\n\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerAccountParticipation FROM TEMP_BNKM_CustomerAccountParticipation;\r\n\r\n--CHECK IF THERE IS DELTA\r\n\r\nWITH TEMP_BNKM_CustomerAccountParticipation_SRC\r\nAS(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nconvert(varchar,CustomerAccountId)\r\n,convert(varchar,CustomerId)\r\n))HASHROW, CustomerAccountId,  CustomerId,FinancialInstitutionId,SourceSystemCode\r\nFROM #TEMP_BNKM_CustomerAccountParticipation \r\n),\r\n\r\nTEMP_BNKM_CustomerAccountParticipation_TGT\r\nAS(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nconvert(varchar,CustomerAccountId)\r\n,convert(varchar,CustomerId)\r\n))HASHROW, CustomerAccountId,  CustomerId,FinancialInstitutionId,SourceSystemCode\r\nFROM BNKM.CustomerAccountParticipation\r\nWHERE PeriodEndDate = '9999-12-31' AND SOURCESYSTEMCODE = 'TRY' \r\n),\r\n\r\nTEMP_BNKM_CustomerAccountParticipation_DELTA\r\nAS\r\n(\r\nSELECT\r\nSRC.HASHROW AS SRC_HR\r\n,TGT.HASHROW AS TGT_HR\r\n\t,ISNULL(SRC.CustomerAccountId,TGT.CustomerAccountId) AS CustomerAccountId\r\n,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\r\n,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\r\n,CASE\r\n\tWHEN TGT.HASHROW IS NULL THEN 'INSERT' \r\n\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\tELSE NULL END AS RECORD_STATUS\r\n\r\nFROM TEMP_BNKM_CustomerAccountParticipation_SRC SRC\r\nLEFT JOIN TEMP_BNKM_CustomerAccountParticipation_TGT TGT\r\nON\tSRC.CustomerAccountId = TGT.CustomerAccountId\r\nAND SRC.CustomerId = TGT.CustomerId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\r\n)\r\nSELECT * INTO #TEMP_BNKM_CustomerAccountParticipation_DELTA FROM TEMP_BNKM_CustomerAccountParticipation_DELTA;\r\n\r\n--UPDATE RECORD TO BNKM\r\n--\r\nUPDATE TGT\r\nSET\r\nPeriodEndDate =  CONVERT(DATE,DATEADD(day,-1,CONVERT(VARCHAR,SRC.PeriodStartDate)))\r\nFROM BNKM.CustomerAccountParticipation TGT\r\nJOIN #TEMP_BNKM_CustomerAccountParticipation_DELTA DELTA \r\nON DELTA.CustomerAccountId = TGT.CustomerAccountId \r\nAND  DELTA.CustomerId = TGT.CustomerId\r\nAND  DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId \r\nAND  DELTA.SourceSystemCode = TGT.SourceSystemCode \r\nAND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CustomerAccountParticipation SRC \r\nON SRC.CustomerAccountId = TGT.CustomerAccountId \r\n  AND SRC.CustomerId= TGT.CustomerId\r\n   AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\n    AND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE TGT.PeriodEndDate = '9999-12-31'\r\n\r\n\r\n\r\n\r\n\r\n--INSERT RECORDS TO BNKM\r\nINSERT INTO BNKM.CustomerAccountParticipation\r\n(\r\nCustomerAccountId\r\n,CustomerId\r\n,PeriodStartDate\r\n,PeriodEndDate\r\n,CustomerAccountParticipationPercentage\r\n,CustomerAccountParticipationNote\r\n,FinancialInstitutionId\r\n,SOURCESYSTEMCODE\r\n,WORKFLOWID\r\n,TASKRUNID\r\n,INSERTDTTM\r\n)\r\n\r\nSELECT\r\nSRC.CustomerAccountId AS CustomerAccountId\r\n,SRC.CustomerId AS CustomerId\r\n,convert(date,convert(varchar,SRC.PeriodStartDate)) AS PeriodStartDate\r\n,convert(date,convert(varchar,SRC.PeriodEndDate)) AS PeriodEndDate\r\n,SRC.CustomerAccountParticipationPercentage AS CustomerAccountParticipationPercentage\r\n,SRC.CustomerAccountParticipationNote AS CustomerAccountParticipationNote\r\n,SRC.FinancialInstitutionId AS FinancialInstitutionId\r\n,'TRY' AS SOURCESYSTEMCODE\r\n,0 AS WORKFLOWID\r\n,0 AS TASKRUNID\r\n,SRC.INSERTDTTM AS INSERTDTTM\r\nFROM #TEMP_BNKM_CustomerAccountParticipation SRC\r\nJOIN #TEMP_BNKM_CustomerAccountParticipation_DELTA DELTA \r\n ON DELTA.CustomerAccountId = SRC.CustomerAccountId\r\n   AND DELTA.CustomerId = SRC.CustomerId\r\n    AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\r\n    AND DELTA.SourceSystemCode = SRC.SourceSystemCode\r\n WHERE RECORD_STATUS IN ('UPDATE','INSERT');\r\n\r\nDROP TABLE #TEMP_BNKM_CustomerAccountParticipation;\r\nDROP TABLE #TEMP_BNKM_CustomerAccountParticipation_DELTA;\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ALTER SP_CUSTOMERACCOUNTPARTICIPATION_SEC",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CUSTOMERACCOUNTPARTICIPATION_SEC] AS\r\nBEGIN\r\n\r\nWITH TEMP_BNKM_CustomerAccountParticipation AS (\r\nSELECT \r\n\tBST.ACCTCODE AS CustomerAccountId\r\n\t,BSA.CLTCODE AS CustomerId\r\n\t,NULL AS CoreCustomerId\r\n\t,CONVERT(datetime,BST.DATE_OPEN) AS PeriodStartDate\r\n    ,BST.DATE_CLOSED AS PeriodEndDate\r\n\t,NULL AS DeletedIndicator\r\n\t,NULL AS VerifiedIndicator\r\n\t,NULL AS CustomerAccountParticipationNote\r\n\t,NULL AS GuarantorLiabilityPercentage\r\n\t,NULL AS ProfitCertificateIndicator\r\n\t,NULL AS MinorToMajorLetterGenerationIndicator\r\n\t,NULL AS ChangedDueToAssumptionIndicator\r\n\t,'NA' AS SerialNumber\r\n\t,NULL AS RelatedPartyAllowedAmount\r\n\t,NULL AS CustomerRelationCode\r\n\t,NULL AS CustomerAccountParticipationPercentage\r\n\t,BSA.LINKCODE AS LinkCode\r\n\t,BSA.BNK_CODE AS FinancialInstitutionId\r\n\t,'SEC'AS SourceSystemCode\r\n\t,0 AS TaskRunId\r\n\t,0 AS WorkFlowId\r\n\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS [InsertDttm]\r\nFROM BUSC.SEC_ACCOUNTLINK BSA\r\nLEFT JOIN BUSC.SEC_TBLACCOUNTS BST ON BSA.ACCTKEY = BST.ACCTKEY AND BSA.ACCTKEY = BST.ACCTCODE AND BST.isLatest = '1'\r\nWHERE  BSA.isLatest = '1' \r\n)\r\n\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerAccountParticipation FROM TEMP_BNKM_CustomerAccountParticipation\r\nWHERE CustomerAccountId IS NOT NULL AND PeriodStartDate IS NOT NULL;\r\n\r\nWITH TEMP_BNKM_CustomerAccountParticipation_SRC AS (\r\nSELECT \r\n    HASHBYTES('MD5',CONCAT(\r\n\t\tconvert(nvarchar,CustomerAccountId)\r\n\t\t,convert(varchar,CustomerId)\r\n\t\t,convert(varchar,LinkCode)\r\n\t\t)) AS HASHROW, CustomerAccountId, PeriodStartDate, CustomerId, SerialNumber, FinancialInstitutionId,SourceSystemCode\r\nFROM #TEMP_BNKM_CustomerAccountParticipation\r\n)\r\n\r\n,\r\nTEMP_BNKM_CustomerAccountParticipation_TGT AS (\r\nSELECT \r\n    HASHBYTES('MD5',CONCAT(\r\n\t\tconvert(nvarchar,CustomerAccountId)\r\n\t\t,convert(varchar,CustomerId)\r\n\t\t,convert(varchar,LinkCode)\r\n\t\t)) AS HASHROW, CustomerAccountId, PeriodStartDate, CustomerId, SerialNumber, FinancialInstitutionId,SourceSystemCode\r\nFROM BNKM.CustomerAccountParticipation\r\nWHERE SourceSystemCode = 'SEC'\r\n)\r\n\r\n,\r\nTEMP_BNKM_CustomerAccountParticipation_DELTA AS (\r\nSELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n\t,ISNULL(SRC.CustomerAccountId,TGT.CustomerAccountId) AS CustomerAccountId\r\n    ,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\r\n    ,ISNULL(SRC.PeriodStartDate,TGT.PeriodStartDate) AS PeriodStartDate\r\n    ,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n    ,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\r\n\t,CASE\r\n\t\tWHEN TGT.HASHROW IS NULL THEN 'INSERT' \r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\tELSE NULL END AS RECORD_STATUS\r\n\t\r\nFROM TEMP_BNKM_CustomerAccountParticipation_SRC\tSRC\r\nLEFT JOIN TEMP_BNKM_CustomerAccountParticipation_TGT TGT\r\nON\tSRC.CustomerAccountId = TGT.CustomerAccountId\r\nAND SRC.CustomerId = TGT.CustomerId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW  OR TGT.HASHROW IS NULL\r\n)\r\n\r\n\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerAccountParticipation_DELTA FROM TEMP_BNKM_CustomerAccountParticipation_DELTA;\r\n\r\n\r\nUPDATE TGT \r\nSET\r\nPeriodEndDate = CONVERT(DATE,DATEADD(day,-1,CONVERT(VARCHAR,SRC.PeriodStartDate)))\r\nFROM BNKM.CustomerAccountParticipation TGT\r\nJOIN #TEMP_BNKM_CustomerAccountParticipation_DELTA DELTA \r\nON DELTA.CustomerAccountId = TGT.CustomerAccountId \r\nAND  DELTA.CustomerId = TGT.CustomerId\r\nAND  DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId \r\nAND  DELTA.SourceSystemCode = TGT.SourceSystemCode \r\nAND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CustomerAccountParticipation SRC \r\nON SRC.CustomerAccountId = TGT.CustomerAccountId \r\nAND SRC.CustomerId= TGT.CustomerId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE TGT.PeriodEndDate = '9999-12-31'\r\n\r\n\r\nINSERT INTO BNKM.CustomerAccountParticipation( \r\nCustomerAccountId\r\n,CustomerId\r\n,CoreCustomerId\r\n,PeriodStartDate\r\n,PeriodEndDate\r\n,DeletedIndicator\r\n,VerifiedIndicator\r\n,CustomerAccountParticipationNote\r\n,GuarantorLiabilityPercentage\r\n,ProfitCertificateIndicator\r\n,MinorToMajorLetterGenerationIndicator\r\n,ChangedDueToAssumptionIndicator\r\n,SerialNumber\r\n,RelatedPartyAllowedAmount\r\n,CustomerRelationCode\r\n,CustomerAccountParticipationPercentage\r\n,LinkCode\r\n,FinancialInstitutionId\r\n,SourceSystemCode\r\n,TaskRunId\r\n,WorkFlowId\r\n,InsertDttm\r\n\r\n)\r\nSELECT DISTINCT\r\nSRC.CustomerAccountId\r\n,SRC.CustomerId\r\n,CoreCustomerId\r\n,SRC.PeriodStartDate\r\n,PeriodEndDate\r\n,DeletedIndicator\r\n,VerifiedIndicator\r\n,CustomerAccountParticipationNote\r\n,GuarantorLiabilityPercentage\r\n,ProfitCertificateIndicator\r\n,MinorToMajorLetterGenerationIndicator\r\n,ChangedDueToAssumptionIndicator\r\n,SRC.SerialNumber\r\n,RelatedPartyAllowedAmount\r\n,CustomerRelationCode\r\n,CustomerAccountParticipationPercentage\r\n,LinkCode\r\n,SRC.FinancialInstitutionId\r\n,SRC.SourceSystemCode\r\n,TaskRunId\r\n,WorkFlowId\r\n,InsertDttm\r\nFROM #TEMP_BNKM_CustomerAccountParticipation SRC\r\nJOIN #TEMP_BNKM_CustomerAccountParticipation_DELTA DELTA \r\nON DELTA.CustomerAccountId = SRC.CustomerAccountId\r\nAND DELTA.CustomerId = SRC.CustomerId\r\nAND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\r\nAND DELTA.SourceSystemCode = SRC.SourceSystemCode\r\n WHERE RECORD_STATUS IN ('INSERT');\r\n\r\nDROP TABLE #TEMP_BNKM_CustomerAccountParticipation;\r\nDROP TABLE #TEMP_BNKM_CustomerAccountParticipation_DELTA;\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Execute Patch",
+				"type": "ExecutePipeline",
+				"dependsOn": [],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Patch",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"table": "BNKM.CustomerAccountParticipation",
+						"col": "PeriodEndDate"
+					}
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-02-20T01:35:34Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

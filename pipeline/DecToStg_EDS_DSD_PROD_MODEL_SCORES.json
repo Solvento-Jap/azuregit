@@ -1,0 +1,540 @@
+{
+	"name": "DecToStg_EDS_DSD_PROD_MODEL_SCORES",
+	"properties": {
+		"activities": [
+			{
+				"name": "SP_LOG_COPY_ACTIVITY_DTL_copy1",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "DSD_PROD_MODEL_SCORES_copy1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_COPY_ACTIVITY_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_STG_EDS_',pipeline().parameters.Table_Name)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_STG",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@pipeline().parameters.Process_Date",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"dataread": {
+							"value": {
+								"value": "@activity('DSD_PROD_MODEL_SCORES_copy1').output.dataRead",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"datawritten": {
+							"value": {
+								"value": "@activity('DSD_PROD_MODEL_SCORES_copy1').output.dataWritten",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"filesread": {
+							"value": {
+								"value": "@activity('DSD_PROD_MODEL_SCORES_copy1').output.filesRead",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"sourcepeakconnections": {
+							"value": {
+								"value": "@activity('DSD_PROD_MODEL_SCORES_copy1').output.sourcePeakConnections",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowsread": {
+							"value": {
+								"value": "@activity('DSD_PROD_MODEL_SCORES_copy1').output.rowsRead",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowscopied": {
+							"value": {
+								"value": "@activity('DSD_PROD_MODEL_SCORES_copy1').output.rowsCopied",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowsskipped": {
+							"value": {
+								"value": "@activity('DSD_PROD_MODEL_SCORES_copy1').output.rowsSkipped",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"copyduration": {
+							"value": {
+								"value": "@activity('DSD_PROD_MODEL_SCORES_copy1').output.copyDuration",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"throughput": {
+							"value": {
+								"value": "@activity('DSD_PROD_MODEL_SCORES_copy1').output.throughput",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"redirectrowpath": {
+							"value": {
+								"value": "@activity('DSD_PROD_MODEL_SCORES_copy1').output.redirectRowPath",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"logfilepath": {
+							"value": {
+								"value": "@activity('DSD_PROD_MODEL_SCORES_copy1').output.logFilePath",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Set v_error_desc_get_copy1",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "DSD_PROD_MODEL_SCORES_copy1",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_error_desc",
+					"value": {
+						"value": "@activity('DSD_PROD_MODEL_SCORES_copy1').Error.message",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "DSD_PROD_MODEL_SCORES_copy1",
+				"type": "Copy",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "ParquetSource",
+						"additionalColumns": [
+							{
+								"name": "FILE_NAME",
+								"value": "$$FILEPATH"
+							},
+							{
+								"name": "AS_OF_DATE",
+								"value": {
+									"value": "@pipeline().parameters.Process_Date",
+									"type": "Expression"
+								}
+							},
+							{
+								"name": "INSERT_DTTM",
+								"value": {
+									"value": "@addhours(pipeline().TriggerTime,8)",
+									"type": "Expression"
+								}
+							}
+						],
+						"storeSettings": {
+							"type": "AzureBlobFSReadSettings",
+							"recursive": true,
+							"wildcardFolderPath": {
+								"value": "@concat(pipeline().parameters.Root_Dir,'=',pipeline().parameters.Process_Date)",
+								"type": "Expression"
+							},
+							"wildcardFileName": "*.parquet",
+							"enablePartitionDiscovery": false
+						},
+						"formatSettings": {
+							"type": "ParquetReadSettings"
+						}
+					},
+					"sink": {
+						"type": "SqlDWSink",
+						"preCopyScript": {
+							"value": "@concat('TRUNCATE TABLE D360.STG_EDS_',pipeline().parameters.Table_Name)",
+							"type": "Expression"
+						},
+						"allowCopyCommand": true
+					},
+					"enableStaging": true,
+					"stagingSettings": {
+						"linkedServiceName": {
+							"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+							"type": "LinkedServiceReference"
+						},
+						"path": "data360/dev/stg_synapse"
+					},
+					"enableSkipIncompatibleRow": true,
+					"logSettings": {
+						"enableCopyActivityLog": true,
+						"copyActivityLogSettings": {
+							"logLevel": "Warning",
+							"enableReliableLogging": true
+						},
+						"logLocationSettings": {
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+								"type": "LinkedServiceReference"
+							},
+							"path": {
+								"value": "@concat('data360/dev/Logging/',pipeline().parameters.Source_sys,'/',pipeline().parameters.Table_Name,'/',substring(replace(replace(replace(addHours(utcnow(),+8),'-',''),'T','_'),':',''),0,15))",
+								"type": "Expression"
+							}
+						}
+					},
+					"translator": {
+						"type": "TabularTranslator",
+						"mappings": [
+							{
+								"source": {
+									"name": "CIF_ID",
+									"type": "String"
+								},
+								"sink": {
+									"name": "CIF_ID",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "IBS_TAG",
+									"type": "Int32"
+								},
+								"sink": {
+									"name": "IBS_TAG",
+									"type": "Int32"
+								}
+							},
+							{
+								"source": {
+									"name": "WMG_TAG",
+									"type": "Int32"
+								},
+								"sink": {
+									"name": "WMG_TAG",
+									"type": "Int32"
+								}
+							},
+							{
+								"source": {
+									"name": "L2_SEGMENT_ID",
+									"type": "String"
+								},
+								"sink": {
+									"name": "L2_SEGMENT_ID",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "L2_SEGMENT_DESC",
+									"type": "String"
+								},
+								"sink": {
+									"name": "L2_SEGMENT_DESC",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "L2_LEADS_TAG",
+									"type": "Int32"
+								},
+								"sink": {
+									"name": "L2_LEADS_TAG",
+									"type": "Int32"
+								}
+							},
+							{
+								"source": {
+									"name": "HNW_LOOKALIKE",
+									"type": "Int32"
+								},
+								"sink": {
+									"name": "HNW_LOOKALIKE",
+									"type": "Int32"
+								}
+							},
+							{
+								"source": {
+									"name": "UHNW_LOOKALIKE",
+									"type": "Int32"
+								},
+								"sink": {
+									"name": "UHNW_LOOKALIKE",
+									"type": "Int32"
+								}
+							},
+							{
+								"source": {
+									"name": "PRODUCT_PROSPECT_1",
+									"type": "String"
+								},
+								"sink": {
+									"name": "PRODUCT_PROSPECT_1",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "PRODUCT_PROSPECT_2",
+									"type": "String"
+								},
+								"sink": {
+									"name": "PRODUCT_PROSPECT_2",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "PRODUCT_PROSPECT_3",
+									"type": "String"
+								},
+								"sink": {
+									"name": "PRODUCT_PROSPECT_3",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "PRODUCT_PROSPECT_4",
+									"type": "String"
+								},
+								"sink": {
+									"name": "PRODUCT_PROSPECT_4",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "PRODUCT_PROSPECT_5",
+									"type": "String"
+								},
+								"sink": {
+									"name": "PRODUCT_PROSPECT_5",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "FILE_NAME",
+									"type": "String"
+								},
+								"sink": {
+									"name": "FILE_NAME",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "INSERT_DTTM",
+									"type": "String"
+								},
+								"sink": {
+									"name": "INSERT_DTTM",
+									"type": "DateTime"
+								}
+							},
+							{
+								"source": {
+									"name": "AS_OF_DATE",
+									"type": "String"
+								},
+								"sink": {
+									"name": "AS_OF_DATE",
+									"type": "DateTime"
+								}
+							}
+						]
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "decrypt_parquet",
+						"type": "DatasetReference",
+						"parameters": {
+							"Root_Dir": " "
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": {
+								"value": "@concat('STG_EDS_',pipeline().parameters.Table_Name)",
+								"type": "Expression"
+							}
+						}
+					}
+				]
+			},
+			{
+				"name": "Failed_DectoStg_copy1",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "SP_LOG_TASK_ERROR_DTL_GET_copy1",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": {
+						"value": "@variables('v_error_desc')",
+						"type": "Expression"
+					},
+					"errorCode": "500"
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_GET_copy1",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Set v_error_desc_get_copy1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_STG_EDS_',replace(pipeline().parameters.Table_Name,'''',''))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_STG",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@pipeline().parameters.Process_Date",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			}
+		],
+		"parameters": {
+			"Process_Date": {
+				"type": "string",
+				"defaultValue": "2025-11-28"
+			},
+			"Root_Dir": {
+				"type": "string",
+				"defaultValue": "databricksdev/dsd_dev_scores/__unitystorage/schemas/b2f93f85-d827-4db4-ad8a-72e935e2cab1/tables/e500629b-89b4-4798-8ac8-f76146d82ecd/AS_OF_DATE"
+			},
+			"Table_Name": {
+				"type": "string",
+				"defaultValue": "DSD_PROD_MODEL_SCORES"
+			},
+			"Source_sys": {
+				"type": "string",
+				"defaultValue": "DSD"
+			}
+		},
+		"variables": {
+			"v_error_desc": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-11-25T08:07:42Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

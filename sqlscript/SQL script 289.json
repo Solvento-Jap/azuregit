@@ -1,0 +1,20 @@
+{
+	"name": "SQL script 289",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "CREATE PROCEDURE DW.SP_DW_DIMBRANCH_HISTORICAL\nAS\nBEGIN\n\nWITH BranchSK AS (SELECT ISNULL(MAX(BranchSK),0) RN  from DW.DimBranch )\n\n,Branch_AR AS (\n    SELECT  DISTINCT\n        BB.BranchId AS BranchID\n        ,BB.BranchName AS BranchName\n        ,NULL AS BranchDescription\n        ,BBGD.BranchGroupDescription AS Area\n        ,BB.FinancialInstitutionId AS BankSK\n        ,BB.InsertDttm\n    FROM BNKM.Branch BB\n    LEFT JOIN BNKM.BranchGroupBranch BBGB ON  BB.BranchId = BBGB.BranchId \n    LEFT JOIN BNKM.BranchGroupDescription BBGD ON BBGB.BranchGroupId = BBGD.BranchGroupId\n    where substring(BBGD.BranchGroupId,1,2) = 'AR')\n\n, Branch_REG AS (\n    SELECT  DISTINCT\n    BB.BranchId AS BranchID\n    ,BB.BranchName AS BranchName\n    ,NULL AS BranchDescription\n    ,BBGD.BranchGroupDescription AS Region\n    ,BB.FinancialInstitutionId AS BankSK\n    ,BB.InsertDttm\nFROM BNKM.Branch BB\nLEFT JOIN BNKM.BranchGroupBranch BBGB ON  BB.BranchId = BBGB.BranchId \nLEFT JOIN BNKM.BranchGroupDescription BBGD ON BBGB.BranchGroupId = BBGD.BranchGroupId\nwhere substring(BBGD.BranchGroupId,1,3) = 'REG')\n\n,TEMP_DW_DIMBRANCH AS (\n    SELECT\n        ROW_NUMBER() OVER(ORDER BY (SELECT NULL)) + (SELECT RN  FROM BranchSK) AS BranchSK\n        ,* \n    FROM ( \n        SELECT DISTINCT\n            AR.BRANCHID\n            ,AR.BranchName\n            ,AR.BranchDescription\n            ,AR.Area\n            ,REG.Region\n            ,AR.BankSK\n            ,1 AS CurrentIndicator\n            ,ISNULL(AR.InsertDttm,REG.InsertDttm) AS ValidStartDate\n            ,LEAD(ISNULL(AR.InsertDttm,REG.InsertDttm),1,'9999-12-31') AS ValidEndDate\n            ,0 AS WorkFlowId\n            ,0 AS TaskRunId\n            ,Getdate() AS InsertDttm\n    FROM Branch_AR AR\n    JOIN Branch_REG REG \n        ON AR.BranchID = REG.BranchID AND AR.BankSK = REG.BankSK\n)A)\n\nSELECT * INTO #TEMP_DW_DIMBRANCH FROM TEMP_DW_DIMBRANCH;\n\nINSERT INTO DW.DIMBRANCH\n    (BranchSK\n    ,BranchID\n    ,BranchName\n    ,BranchDescription\n    ,Area\n    ,Region\n    ,BankSK\n    ,CurrentIndicator\n    ,ValidStartDate\n    ,ValidEndDate\n    ,WorkFlowId\n    ,TaskRunId\n    ,InsertDttm)\nSELECT\n    BranchSK\n    ,SRC.BranchID\n    ,BranchName\n    ,BranchDescription\n    ,Area\n    ,Region\n    ,SRC.BankSK\n    ,CurrentIndicator\n    ,ValidStartDate\n    ,ValidEndDate\n    ,WorkFlowId\n    ,TaskRunId\n    ,InsertDttm\nFROM #TEMP_DW_DIMBRANCH\n\nEND\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

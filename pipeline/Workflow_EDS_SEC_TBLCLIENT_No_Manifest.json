@@ -1,0 +1,643 @@
+{
+	"name": "Workflow_EDS_SEC_TBLCLIENT_No_Manifest",
+	"properties": {
+		"activities": [
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(pipeline().parameters.endDate),ticks(pipeline().parameters.startDate)),864000000000),1))",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append variable1",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "select fulldate\nfrom \n    eds.eds_ctl ect\ninner join \n    eds.date_dim dd\n    on \n    ect.SEC_Date=dd.sec_previous_business_day and dd.sec_business_day_flag='Y'\n",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "eds_ctl"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Iterate Execution of Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "ADLS_file_process",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Manifest_file",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "ADLS_file_process_EDS_SEC_TBLCLIENT",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"DatetoProcess": {
+										"value": "@item()",
+										"type": "Expression"
+									},
+									"tables": {
+										"value": "@pipeline().parameters.tables1",
+										"type": "Expression"
+									},
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									},
+									"Bank_ID": {
+										"value": "@pipeline().parameters.Bank_ID",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "OM_SRC_CHECK",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "ADLS_file_process",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_EDS_SEC_TBLCLIENT",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@replace(substring(item(),0,10),'-','')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Get Success Count EDS",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "OM_SRC_CHECK",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_EDS_SEC_TBLCLIENT'',''EDS'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count EDS",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count EDS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count EDS').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "START_TASK_EDS_SEC_TBLCLIENT",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_SEC_TBLCLIENT",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_SEC_TBLCLIENT_SUCCESS",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_SEC_TBLCLIENT",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_SEC_TBLCLIENT",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_SEC_TBLCLIENT_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_SEC_TBLCLIENT",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_SEC_TBLCLIENT",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "EDS_SEC_TBLCLIENT",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_EDS_SEC_TBLCLIENT",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testSQLpool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"type": "Query",
+													"text": "TRUNCATE TABLE d360.STG_EDS_SEC_TBLCLIENT_SELECT_SRC;\r\n\r\nINSERT INTO d360.STG_EDS_SEC_TBLCLIENT_SELECT_SRC\r\n(\r\n\t\t\t\t [CLTCODE]\r\n\t\t\t\t,[CLTTYPE]\r\n\t\t\t\t,[FNAME]\r\n\t\t\t\t,[LNAME]\r\n\t\t\t\t,[MNAME]\r\n\t\t\t\t,[SUFF]\r\n\t\t\t\t,[CNAME]\r\n\t\t\t\t,[BDATE]\r\n\t\t\t\t,[BPLACE]\r\n\t\t\t\t,[MOTHER]\r\n\t\t\t\t,[SEX]\r\n\t\t\t\t,[CIVILSTAT]\r\n\t\t\t\t,[SPOUSE]\r\n\t\t\t\t,[NATDATE]\r\n\t\t\t\t,[CELLPHONE]\r\n\t\t\t\t,[PRIM_EMAIL]\r\n\t\t\t\t,[ALT_EMAIL]\r\n\t\t\t\t,[EMPFLAG]\r\n\t\t\t\t,[AFFILIATENAME]\r\n\t\t\t\t,[RMNUM]\r\n\t\t\t\t,[EMPLOYSTATUS]\r\n\t\t\t\t,[EMPLOYOTHERS]\r\n\t\t\t\t,[COMPNAME]\r\n\t\t\t\t,[COMPPOS]\r\n\t\t\t\t,[BUSNATURE]\r\n\t\t\t\t,[COMPSTART]\r\n\t\t\t\t,[COMPYEARS]\r\n\t\t\t\t,[SSSNUMBER]\r\n\t\t\t\t,[PASSPORT]\r\n\t\t\t\t,[DRVLICENSE]\r\n\t\t\t\t,[INCORP_REGNO]\r\n\t\t\t\t,[INCORP_DATE]\r\n\t\t\t\t,[INCORP_CERT]\r\n\t\t\t\t,[TAXFLAG]\r\n\t\t\t\t,[TAXREM]\r\n\t\t\t\t,[HOME_ADDR1]\r\n\t\t\t\t,[HOME_ADDR2]\r\n\t\t\t\t,[HOME_ADDR3]\r\n\t\t\t\t,[HOME_ZIP]\r\n\t\t\t\t,[HOME_PHONE]\r\n\t\t\t\t,[HOME_FAX]\r\n\t\t\t\t,[OFC_ADDR1]\r\n\t\t\t\t,[OFC_ADDR2]\r\n\t\t\t\t,[OFC_ADDR3]\r\n\t\t\t\t,[OFC_ZIP]\r\n\t\t\t\t,[OFC_PHONE]\r\n\t\t\t\t,[OFC_PHONE2]\r\n\t\t\t\t,[OFC_FAX]\r\n\t\t\t\t,[OFC_FAX2]\r\n\t\t\t\t,[PERM_ADDR1]\r\n\t\t\t\t,[PERM_ADDR2]\r\n\t\t\t\t,[PERM_ADDR3]\r\n\t\t\t\t,[PERM_ZIP]\r\n\t\t\t\t,[PERM_PHONE]\r\n\t\t\t\t,[PERM_FAX]\r\n\t\t\t\t,[BROKEREMPLOY]\r\n\t\t\t\t,[BROKEREMPNAME]\r\n\t\t\t\t,[PSEOFFICER]\r\n\t\t\t\t,[PSECNAME]\r\n\t\t\t\t,[ACCTBROKER]\r\n\t\t\t\t,[ACCTBROKERNAME]\r\n\t\t\t\t,[NETWORTH_CURR]\r\n\t\t\t\t,[NETWORTH_RANGE]\r\n\t\t\t\t,[ANNINC_CURR]\r\n\t\t\t\t,[ANNINC_RANGE]\r\n\t\t\t\t,[ASSETS_CURR]\r\n\t\t\t\t,[ASSETS_RANGE]\r\n\t\t\t\t,[INVESTOBJ]\r\n\t\t\t\t,[FUNDSOURCE]\r\n\t\t\t\t,[ASSETS]\r\n\t\t\t\t,[NETWORTH]\r\n\t\t\t\t,[ANNUAL_INCOME]\r\n\t\t\t\t,[ACCTKEY]\r\n\t\t\t\t,[DVRLICENSE_EXPRD]\r\n\t\t\t\t,[PASSPORT_EXPRD]\r\n\t\t\t\t,[NATIONALITY]\r\n\t\t\t\t,[TIN]\r\n\t\t\t\t,[INCORP_COUNTRY]\r\n\t\t\t\t,[HOME_COUNTRY]\r\n\t\t\t\t,[OFC_COUNTRY]\r\n\t\t\t\t,[PERM_COUNTRY]\r\n\t\t\t\t,[BROKEROFFICER]\r\n\t\t\t\t,[NATIONALITY2]\r\n\t\t\t\t,[SUBACCT]\r\n\t\t\t\t,[RISKCLASS]\r\n\t\t\t\t,[SETA_BRANCHCODE]\r\n\t\t\t\t,[SETA_BRANCHNAME]\r\n\t\t\t\t,[SETA_ACCTNO]\r\n\t\t\t\t,[OCCUPATION]\r\n\t\t\t\t,[EMPLOYER_NAME]\r\n\t\t\t\t,[TRUSTFLAG]\r\n\t\t\t\t,[LFFLAG]\r\n\t\t\t\t,[RELATEDPARTY_FLAG]\r\n\t\t\t\t,[AFFILIATEFLAG]\r\n\t\t\t\t,[FATCAFLAG]\r\n\t\t\t\t,[RELATIONSHIP]\r\n\t\t\t\t,[BUSSECTOR]\r\n\t\t\t\t,[RISK_SCORE]\r\n\t\t\t\t,[REFERREDBY]\r\n\t\t\t\t,[KYC]\r\n\t\t\t\t,[STATUS]\r\n\t\t\t\t,[CELLPHONE2]\r\n\t\t\t\t,[CONTACTPERSON]\r\n\t\t\t\t,[CONTACTPOSITION]\r\n\t\t\t\t,[DATE_CREATED]\r\n\t\t\t\t,[LASTUPDATED]\r\n\t\t\t\t,[AMLC_WATCHLIST]\r\n\t\t\t\t,[PEPFLAG]\r\n\t\t\t\t,[FUNDSOURCE_COUNTRY]\r\n\t\t\t\t,[GOVTINST]\r\n\t\t\t\t,[GOVTEMP]\r\n\t\t\t\t,[NDVFLAG]\r\n\t\t\t\t,[EMPRANK]\r\n\t\t\t\t,[BUSREG_CERT]\r\n\t\t\t\t,[INCORP_REGCERT]\r\n\t\t\t\t,[STOCK_GRANTEE]\r\n\t\t\t\t,[EMPID]\r\n\t\t\t\t,[MAKER]\r\n\t\t\t\t,[MAKER_DATE]\r\n\t\t\t\t,[CHECKER]\r\n\t\t\t\t,[CHECKER_DATE]\r\n\t\t\t\t,[FILE_NAME]\r\n\t\t\t\t,JSRC_FLG \r\n\t\t\t\t,JTAR_FLG \r\n)\r\nSELECT \r\n\t\t\t\t [CLTCODE]\r\n\t\t\t\t,[CLTTYPE]\r\n\t\t\t\t,[FNAME]\r\n\t\t\t\t,[LNAME]\r\n\t\t\t\t,[MNAME]\r\n\t\t\t\t,[SUFF]\r\n\t\t\t\t,[CNAME]\r\n\t\t\t\t,[BDATE]\r\n\t\t\t\t,[BPLACE]\r\n\t\t\t\t,[MOTHER]\r\n\t\t\t\t,[SEX]\r\n\t\t\t\t,[CIVILSTAT]\r\n\t\t\t\t,[SPOUSE]\r\n\t\t\t\t,[NATDATE]\r\n\t\t\t\t,[CELLPHONE]\r\n\t\t\t\t,[PRIM_EMAIL]\r\n\t\t\t\t,[ALT_EMAIL]\r\n\t\t\t\t,[EMPFLAG]\r\n\t\t\t\t,[AFFILIATENAME]\r\n\t\t\t\t,[RMNUM]\r\n\t\t\t\t,[EMPLOYSTATUS]\r\n\t\t\t\t,[EMPLOYOTHERS]\r\n\t\t\t\t,[COMPNAME]\r\n\t\t\t\t,[COMPPOS]\r\n\t\t\t\t,[BUSNATURE]\r\n\t\t\t\t,[COMPSTART]\r\n\t\t\t\t,[COMPYEARS]\r\n\t\t\t\t,[SSSNUMBER]\r\n\t\t\t\t,[PASSPORT]\r\n\t\t\t\t,[DRVLICENSE]\r\n\t\t\t\t,[INCORP_REGNO]\r\n\t\t\t\t,[INCORP_DATE]\r\n\t\t\t\t,[INCORP_CERT]\r\n\t\t\t\t,[TAXFLAG]\r\n\t\t\t\t,[TAXREM]\r\n\t\t\t\t,[HOME_ADDR1]\r\n\t\t\t\t,[HOME_ADDR2]\r\n\t\t\t\t,[HOME_ADDR3]\r\n\t\t\t\t,[HOME_ZIP]\r\n\t\t\t\t,[HOME_PHONE]\r\n\t\t\t\t,[HOME_FAX]\r\n\t\t\t\t,[OFC_ADDR1]\r\n\t\t\t\t,[OFC_ADDR2]\r\n\t\t\t\t,[OFC_ADDR3]\r\n\t\t\t\t,[OFC_ZIP]\r\n\t\t\t\t,[OFC_PHONE]\r\n\t\t\t\t,[OFC_PHONE2]\r\n\t\t\t\t,[OFC_FAX]\r\n\t\t\t\t,[OFC_FAX2]\r\n\t\t\t\t,[PERM_ADDR1]\r\n\t\t\t\t,[PERM_ADDR2]\r\n\t\t\t\t,[PERM_ADDR3]\r\n\t\t\t\t,[PERM_ZIP]\r\n\t\t\t\t,[PERM_PHONE]\r\n\t\t\t\t,[PERM_FAX]\r\n\t\t\t\t,[BROKEREMPLOY]\r\n\t\t\t\t,[BROKEREMPNAME]\r\n\t\t\t\t,[PSEOFFICER]\r\n\t\t\t\t,[PSECNAME]\r\n\t\t\t\t,[ACCTBROKER]\r\n\t\t\t\t,[ACCTBROKERNAME]\r\n\t\t\t\t,[NETWORTH_CURR]\r\n\t\t\t\t,[NETWORTH_RANGE]\r\n\t\t\t\t,[ANNINC_CURR]\r\n\t\t\t\t,[ANNINC_RANGE]\r\n\t\t\t\t,[ASSETS_CURR]\r\n\t\t\t\t,[ASSETS_RANGE]\r\n\t\t\t\t,[INVESTOBJ]\r\n\t\t\t\t,[FUNDSOURCE]\r\n\t\t\t\t,[ASSETS]\r\n\t\t\t\t,[NETWORTH]\r\n\t\t\t\t,[ANNUAL_INCOME]\r\n\t\t\t\t,[ACCTKEY]\r\n\t\t\t\t,[DVRLICENSE_EXPRD]\r\n\t\t\t\t,[PASSPORT_EXPRD]\r\n\t\t\t\t,[NATIONALITY]\r\n\t\t\t\t,[TIN]\r\n\t\t\t\t,[INCORP_COUNTRY]\r\n\t\t\t\t,[HOME_COUNTRY]\r\n\t\t\t\t,[OFC_COUNTRY]\r\n\t\t\t\t,[PERM_COUNTRY]\r\n\t\t\t\t,[BROKEROFFICER]\r\n\t\t\t\t,[NATIONALITY2]\r\n\t\t\t\t,[SUBACCT]\r\n\t\t\t\t,[RISKCLASS]\r\n\t\t\t\t,[SETA_BRANCHCODE]\r\n\t\t\t\t,[SETA_BRANCHNAME]\r\n\t\t\t\t,[SETA_ACCTNO]\r\n\t\t\t\t,[OCCUPATION]\r\n\t\t\t\t,[EMPLOYER_NAME]\r\n\t\t\t\t,[TRUSTFLAG]\r\n\t\t\t\t,[LFFLAG]\r\n\t\t\t\t,[RELATEDPARTY_FLAG]\r\n\t\t\t\t,[AFFILIATEFLAG]\r\n\t\t\t\t,[FATCAFLAG]\r\n\t\t\t\t,[RELATIONSHIP]\r\n\t\t\t\t,[BUSSECTOR]\r\n\t\t\t\t,[RISK_SCORE]\r\n\t\t\t\t,[REFERREDBY]\r\n\t\t\t\t,[KYC]\r\n\t\t\t\t,[STATUS]\r\n\t\t\t\t,[CELLPHONE2]\r\n\t\t\t\t,[CONTACTPERSON]\r\n\t\t\t\t,[CONTACTPOSITION]\r\n\t\t\t\t,[DATE_CREATED]\r\n\t\t\t\t,[LASTUPDATED]\r\n\t\t\t\t,[AMLC_WATCHLIST]\r\n\t\t\t\t,[PEPFLAG]\r\n\t\t\t\t,[FUNDSOURCE_COUNTRY]\r\n\t\t\t\t,[GOVTINST]\r\n\t\t\t\t,[GOVTEMP]\r\n\t\t\t\t,[NDVFLAG]\r\n\t\t\t\t,[EMPRANK]\r\n\t\t\t\t,[BUSREG_CERT]\r\n\t\t\t\t,[INCORP_REGCERT]\r\n\t\t\t\t,[STOCK_GRANTEE]\r\n\t\t\t\t,[EMPID]\r\n\t\t\t\t,[MAKER]\r\n\t\t\t\t,[MAKER_DATE]\r\n\t\t\t\t,[CHECKER]\r\n\t\t\t\t,[CHECKER_DATE]\r\n\t\t\t\t,[FILE_NAME]\r\n\t\t\t\t,1 AS JSRC_FLG \r\n\t\t\t\t,0 AS JTAR_FLG \r\n\t\t\tFROM [d360].[STG_EDS_SEC_TBLCLIENT]\r\n            WHERE H = 'D';\r\n\r\n\r\nINSERT INTO d360.STG_EDS_SEC_TBLCLIENT_SELECT_SRC\r\n(\r\n\t\t\t\t [CLTCODE]\r\n\t\t\t\t,[CLTTYPE]\r\n\t\t\t\t,[FNAME]\r\n\t\t\t\t,[LNAME]\r\n\t\t\t\t,[MNAME]\r\n\t\t\t\t,[SUFF]\r\n\t\t\t\t,[CNAME]\r\n\t\t\t\t,[BDATE]\r\n\t\t\t\t,[BPLACE]\r\n\t\t\t\t,[MOTHER]\r\n\t\t\t\t,[SEX]\r\n\t\t\t\t,[CIVILSTAT]\r\n\t\t\t\t,[SPOUSE]\r\n\t\t\t\t,[NATDATE]\r\n\t\t\t\t,[CELLPHONE]\r\n\t\t\t\t,[PRIM_EMAIL]\r\n\t\t\t\t,[ALT_EMAIL]\r\n\t\t\t\t,[EMPFLAG]\r\n\t\t\t\t,[AFFILIATENAME]\r\n\t\t\t\t,[RMNUM]\r\n\t\t\t\t,[EMPLOYSTATUS]\r\n\t\t\t\t,[EMPLOYOTHERS]\r\n\t\t\t\t,[COMPNAME]\r\n\t\t\t\t,[COMPPOS]\r\n\t\t\t\t,[BUSNATURE]\r\n\t\t\t\t,[COMPSTART]\r\n\t\t\t\t,[COMPYEARS]\r\n\t\t\t\t,[SSSNUMBER]\r\n\t\t\t\t,[PASSPORT]\r\n\t\t\t\t,[DRVLICENSE]\r\n\t\t\t\t,[INCORP_REGNO]\r\n\t\t\t\t,[INCORP_DATE]\r\n\t\t\t\t,[INCORP_CERT]\r\n\t\t\t\t,[TAXFLAG]\r\n\t\t\t\t,[TAXREM]\r\n\t\t\t\t,[HOME_ADDR1]\r\n\t\t\t\t,[HOME_ADDR2]\r\n\t\t\t\t,[HOME_ADDR3]\r\n\t\t\t\t,[HOME_ZIP]\r\n\t\t\t\t,[HOME_PHONE]\r\n\t\t\t\t,[HOME_FAX]\r\n\t\t\t\t,[OFC_ADDR1]\r\n\t\t\t\t,[OFC_ADDR2]\r\n\t\t\t\t,[OFC_ADDR3]\r\n\t\t\t\t,[OFC_ZIP]\r\n\t\t\t\t,[OFC_PHONE]\r\n\t\t\t\t,[OFC_PHONE2]\r\n\t\t\t\t,[OFC_FAX]\r\n\t\t\t\t,[OFC_FAX2]\r\n\t\t\t\t,[PERM_ADDR1]\r\n\t\t\t\t,[PERM_ADDR2]\r\n\t\t\t\t,[PERM_ADDR3]\r\n\t\t\t\t,[PERM_ZIP]\r\n\t\t\t\t,[PERM_PHONE]\r\n\t\t\t\t,[PERM_FAX]\r\n\t\t\t\t,[BROKEREMPLOY]\r\n\t\t\t\t,[BROKEREMPNAME]\r\n\t\t\t\t,[PSEOFFICER]\r\n\t\t\t\t,[PSECNAME]\r\n\t\t\t\t,[ACCTBROKER]\r\n\t\t\t\t,[ACCTBROKERNAME]\r\n\t\t\t\t,[NETWORTH_CURR]\r\n\t\t\t\t,[NETWORTH_RANGE]\r\n\t\t\t\t,[ANNINC_CURR]\r\n\t\t\t\t,[ANNINC_RANGE]\r\n\t\t\t\t,[ASSETS_CURR]\r\n\t\t\t\t,[ASSETS_RANGE]\r\n\t\t\t\t,[INVESTOBJ]\r\n\t\t\t\t,[FUNDSOURCE]\r\n\t\t\t\t,[ASSETS]\r\n\t\t\t\t,[NETWORTH]\r\n\t\t\t\t,[ANNUAL_INCOME]\r\n\t\t\t\t,[ACCTKEY]\r\n\t\t\t\t,[DVRLICENSE_EXPRD]\r\n\t\t\t\t,[PASSPORT_EXPRD]\r\n\t\t\t\t,[NATIONALITY]\r\n\t\t\t\t,[TIN]\r\n\t\t\t\t,[INCORP_COUNTRY]\r\n\t\t\t\t,[HOME_COUNTRY]\r\n\t\t\t\t,[OFC_COUNTRY]\r\n\t\t\t\t,[PERM_COUNTRY]\r\n\t\t\t\t,[BROKEROFFICER]\r\n\t\t\t\t,[NATIONALITY2]\r\n\t\t\t\t,[SUBACCT]\r\n\t\t\t\t,[RISKCLASS]\r\n\t\t\t\t,[SETA_BRANCHCODE]\r\n\t\t\t\t,[SETA_BRANCHNAME]\r\n\t\t\t\t,[SETA_ACCTNO]\r\n\t\t\t\t,[OCCUPATION]\r\n\t\t\t\t,[EMPLOYER_NAME]\r\n\t\t\t\t,[TRUSTFLAG]\r\n\t\t\t\t,[LFFLAG]\r\n\t\t\t\t,[RELATEDPARTY_FLAG]\r\n\t\t\t\t,[AFFILIATEFLAG]\r\n\t\t\t\t,[FATCAFLAG]\r\n\t\t\t\t,[RELATIONSHIP]\r\n\t\t\t\t,[BUSSECTOR]\r\n\t\t\t\t,[RISK_SCORE]\r\n\t\t\t\t,[REFERREDBY]\r\n\t\t\t\t,[KYC]\r\n\t\t\t\t,[STATUS]\r\n\t\t\t\t,[CELLPHONE2]\r\n\t\t\t\t,[CONTACTPERSON]\r\n\t\t\t\t,[CONTACTPOSITION]\r\n\t\t\t\t,[DATE_CREATED]\r\n\t\t\t\t,[LASTUPDATED]\r\n\t\t\t\t,[AMLC_WATCHLIST]\r\n\t\t\t\t,[PEPFLAG]\r\n\t\t\t\t,[FUNDSOURCE_COUNTRY]\r\n\t\t\t\t,[GOVTINST]\r\n\t\t\t\t,[GOVTEMP]\r\n\t\t\t\t,[NDVFLAG]\r\n\t\t\t\t,[EMPRANK]\r\n\t\t\t\t,[BUSREG_CERT]\r\n\t\t\t\t,[INCORP_REGCERT]\r\n\t\t\t\t,[STOCK_GRANTEE]\r\n\t\t\t\t,[EMPID]\r\n\t\t\t\t,[MAKER]\r\n\t\t\t\t,[MAKER_DATE]\r\n\t\t\t\t,[CHECKER]\r\n\t\t\t\t,[CHECKER_DATE]\r\n\t\t\t\t,[FILE_NAME]\r\n\t\t\t\t,JSRC_FLG \r\n\t\t\t\t,JTAR_FLG \r\n)\r\n\t\t\tSELECT \t\t\t\t\r\n\t\t\t\t CC.[CLTCODE]\r\n\t\t\t\t,CC.[CLTTYPE]\r\n\t\t\t\t,CC.[FNAME]\r\n\t\t\t\t,CC.[LNAME]\r\n\t\t\t\t,CC.[MNAME]\r\n\t\t\t\t,CC.[SUFF]\r\n\t\t\t\t,CC.[CNAME]\r\n\t\t\t\t,CC.[BDATE]\r\n\t\t\t\t,CC.[BPLACE]\r\n\t\t\t\t,CC.[MOTHER]\r\n\t\t\t\t,CC.[SEX]\r\n\t\t\t\t,CC.[CIVILSTAT]\r\n\t\t\t\t,CC.[SPOUSE]\r\n\t\t\t\t,CC.[NATDATE]\r\n\t\t\t\t,CC.[CELLPHONE]\r\n\t\t\t\t,CC.[PRIM_EMAIL]\r\n\t\t\t\t,CC.[ALT_EMAIL]\r\n\t\t\t\t,CC.[EMPFLAG]\r\n\t\t\t\t,CC.[AFFILIATENAME]\r\n\t\t\t\t,CC.[RMNUM]\r\n\t\t\t\t,CC.[EMPLOYSTATUS]\r\n\t\t\t\t,CC.[EMPLOYOTHERS]\r\n\t\t\t\t,CC.[COMPNAME]\r\n\t\t\t\t,CC.[COMPPOS]\r\n\t\t\t\t,CC.[BUSNATURE]\r\n\t\t\t\t,CC.[COMPSTART]\r\n\t\t\t\t,CC.[COMPYEARS]\r\n\t\t\t\t,CC.[SSSNUMBER]\r\n\t\t\t\t,CC.[PASSPORT]\r\n\t\t\t\t,CC.[DRVLICENSE]\r\n\t\t\t\t,CC.[INCORP_REGNO]\r\n\t\t\t\t,CC.[INCORP_DATE]\r\n\t\t\t\t,CC.[INCORP_CERT]\r\n\t\t\t\t,CC.[TAXFLAG]\r\n\t\t\t\t,CC.[TAXREM]\r\n\t\t\t\t,CC.[HOME_ADDR1]\r\n\t\t\t\t,CC.[HOME_ADDR2]\r\n\t\t\t\t,CC.[HOME_ADDR3]\r\n\t\t\t\t,CC.[HOME_ZIP]\r\n\t\t\t\t,CC.[HOME_PHONE]\r\n\t\t\t\t,CC.[HOME_FAX]\r\n\t\t\t\t,CC.[OFC_ADDR1]\r\n\t\t\t\t,CC.[OFC_ADDR2]\r\n\t\t\t\t,CC.[OFC_ADDR3]\r\n\t\t\t\t,CC.[OFC_ZIP]\r\n\t\t\t\t,CC.[OFC_PHONE]\r\n\t\t\t\t,CC.[OFC_PHONE2]\r\n\t\t\t\t,CC.[OFC_FAX]\r\n\t\t\t\t,CC.[OFC_FAX2]\r\n\t\t\t\t,CC.[PERM_ADDR1]\r\n\t\t\t\t,CC.[PERM_ADDR2]\r\n\t\t\t\t,CC.[PERM_ADDR3]\r\n\t\t\t\t,CC.[PERM_ZIP]\r\n\t\t\t\t,CC.[PERM_PHONE]\r\n\t\t\t\t,CC.[PERM_FAX]\r\n\t\t\t\t,CC.[BROKEREMPLOY]\r\n\t\t\t\t,CC.[BROKEREMPNAME]\r\n\t\t\t\t,CC.[PSEOFFICER]\r\n\t\t\t\t,CC.[PSECNAME]\r\n\t\t\t\t,CC.[ACCTBROKER]\r\n\t\t\t\t,CC.[ACCTBROKERNAME]\r\n\t\t\t\t,CC.[NETWORTH_CURR]\r\n\t\t\t\t,CC.[NETWORTH_RANGE]\r\n\t\t\t\t,CC.[ANNINC_CURR]\r\n\t\t\t\t,CC.[ANNINC_RANGE]\r\n\t\t\t\t,CC.[ASSETS_CURR]\r\n\t\t\t\t,CC.[ASSETS_RANGE]\r\n\t\t\t\t,CC.[INVESTOBJ]\r\n\t\t\t\t,CC.[FUNDSOURCE]\r\n\t\t\t\t,CC.[ASSETS]\r\n\t\t\t\t,CC.[NETWORTH]\r\n\t\t\t\t,CC.[ANNUAL_INCOME]\r\n\t\t\t\t,CC.[ACCTKEY]\r\n\t\t\t\t,CC.[DVRLICENSE_EXPRD]\r\n\t\t\t\t,CC.[PASSPORT_EXPRD]\r\n\t\t\t\t,CC.[NATIONALITY]\r\n\t\t\t\t,CC.[TIN]\r\n\t\t\t\t,CC.[INCORP_COUNTRY]\r\n\t\t\t\t,CC.[HOME_COUNTRY]\r\n\t\t\t\t,CC.[OFC_COUNTRY]\r\n\t\t\t\t,CC.[PERM_COUNTRY]\r\n\t\t\t\t,CC.[BROKEROFFICER]\r\n\t\t\t\t,CC.[NATIONALITY2]\r\n\t\t\t\t,CC.[SUBACCT]\r\n\t\t\t\t,CC.[RISKCLASS]\r\n\t\t\t\t,CC.[SETA_BRANCHCODE]\r\n\t\t\t\t,CC.[SETA_BRANCHNAME]\r\n\t\t\t\t,CC.[SETA_ACCTNO]\r\n\t\t\t\t,CC.[OCCUPATION]\r\n\t\t\t\t,CC.[EMPLOYER_NAME]\r\n\t\t\t\t,CC.[TRUSTFLAG]\r\n\t\t\t\t,CC.[LFFLAG]\r\n\t\t\t\t,CC.[RELATEDPARTY_FLAG]\r\n\t\t\t\t,CC.[AFFILIATEFLAG]\r\n\t\t\t\t,CC.[FATCAFLAG]\r\n\t\t\t\t,CC.[RELATIONSHIP]\r\n\t\t\t\t,CC.[BUSSECTOR]\r\n\t\t\t\t,CC.[RISK_SCORE]\r\n\t\t\t\t,CC.[REFERREDBY]\r\n\t\t\t\t,CC.[KYC]\r\n\t\t\t\t,CC.[STATUS]\r\n\t\t\t\t,CC.[CELLPHONE2]\r\n\t\t\t\t,CC.[CONTACTPERSON]\r\n\t\t\t\t,CC.[CONTACTPOSITION]\r\n\t\t\t\t,CC.[DATE_CREATED]\r\n\t\t\t\t,CC.[LASTUPDATED]\r\n\t\t\t\t,CC.[AMLC_WATCHLIST]\r\n\t\t\t\t,CC.[PEPFLAG]\r\n\t\t\t\t,CC.[FUNDSOURCE_COUNTRY]\r\n\t\t\t\t,CC.[GOVTINST]\r\n\t\t\t\t,CC.[GOVTEMP]\r\n\t\t\t\t,CC.[NDVFLAG]\r\n\t\t\t\t,CC.[EMPRANK]\r\n\t\t\t\t,CC.[BUSREG_CERT]\r\n\t\t\t\t,CC.[INCORP_REGCERT]\r\n\t\t\t\t,CC.[STOCK_GRANTEE]\r\n\t\t\t\t,CC.[EMPID]\r\n\t\t\t\t,CC.[MAKER]\r\n\t\t\t\t,CC.[MAKER_DATE]\r\n\t\t\t\t,CC.[CHECKER]\r\n\t\t\t\t,CC.[CHECKER_DATE]\r\n\t\t\t\t,CC.[FILE_NAME]\r\n\t\t        ,0 AS JSRC_FLG \r\n\t\t\t\t,1 AS JTAR_FLG \r\n\t\t\tFROM EDS.SEC_TBLCLIENT CC\r\n\t\t\tJOIN d360.STG_EDS_SEC_TBLCLIENT B \r\n            ON CC.CLTCODE = B.CLTCODE\r\n\t\t\tWHERE CC.ISLATEST = '1';\r\n\t\r\n\r\n\r\nTRUNCATE TABLE d360.STG_EDS_SEC_TBLCLIENT_GROUP_SRC;\r\n\r\nINSERT INTO d360.STG_EDS_SEC_TBLCLIENT_GROUP_SRC\r\n(\r\n\t\t\t\t [CLTCODE]\r\n\t\t\t\t,[CLTTYPE]\r\n\t\t\t\t,[FNAME]\r\n\t\t\t\t,[LNAME]\r\n\t\t\t\t,[MNAME]\r\n\t\t\t\t,[SUFF]\r\n\t\t\t\t,[CNAME]\r\n\t\t\t\t,[BDATE]\r\n\t\t\t\t,[BPLACE]\r\n\t\t\t\t,[MOTHER]\r\n\t\t\t\t,[SEX]\r\n\t\t\t\t,[CIVILSTAT]\r\n\t\t\t\t,[SPOUSE]\r\n\t\t\t\t,[NATDATE]\r\n\t\t\t\t,[CELLPHONE]\r\n\t\t\t\t,[PRIM_EMAIL]\r\n\t\t\t\t,[ALT_EMAIL]\r\n\t\t\t\t,[EMPFLAG]\r\n\t\t\t\t,[AFFILIATENAME]\r\n\t\t\t\t,[RMNUM]\r\n\t\t\t\t,[EMPLOYSTATUS]\r\n\t\t\t\t,[EMPLOYOTHERS]\r\n\t\t\t\t,[COMPNAME]\r\n\t\t\t\t,[COMPPOS]\r\n\t\t\t\t,[BUSNATURE]\r\n\t\t\t\t,[COMPSTART]\r\n\t\t\t\t,[COMPYEARS]\r\n\t\t\t\t,[SSSNUMBER]\r\n\t\t\t\t,[PASSPORT]\r\n\t\t\t\t,[DRVLICENSE]\r\n\t\t\t\t,[INCORP_REGNO]\r\n\t\t\t\t,[INCORP_DATE]\r\n\t\t\t\t,[INCORP_CERT]\r\n\t\t\t\t,[TAXFLAG]\r\n\t\t\t\t,[TAXREM]\r\n\t\t\t\t,[HOME_ADDR1]\r\n\t\t\t\t,[HOME_ADDR2]\r\n\t\t\t\t,[HOME_ADDR3]\r\n\t\t\t\t,[HOME_ZIP]\r\n\t\t\t\t,[HOME_PHONE]\r\n\t\t\t\t,[HOME_FAX]\r\n\t\t\t\t,[OFC_ADDR1]\r\n\t\t\t\t,[OFC_ADDR2]\r\n\t\t\t\t,[OFC_ADDR3]\r\n\t\t\t\t,[OFC_ZIP]\r\n\t\t\t\t,[OFC_PHONE]\r\n\t\t\t\t,[OFC_PHONE2]\r\n\t\t\t\t,[OFC_FAX]\r\n\t\t\t\t,[OFC_FAX2]\r\n\t\t\t\t,[PERM_ADDR1]\r\n\t\t\t\t,[PERM_ADDR2]\r\n\t\t\t\t,[PERM_ADDR3]\r\n\t\t\t\t,[PERM_ZIP]\r\n\t\t\t\t,[PERM_PHONE]\r\n\t\t\t\t,[PERM_FAX]\r\n\t\t\t\t,[BROKEREMPLOY]\r\n\t\t\t\t,[BROKEREMPNAME]\r\n\t\t\t\t,[PSEOFFICER]\r\n\t\t\t\t,[PSECNAME]\r\n\t\t\t\t,[ACCTBROKER]\r\n\t\t\t\t,[ACCTBROKERNAME]\r\n\t\t\t\t,[NETWORTH_CURR]\r\n\t\t\t\t,[NETWORTH_RANGE]\r\n\t\t\t\t,[ANNINC_CURR]\r\n\t\t\t\t,[ANNINC_RANGE]\r\n\t\t\t\t,[ASSETS_CURR]\r\n\t\t\t\t,[ASSETS_RANGE]\r\n\t\t\t\t,[INVESTOBJ]\r\n\t\t\t\t,[FUNDSOURCE]\r\n\t\t\t\t,[ASSETS]\r\n\t\t\t\t,[NETWORTH]\r\n\t\t\t\t,[ANNUAL_INCOME]\r\n\t\t\t\t,[ACCTKEY]\r\n\t\t\t\t,[DVRLICENSE_EXPRD]\r\n\t\t\t\t,[PASSPORT_EXPRD]\r\n\t\t\t\t,[NATIONALITY]\r\n\t\t\t\t,[TIN]\r\n\t\t\t\t,[INCORP_COUNTRY]\r\n\t\t\t\t,[HOME_COUNTRY]\r\n\t\t\t\t,[OFC_COUNTRY]\r\n\t\t\t\t,[PERM_COUNTRY]\r\n\t\t\t\t,[BROKEROFFICER]\r\n\t\t\t\t,[NATIONALITY2]\r\n\t\t\t\t,[SUBACCT]\r\n\t\t\t\t,[RISKCLASS]\r\n\t\t\t\t,[SETA_BRANCHCODE]\r\n\t\t\t\t,[SETA_BRANCHNAME]\r\n\t\t\t\t,[SETA_ACCTNO]\r\n\t\t\t\t,[OCCUPATION]\r\n\t\t\t\t,[EMPLOYER_NAME]\r\n\t\t\t\t,[TRUSTFLAG]\r\n\t\t\t\t,[LFFLAG]\r\n\t\t\t\t,[RELATEDPARTY_FLAG]\r\n\t\t\t\t,[AFFILIATEFLAG]\r\n\t\t\t\t,[FATCAFLAG]\r\n\t\t\t\t,[RELATIONSHIP]\r\n\t\t\t\t,[BUSSECTOR]\r\n\t\t\t\t,[RISK_SCORE]\r\n\t\t\t\t,[REFERREDBY]\r\n\t\t\t\t,[KYC]\r\n\t\t\t\t,[STATUS]\r\n\t\t\t\t,[CELLPHONE2]\r\n\t\t\t\t,[CONTACTPERSON]\r\n\t\t\t\t,[CONTACTPOSITION]\r\n\t\t\t\t,[DATE_CREATED]\r\n\t\t\t\t,[LASTUPDATED]\r\n\t\t\t\t,[AMLC_WATCHLIST]\r\n\t\t\t\t,[PEPFLAG]\r\n\t\t\t\t,[FUNDSOURCE_COUNTRY]\r\n\t\t\t\t,[GOVTINST]\r\n\t\t\t\t,[GOVTEMP]\r\n\t\t\t\t,[NDVFLAG]\r\n\t\t\t\t,[EMPRANK]\r\n\t\t\t\t,[BUSREG_CERT]\r\n\t\t\t\t,[INCORP_REGCERT]\r\n\t\t\t\t,[STOCK_GRANTEE]\r\n\t\t\t\t,[EMPID]\r\n\t\t\t\t,[MAKER]\r\n\t\t\t\t,[MAKER_DATE]\r\n\t\t\t\t,[CHECKER]\r\n\t\t\t\t,[CHECKER_DATE]\r\n\t\t\t\t,[FILE_NAME]\r\n\t\t\t\t,JSRC_FLG_CNT \r\n\t\t\t\t,JTAR_FLG_CNT \r\n\t\t\t\t,FILE_DATE\r\n)\r\n\r\nselect \r\n\t\t\t\t [CLTCODE]\r\n\t\t\t\t,[CLTTYPE]\r\n\t\t\t\t,[FNAME]\r\n\t\t\t\t,[LNAME]\r\n\t\t\t\t,[MNAME]\r\n\t\t\t\t,[SUFF]\r\n\t\t\t\t,[CNAME]\r\n\t\t\t\t,[BDATE]\r\n\t\t\t\t,[BPLACE]\r\n\t\t\t\t,[MOTHER]\r\n\t\t\t\t,[SEX]\r\n\t\t\t\t,[CIVILSTAT]\r\n\t\t\t\t,[SPOUSE]\r\n\t\t\t\t,[NATDATE]\r\n\t\t\t\t,[CELLPHONE]\r\n\t\t\t\t,[PRIM_EMAIL]\r\n\t\t\t\t,[ALT_EMAIL]\r\n\t\t\t\t,[EMPFLAG]\r\n\t\t\t\t,[AFFILIATENAME]\r\n\t\t\t\t,[RMNUM]\r\n\t\t\t\t,[EMPLOYSTATUS]\r\n\t\t\t\t,[EMPLOYOTHERS]\r\n\t\t\t\t,[COMPNAME]\r\n\t\t\t\t,[COMPPOS]\r\n\t\t\t\t,[BUSNATURE]\r\n\t\t\t\t,[COMPSTART]\r\n\t\t\t\t,[COMPYEARS]\r\n\t\t\t\t,[SSSNUMBER]\r\n\t\t\t\t,[PASSPORT]\r\n\t\t\t\t,[DRVLICENSE]\r\n\t\t\t\t,[INCORP_REGNO]\r\n\t\t\t\t,[INCORP_DATE]\r\n\t\t\t\t,[INCORP_CERT]\r\n\t\t\t\t,[TAXFLAG]\r\n\t\t\t\t,[TAXREM]\r\n\t\t\t\t,[HOME_ADDR1]\r\n\t\t\t\t,[HOME_ADDR2]\r\n\t\t\t\t,[HOME_ADDR3]\r\n\t\t\t\t,[HOME_ZIP]\r\n\t\t\t\t,[HOME_PHONE]\r\n\t\t\t\t,[HOME_FAX]\r\n\t\t\t\t,[OFC_ADDR1]\r\n\t\t\t\t,[OFC_ADDR2]\r\n\t\t\t\t,[OFC_ADDR3]\r\n\t\t\t\t,[OFC_ZIP]\r\n\t\t\t\t,[OFC_PHONE]\r\n\t\t\t\t,[OFC_PHONE2]\r\n\t\t\t\t,[OFC_FAX]\r\n\t\t\t\t,[OFC_FAX2]\r\n\t\t\t\t,[PERM_ADDR1]\r\n\t\t\t\t,[PERM_ADDR2]\r\n\t\t\t\t,[PERM_ADDR3]\r\n\t\t\t\t,[PERM_ZIP]\r\n\t\t\t\t,[PERM_PHONE]\r\n\t\t\t\t,[PERM_FAX]\r\n\t\t\t\t,[BROKEREMPLOY]\r\n\t\t\t\t,[BROKEREMPNAME]\r\n\t\t\t\t,[PSEOFFICER]\r\n\t\t\t\t,[PSECNAME]\r\n\t\t\t\t,[ACCTBROKER]\r\n\t\t\t\t,[ACCTBROKERNAME]\r\n\t\t\t\t,[NETWORTH_CURR]\r\n\t\t\t\t,[NETWORTH_RANGE]\r\n\t\t\t\t,[ANNINC_CURR]\r\n\t\t\t\t,[ANNINC_RANGE]\r\n\t\t\t\t,[ASSETS_CURR]\r\n\t\t\t\t,[ASSETS_RANGE]\r\n\t\t\t\t,[INVESTOBJ]\r\n\t\t\t\t,[FUNDSOURCE]\r\n\t\t\t\t,[ASSETS]\r\n\t\t\t\t,[NETWORTH]\r\n\t\t\t\t,[ANNUAL_INCOME]\r\n\t\t\t\t,[ACCTKEY]\r\n\t\t\t\t,[DVRLICENSE_EXPRD]\r\n\t\t\t\t,[PASSPORT_EXPRD]\r\n\t\t\t\t,[NATIONALITY]\r\n\t\t\t\t,[TIN]\r\n\t\t\t\t,[INCORP_COUNTRY]\r\n\t\t\t\t,[HOME_COUNTRY]\r\n\t\t\t\t,[OFC_COUNTRY]\r\n\t\t\t\t,[PERM_COUNTRY]\r\n\t\t\t\t,[BROKEROFFICER]\r\n\t\t\t\t,[NATIONALITY2]\r\n\t\t\t\t,[SUBACCT]\r\n\t\t\t\t,[RISKCLASS]\r\n\t\t\t\t,[SETA_BRANCHCODE]\r\n\t\t\t\t,[SETA_BRANCHNAME]\r\n\t\t\t\t,[SETA_ACCTNO]\r\n\t\t\t\t,[OCCUPATION]\r\n\t\t\t\t,[EMPLOYER_NAME]\r\n\t\t\t\t,[TRUSTFLAG]\r\n\t\t\t\t,[LFFLAG]\r\n\t\t\t\t,[RELATEDPARTY_FLAG]\r\n\t\t\t\t,[AFFILIATEFLAG]\r\n\t\t\t\t,[FATCAFLAG]\r\n\t\t\t\t,[RELATIONSHIP]\r\n\t\t\t\t,[BUSSECTOR]\r\n\t\t\t\t,[RISK_SCORE]\r\n\t\t\t\t,[REFERREDBY]\r\n\t\t\t\t,[KYC]\r\n\t\t\t\t,[STATUS]\r\n\t\t\t\t,[CELLPHONE2]\r\n\t\t\t\t,[CONTACTPERSON]\r\n\t\t\t\t,[CONTACTPOSITION]\r\n\t\t\t\t,[DATE_CREATED]\r\n\t\t\t\t,[LASTUPDATED]\r\n\t\t\t\t,[AMLC_WATCHLIST]\r\n\t\t\t\t,[PEPFLAG]\r\n\t\t\t\t,[FUNDSOURCE_COUNTRY]\r\n\t\t\t\t,[GOVTINST]\r\n\t\t\t\t,[GOVTEMP]\r\n\t\t\t\t,[NDVFLAG]\r\n\t\t\t\t,[EMPRANK]\r\n\t\t\t\t,[BUSREG_CERT]\r\n\t\t\t\t,[INCORP_REGCERT]\r\n\t\t\t\t,[STOCK_GRANTEE]\r\n\t\t\t\t,[EMPID]\r\n\t\t\t\t,[MAKER]\r\n\t\t\t\t,[MAKER_DATE]\r\n\t\t\t\t,[CHECKER]\r\n\t\t\t\t,[CHECKER_DATE]\r\n\t\t\t\t,[FILE_NAME]\r\n\t\t\t\t,JSRC_FLG_CNT \r\n\t\t\t\t,JTAR_FLG_CNT\r\n\t\t\t\t,CAST(LEFT(RIGHT(FILE_NAME , 12), 8) AS DATE) FILE_DATE\r\nfrom \r\n(\r\n\tSELECT \t\t\t\t\r\n\t\t\t\t [CLTCODE]\r\n\t\t\t\t,[CLTTYPE]\r\n\t\t\t\t,[FNAME]\r\n\t\t\t\t,[LNAME]\r\n\t\t\t\t,[MNAME]\r\n\t\t\t\t,[SUFF]\r\n\t\t\t\t,[CNAME]\r\n\t\t\t\t,[BDATE]\r\n\t\t\t\t,[BPLACE]\r\n\t\t\t\t,[MOTHER]\r\n\t\t\t\t,[SEX]\r\n\t\t\t\t,[CIVILSTAT]\r\n\t\t\t\t,[SPOUSE]\r\n\t\t\t\t,[NATDATE]\r\n\t\t\t\t,[CELLPHONE]\r\n\t\t\t\t,[PRIM_EMAIL]\r\n\t\t\t\t,[ALT_EMAIL]\r\n\t\t\t\t,[EMPFLAG]\r\n\t\t\t\t,[AFFILIATENAME]\r\n\t\t\t\t,[RMNUM]\r\n\t\t\t\t,[EMPLOYSTATUS]\r\n\t\t\t\t,[EMPLOYOTHERS]\r\n\t\t\t\t,[COMPNAME]\r\n\t\t\t\t,[COMPPOS]\r\n\t\t\t\t,[BUSNATURE]\r\n\t\t\t\t,[COMPSTART]\r\n\t\t\t\t,[COMPYEARS]\r\n\t\t\t\t,[SSSNUMBER]\r\n\t\t\t\t,[PASSPORT]\r\n\t\t\t\t,[DRVLICENSE]\r\n\t\t\t\t,[INCORP_REGNO]\r\n\t\t\t\t,[INCORP_DATE]\r\n\t\t\t\t,[INCORP_CERT]\r\n\t\t\t\t,[TAXFLAG]\r\n\t\t\t\t,[TAXREM]\r\n\t\t\t\t,[HOME_ADDR1]\r\n\t\t\t\t,[HOME_ADDR2]\r\n\t\t\t\t,[HOME_ADDR3]\r\n\t\t\t\t,[HOME_ZIP]\r\n\t\t\t\t,[HOME_PHONE]\r\n\t\t\t\t,[HOME_FAX]\r\n\t\t\t\t,[OFC_ADDR1]\r\n\t\t\t\t,[OFC_ADDR2]\r\n\t\t\t\t,[OFC_ADDR3]\r\n\t\t\t\t,[OFC_ZIP]\r\n\t\t\t\t,[OFC_PHONE]\r\n\t\t\t\t,[OFC_PHONE2]\r\n\t\t\t\t,[OFC_FAX]\r\n\t\t\t\t,[OFC_FAX2]\r\n\t\t\t\t,[PERM_ADDR1]\r\n\t\t\t\t,[PERM_ADDR2]\r\n\t\t\t\t,[PERM_ADDR3]\r\n\t\t\t\t,[PERM_ZIP]\r\n\t\t\t\t,[PERM_PHONE]\r\n\t\t\t\t,[PERM_FAX]\r\n\t\t\t\t,[BROKEREMPLOY]\r\n\t\t\t\t,[BROKEREMPNAME]\r\n\t\t\t\t,[PSEOFFICER]\r\n\t\t\t\t,[PSECNAME]\r\n\t\t\t\t,[ACCTBROKER]\r\n\t\t\t\t,[ACCTBROKERNAME]\r\n\t\t\t\t,[NETWORTH_CURR]\r\n\t\t\t\t,[NETWORTH_RANGE]\r\n\t\t\t\t,[ANNINC_CURR]\r\n\t\t\t\t,[ANNINC_RANGE]\r\n\t\t\t\t,[ASSETS_CURR]\r\n\t\t\t\t,[ASSETS_RANGE]\r\n\t\t\t\t,[INVESTOBJ]\r\n\t\t\t\t,[FUNDSOURCE]\r\n\t\t\t\t,[ASSETS]\r\n\t\t\t\t,[NETWORTH]\r\n\t\t\t\t,[ANNUAL_INCOME]\r\n\t\t\t\t,[ACCTKEY]\r\n\t\t\t\t,[DVRLICENSE_EXPRD]\r\n\t\t\t\t,[PASSPORT_EXPRD]\r\n\t\t\t\t,[NATIONALITY]\r\n\t\t\t\t,[TIN]\r\n\t\t\t\t,[INCORP_COUNTRY]\r\n\t\t\t\t,[HOME_COUNTRY]\r\n\t\t\t\t,[OFC_COUNTRY]\r\n\t\t\t\t,[PERM_COUNTRY]\r\n\t\t\t\t,[BROKEROFFICER]\r\n\t\t\t\t,[NATIONALITY2]\r\n\t\t\t\t,[SUBACCT]\r\n\t\t\t\t,[RISKCLASS]\r\n\t\t\t\t,[SETA_BRANCHCODE]\r\n\t\t\t\t,[SETA_BRANCHNAME]\r\n\t\t\t\t,[SETA_ACCTNO]\r\n\t\t\t\t,[OCCUPATION]\r\n\t\t\t\t,[EMPLOYER_NAME]\r\n\t\t\t\t,[TRUSTFLAG]\r\n\t\t\t\t,[LFFLAG]\r\n\t\t\t\t,[RELATEDPARTY_FLAG]\r\n\t\t\t\t,[AFFILIATEFLAG]\r\n\t\t\t\t,[FATCAFLAG]\r\n\t\t\t\t,[RELATIONSHIP]\r\n\t\t\t\t,[BUSSECTOR]\r\n\t\t\t\t,[RISK_SCORE]\r\n\t\t\t\t,[REFERREDBY]\r\n\t\t\t\t,[KYC]\r\n\t\t\t\t,[STATUS]\r\n\t\t\t\t,[CELLPHONE2]\r\n\t\t\t\t,[CONTACTPERSON]\r\n\t\t\t\t,[CONTACTPOSITION]\r\n\t\t\t\t,[DATE_CREATED]\r\n\t\t\t\t,[LASTUPDATED]\r\n\t\t\t\t,[AMLC_WATCHLIST]\r\n\t\t\t\t,[PEPFLAG]\r\n\t\t\t\t,[FUNDSOURCE_COUNTRY]\r\n\t\t\t\t,[GOVTINST]\r\n\t\t\t\t,[GOVTEMP]\r\n\t\t\t\t,[NDVFLAG]\r\n\t\t\t\t,[EMPRANK]\r\n\t\t\t\t,[BUSREG_CERT]\r\n\t\t\t\t,[INCORP_REGCERT]\r\n\t\t\t\t,[STOCK_GRANTEE]\r\n\t\t\t\t,[EMPID]\r\n\t\t\t\t,[MAKER]\r\n\t\t\t\t,[MAKER_DATE]\r\n\t\t\t\t,[CHECKER]\r\n\t\t\t\t,[CHECKER_DATE]\r\n\t\t\t\t,MAX(FILE_NAME) FILE_NAME \r\n\t\t\t\t,SUM(JSRC_FLG) AS JSRC_FLG_CNT \r\n\t\t\t\t,SUM(JTAR_FLG) AS JTAR_FLG_CNT\r\n\tFROM d360.STG_EDS_SEC_TBLCLIENT_SELECT_SRC\r\n\tGROUP BY     [CLTCODE]\r\n\t\t\t\t,[CLTTYPE]\r\n\t\t\t\t,[FNAME]\r\n\t\t\t\t,[LNAME]\r\n\t\t\t\t,[MNAME]\r\n\t\t\t\t,[SUFF]\r\n\t\t\t\t,[CNAME]\r\n\t\t\t\t,[BDATE]\r\n\t\t\t\t,[BPLACE]\r\n\t\t\t\t,[MOTHER]\r\n\t\t\t\t,[SEX]\r\n\t\t\t\t,[CIVILSTAT]\r\n\t\t\t\t,[SPOUSE]\r\n\t\t\t\t,[NATDATE]\r\n\t\t\t\t,[CELLPHONE]\r\n\t\t\t\t,[PRIM_EMAIL]\r\n\t\t\t\t,[ALT_EMAIL]\r\n\t\t\t\t,[EMPFLAG]\r\n\t\t\t\t,[AFFILIATENAME]\r\n\t\t\t\t,[RMNUM]\r\n\t\t\t\t,[EMPLOYSTATUS]\r\n\t\t\t\t,[EMPLOYOTHERS]\r\n\t\t\t\t,[COMPNAME]\r\n\t\t\t\t,[COMPPOS]\r\n\t\t\t\t,[BUSNATURE]\r\n\t\t\t\t,[COMPSTART]\r\n\t\t\t\t,[COMPYEARS]\r\n\t\t\t\t,[SSSNUMBER]\r\n\t\t\t\t,[PASSPORT]\r\n\t\t\t\t,[DRVLICENSE]\r\n\t\t\t\t,[INCORP_REGNO]\r\n\t\t\t\t,[INCORP_DATE]\r\n\t\t\t\t,[INCORP_CERT]\r\n\t\t\t\t,[TAXFLAG]\r\n\t\t\t\t,[TAXREM]\r\n\t\t\t\t,[HOME_ADDR1]\r\n\t\t\t\t,[HOME_ADDR2]\r\n\t\t\t\t,[HOME_ADDR3]\r\n\t\t\t\t,[HOME_ZIP]\r\n\t\t\t\t,[HOME_PHONE]\r\n\t\t\t\t,[HOME_FAX]\r\n\t\t\t\t,[OFC_ADDR1]\r\n\t\t\t\t,[OFC_ADDR2]\r\n\t\t\t\t,[OFC_ADDR3]\r\n\t\t\t\t,[OFC_ZIP]\r\n\t\t\t\t,[OFC_PHONE]\r\n\t\t\t\t,[OFC_PHONE2]\r\n\t\t\t\t,[OFC_FAX]\r\n\t\t\t\t,[OFC_FAX2]\r\n\t\t\t\t,[PERM_ADDR1]\r\n\t\t\t\t,[PERM_ADDR2]\r\n\t\t\t\t,[PERM_ADDR3]\r\n\t\t\t\t,[PERM_ZIP]\r\n\t\t\t\t,[PERM_PHONE]\r\n\t\t\t\t,[PERM_FAX]\r\n\t\t\t\t,[BROKEREMPLOY]\r\n\t\t\t\t,[BROKEREMPNAME]\r\n\t\t\t\t,[PSEOFFICER]\r\n\t\t\t\t,[PSECNAME]\r\n\t\t\t\t,[ACCTBROKER]\r\n\t\t\t\t,[ACCTBROKERNAME]\r\n\t\t\t\t,[NETWORTH_CURR]\r\n\t\t\t\t,[NETWORTH_RANGE]\r\n\t\t\t\t,[ANNINC_CURR]\r\n\t\t\t\t,[ANNINC_RANGE]\r\n\t\t\t\t,[ASSETS_CURR]\r\n\t\t\t\t,[ASSETS_RANGE]\r\n\t\t\t\t,[INVESTOBJ]\r\n\t\t\t\t,[FUNDSOURCE]\r\n\t\t\t\t,[ASSETS]\r\n\t\t\t\t,[NETWORTH]\r\n\t\t\t\t,[ANNUAL_INCOME]\r\n\t\t\t\t,[ACCTKEY]\r\n\t\t\t\t,[DVRLICENSE_EXPRD]\r\n\t\t\t\t,[PASSPORT_EXPRD]\r\n\t\t\t\t,[NATIONALITY]\r\n\t\t\t\t,[TIN]\r\n\t\t\t\t,[INCORP_COUNTRY]\r\n\t\t\t\t,[HOME_COUNTRY]\r\n\t\t\t\t,[OFC_COUNTRY]\r\n\t\t\t\t,[PERM_COUNTRY]\r\n\t\t\t\t,[BROKEROFFICER]\r\n\t\t\t\t,[NATIONALITY2]\r\n\t\t\t\t,[SUBACCT]\r\n\t\t\t\t,[RISKCLASS]\r\n\t\t\t\t,[SETA_BRANCHCODE]\r\n\t\t\t\t,[SETA_BRANCHNAME]\r\n\t\t\t\t,[SETA_ACCTNO]\r\n\t\t\t\t,[OCCUPATION]\r\n\t\t\t\t,[EMPLOYER_NAME]\r\n\t\t\t\t,[TRUSTFLAG]\r\n\t\t\t\t,[LFFLAG]\r\n\t\t\t\t,[RELATEDPARTY_FLAG]\r\n\t\t\t\t,[AFFILIATEFLAG]\r\n\t\t\t\t,[FATCAFLAG]\r\n\t\t\t\t,[RELATIONSHIP]\r\n\t\t\t\t,[BUSSECTOR]\r\n\t\t\t\t,[RISK_SCORE]\r\n\t\t\t\t,[REFERREDBY]\r\n\t\t\t\t,[KYC]\r\n\t\t\t\t,[STATUS]\r\n\t\t\t\t,[CELLPHONE2]\r\n\t\t\t\t,[CONTACTPERSON]\r\n\t\t\t\t,[CONTACTPOSITION]\r\n\t\t\t\t,[DATE_CREATED]\r\n\t\t\t\t,[LASTUPDATED]\r\n\t\t\t\t,[AMLC_WATCHLIST]\r\n\t\t\t\t,[PEPFLAG]\r\n\t\t\t\t,[FUNDSOURCE_COUNTRY]\r\n\t\t\t\t,[GOVTINST]\r\n\t\t\t\t,[GOVTEMP]\r\n\t\t\t\t,[NDVFLAG]\r\n\t\t\t\t,[EMPRANK]\r\n\t\t\t\t,[BUSREG_CERT]\r\n\t\t\t\t,[INCORP_REGCERT]\r\n\t\t\t\t,[STOCK_GRANTEE]\r\n\t\t\t\t,[EMPID]\r\n\t\t\t\t,[MAKER]\r\n\t\t\t\t,[MAKER_DATE]\r\n\t\t\t\t,[CHECKER]\r\n\t\t\t\t,[CHECKER_DATE]\r\n\tHAVING ( SUM(JSRC_FLG) > 0 AND SUM(JTAR_FLG) = 0 ) OR ( SUM(JSRC_FLG) = 0 AND SUM(JTAR_FLG) = 1) \r\n) AS TEMP\r\n\r\n\r\nDECLARE @SEC_PREVIOUS_BUSINESS_DAY AS DATE\r\nSELECT @SEC_PREVIOUS_BUSINESS_DAY = SEC_PREVIOUS_BUSINESS_DAY FROM EDS.DATE_DIM \r\nINNER JOIN (SELECT TOP 1 CAST(LEFT(RIGHT(FILE_NAME, 12), 8) AS INTEGER) MX_DT FROM [d360].[STG_EDS_SEC_TBLCLIENT]) MX_DT_TBL\r\nON DATESK = MX_DT;\t\r\n\r\n\r\nUPDATE A\r\nSET\r\nSCD_END_DATE = @SEC_PREVIOUS_BUSINESS_DAY\r\n, ISLATEST = 0\r\nFROM EDS.SEC_TBLCLIENT A \r\nINNER JOIN d360.STG_EDS_SEC_TBLCLIENT_GROUP_SRC B \r\nON COALESCE(A.CLTCODE,'-1') = COALESCE(B.CLTCODE,'-1')\r\nAND A.ISLATEST = 1\r\nAND B.JTAR_FLG_CNT = 1\r\n\r\n\r\n\r\n\r\nINSERT INTO EDS.SEC_TBLCLIENT\r\n(\r\n\t\t\t\t [CLTCODE]\r\n\t\t\t\t,[CLTTYPE]\r\n\t\t\t\t,[FNAME]\r\n\t\t\t\t,[LNAME]\r\n\t\t\t\t,[MNAME]\r\n\t\t\t\t,[SUFF]\r\n\t\t\t\t,[CNAME]\r\n\t\t\t\t,[BDATE]\r\n\t\t\t\t,[BPLACE]\r\n\t\t\t\t,[MOTHER]\r\n\t\t\t\t,[SEX]\r\n\t\t\t\t,[CIVILSTAT]\r\n\t\t\t\t,[SPOUSE]\r\n\t\t\t\t,[NATDATE]\r\n\t\t\t\t,[CELLPHONE]\r\n\t\t\t\t,[PRIM_EMAIL]\r\n\t\t\t\t,[ALT_EMAIL]\r\n\t\t\t\t,[EMPFLAG]\r\n\t\t\t\t,[AFFILIATENAME]\r\n\t\t\t\t,[RMNUM]\r\n\t\t\t\t,[EMPLOYSTATUS]\r\n\t\t\t\t,[EMPLOYOTHERS]\r\n\t\t\t\t,[COMPNAME]\r\n\t\t\t\t,[COMPPOS]\r\n\t\t\t\t,[BUSNATURE]\r\n\t\t\t\t,[COMPSTART]\r\n\t\t\t\t,[COMPYEARS]\r\n\t\t\t\t,[SSSNUMBER]\r\n\t\t\t\t,[PASSPORT]\r\n\t\t\t\t,[DRVLICENSE]\r\n\t\t\t\t,[INCORP_REGNO]\r\n\t\t\t\t,[INCORP_DATE]\r\n\t\t\t\t,[INCORP_CERT]\r\n\t\t\t\t,[TAXFLAG]\r\n\t\t\t\t,[TAXREM]\r\n\t\t\t\t,[HOME_ADDR1]\r\n\t\t\t\t,[HOME_ADDR2]\r\n\t\t\t\t,[HOME_ADDR3]\r\n\t\t\t\t,[HOME_ZIP]\r\n\t\t\t\t,[HOME_PHONE]\r\n\t\t\t\t,[HOME_FAX]\r\n\t\t\t\t,[OFC_ADDR1]\r\n\t\t\t\t,[OFC_ADDR2]\r\n\t\t\t\t,[OFC_ADDR3]\r\n\t\t\t\t,[OFC_ZIP]\r\n\t\t\t\t,[OFC_PHONE]\r\n\t\t\t\t,[OFC_PHONE2]\r\n\t\t\t\t,[OFC_FAX]\r\n\t\t\t\t,[OFC_FAX2]\r\n\t\t\t\t,[PERM_ADDR1]\r\n\t\t\t\t,[PERM_ADDR2]\r\n\t\t\t\t,[PERM_ADDR3]\r\n\t\t\t\t,[PERM_ZIP]\r\n\t\t\t\t,[PERM_PHONE]\r\n\t\t\t\t,[PERM_FAX]\r\n\t\t\t\t,[BROKEREMPLOY]\r\n\t\t\t\t,[BROKEREMPNAME]\r\n\t\t\t\t,[PSEOFFICER]\r\n\t\t\t\t,[PSECNAME]\r\n\t\t\t\t,[ACCTBROKER]\r\n\t\t\t\t,[ACCTBROKERNAME]\r\n\t\t\t\t,[NETWORTH_CURR]\r\n\t\t\t\t,[NETWORTH_RANGE]\r\n\t\t\t\t,[ANNINC_CURR]\r\n\t\t\t\t,[ANNINC_RANGE]\r\n\t\t\t\t,[ASSETS_CURR]\r\n\t\t\t\t,[ASSETS_RANGE]\r\n\t\t\t\t,[INVESTOBJ]\r\n\t\t\t\t,[FUNDSOURCE]\r\n\t\t\t\t,[ASSETS]\r\n\t\t\t\t,[NETWORTH]\r\n\t\t\t\t,[ANNUAL_INCOME]\r\n\t\t\t\t,[ACCTKEY]\r\n\t\t\t\t,[DVRLICENSE_EXPRD]\r\n\t\t\t\t,[PASSPORT_EXPRD]\r\n\t\t\t\t,[NATIONALITY]\r\n\t\t\t\t,[TIN]\r\n\t\t\t\t,[INCORP_COUNTRY]\r\n\t\t\t\t,[HOME_COUNTRY]\r\n\t\t\t\t,[OFC_COUNTRY]\r\n\t\t\t\t,[PERM_COUNTRY]\r\n\t\t\t\t,[BROKEROFFICER]\r\n\t\t\t\t,[NATIONALITY2]\r\n\t\t\t\t,[SUBACCT]\r\n\t\t\t\t,[RISKCLASS]\r\n\t\t\t\t,[SETA_BRANCHCODE]\r\n\t\t\t\t,[SETA_BRANCHNAME]\r\n\t\t\t\t,[SETA_ACCTNO]\r\n\t\t\t\t,[OCCUPATION]\r\n\t\t\t\t,[EMPLOYER_NAME]\r\n\t\t\t\t,[TRUSTFLAG]\r\n\t\t\t\t,[LFFLAG]\r\n\t\t\t\t,[RELATEDPARTY_FLAG]\r\n\t\t\t\t,[AFFILIATEFLAG]\r\n\t\t\t\t,[FATCAFLAG]\r\n\t\t\t\t,[RELATIONSHIP]\r\n\t\t\t\t,[BUSSECTOR]\r\n\t\t\t\t,[RISK_SCORE]\r\n\t\t\t\t,[REFERREDBY]\r\n\t\t\t\t,[KYC]\r\n\t\t\t\t,[STATUS]\r\n\t\t\t\t,[CELLPHONE2]\r\n\t\t\t\t,[CONTACTPERSON]\r\n\t\t\t\t,[CONTACTPOSITION]\r\n\t\t\t\t,[DATE_CREATED]\r\n\t\t\t\t,[LASTUPDATED]\r\n\t\t\t\t,[AMLC_WATCHLIST]\r\n\t\t\t\t,[PEPFLAG]\r\n\t\t\t\t,[FUNDSOURCE_COUNTRY]\r\n\t\t\t\t,[GOVTINST]\r\n\t\t\t\t,[GOVTEMP]\r\n\t\t\t\t,[NDVFLAG]\r\n\t\t\t\t,[EMPRANK]\r\n\t\t\t\t,[BUSREG_CERT]\r\n\t\t\t\t,[INCORP_REGCERT]\r\n\t\t\t\t,[STOCK_GRANTEE]\r\n\t\t\t\t,[EMPID]\r\n\t\t\t\t,[MAKER]\r\n\t\t\t\t,[MAKER_DATE]\r\n\t\t\t\t,[CHECKER]\r\n\t\t\t\t,[CHECKER_DATE]\r\n\t\t\t\t,SCD_START_DATE \r\n\t\t\t\t,SCD_END_DATE\r\n\t\t\t\t,ISACTIVE\r\n\t\t\t\t,ISLATEST\r\n\t\t\t\t,BNK_CODE\r\n\t\t\t\t,SOURCE_CODE \r\n\t\t\t\t,FILE_NAME \r\n\t\t\t\t,insert_dttm\r\n)\r\nSELECT\r\n\t\t\t\t [CLTCODE]\r\n\t\t\t\t,[CLTTYPE]\r\n\t\t\t\t,[FNAME]\r\n\t\t\t\t,[LNAME]\r\n\t\t\t\t,[MNAME]\r\n\t\t\t\t,[SUFF]\r\n\t\t\t\t,[CNAME]\r\n\t\t\t\t,[BDATE]\r\n\t\t\t\t,[BPLACE]\r\n\t\t\t\t,[MOTHER]\r\n\t\t\t\t,[SEX]\r\n\t\t\t\t,[CIVILSTAT]\r\n\t\t\t\t,[SPOUSE]\r\n\t\t\t\t,[NATDATE]\r\n\t\t\t\t,[CELLPHONE]\r\n\t\t\t\t,[PRIM_EMAIL]\r\n\t\t\t\t,[ALT_EMAIL]\r\n\t\t\t\t,[EMPFLAG]\r\n\t\t\t\t,[AFFILIATENAME]\r\n\t\t\t\t,[RMNUM]\r\n\t\t\t\t,[EMPLOYSTATUS]\r\n\t\t\t\t,[EMPLOYOTHERS]\r\n\t\t\t\t,[COMPNAME]\r\n\t\t\t\t,[COMPPOS]\r\n\t\t\t\t,[BUSNATURE]\r\n\t\t\t\t,[COMPSTART]\r\n\t\t\t\t,[COMPYEARS]\r\n\t\t\t\t,[SSSNUMBER]\r\n\t\t\t\t,[PASSPORT]\r\n\t\t\t\t,[DRVLICENSE]\r\n\t\t\t\t,[INCORP_REGNO]\r\n\t\t\t\t,[INCORP_DATE]\r\n\t\t\t\t,[INCORP_CERT]\r\n\t\t\t\t,[TAXFLAG]\r\n\t\t\t\t,[TAXREM]\r\n\t\t\t\t,[HOME_ADDR1]\r\n\t\t\t\t,[HOME_ADDR2]\r\n\t\t\t\t,[HOME_ADDR3]\r\n\t\t\t\t,[HOME_ZIP]\r\n\t\t\t\t,[HOME_PHONE]\r\n\t\t\t\t,[HOME_FAX]\r\n\t\t\t\t,[OFC_ADDR1]\r\n\t\t\t\t,[OFC_ADDR2]\r\n\t\t\t\t,[OFC_ADDR3]\r\n\t\t\t\t,[OFC_ZIP]\r\n\t\t\t\t,[OFC_PHONE]\r\n\t\t\t\t,[OFC_PHONE2]\r\n\t\t\t\t,[OFC_FAX]\r\n\t\t\t\t,[OFC_FAX2]\r\n\t\t\t\t,[PERM_ADDR1]\r\n\t\t\t\t,[PERM_ADDR2]\r\n\t\t\t\t,[PERM_ADDR3]\r\n\t\t\t\t,[PERM_ZIP]\r\n\t\t\t\t,[PERM_PHONE]\r\n\t\t\t\t,[PERM_FAX]\r\n\t\t\t\t,[BROKEREMPLOY]\r\n\t\t\t\t,[BROKEREMPNAME]\r\n\t\t\t\t,[PSEOFFICER]\r\n\t\t\t\t,[PSECNAME]\r\n\t\t\t\t,[ACCTBROKER]\r\n\t\t\t\t,[ACCTBROKERNAME]\r\n\t\t\t\t,[NETWORTH_CURR]\r\n\t\t\t\t,[NETWORTH_RANGE]\r\n\t\t\t\t,[ANNINC_CURR]\r\n\t\t\t\t,[ANNINC_RANGE]\r\n\t\t\t\t,[ASSETS_CURR]\r\n\t\t\t\t,[ASSETS_RANGE]\r\n\t\t\t\t,[INVESTOBJ]\r\n\t\t\t\t,[FUNDSOURCE]\r\n\t\t\t\t,[ASSETS]\r\n\t\t\t\t,[NETWORTH]\r\n\t\t\t\t,[ANNUAL_INCOME]\r\n\t\t\t\t,[ACCTKEY]\r\n\t\t\t\t,[DVRLICENSE_EXPRD]\r\n\t\t\t\t,[PASSPORT_EXPRD]\r\n\t\t\t\t,[NATIONALITY]\r\n\t\t\t\t,[TIN]\r\n\t\t\t\t,[INCORP_COUNTRY]\r\n\t\t\t\t,[HOME_COUNTRY]\r\n\t\t\t\t,[OFC_COUNTRY]\r\n\t\t\t\t,[PERM_COUNTRY]\r\n\t\t\t\t,[BROKEROFFICER]\r\n\t\t\t\t,[NATIONALITY2]\r\n\t\t\t\t,[SUBACCT]\r\n\t\t\t\t,[RISKCLASS]\r\n\t\t\t\t,[SETA_BRANCHCODE]\r\n\t\t\t\t,[SETA_BRANCHNAME]\r\n\t\t\t\t,[SETA_ACCTNO]\r\n\t\t\t\t,[OCCUPATION]\r\n\t\t\t\t,[EMPLOYER_NAME]\r\n\t\t\t\t,[TRUSTFLAG]\r\n\t\t\t\t,[LFFLAG]\r\n\t\t\t\t,[RELATEDPARTY_FLAG]\r\n\t\t\t\t,[AFFILIATEFLAG]\r\n\t\t\t\t,[FATCAFLAG]\r\n\t\t\t\t,[RELATIONSHIP]\r\n\t\t\t\t,[BUSSECTOR]\r\n\t\t\t\t,[RISK_SCORE]\r\n\t\t\t\t,[REFERREDBY]\r\n\t\t\t\t,[KYC]\r\n\t\t\t\t,[STATUS]\r\n\t\t\t\t,[CELLPHONE2]\r\n\t\t\t\t,[CONTACTPERSON]\r\n\t\t\t\t,[CONTACTPOSITION]\r\n\t\t\t\t,[DATE_CREATED]\r\n\t\t\t\t,[LASTUPDATED]\r\n\t\t\t\t,[AMLC_WATCHLIST]\r\n\t\t\t\t,[PEPFLAG]\r\n\t\t\t\t,[FUNDSOURCE_COUNTRY]\r\n\t\t\t\t,[GOVTINST]\r\n\t\t\t\t,[GOVTEMP]\r\n\t\t\t\t,[NDVFLAG]\r\n\t\t\t\t,[EMPRANK]\r\n\t\t\t\t,[BUSREG_CERT]\r\n\t\t\t\t,[INCORP_REGCERT]\r\n\t\t\t\t,[STOCK_GRANTEE]\r\n\t\t\t\t,[EMPID]\r\n\t\t\t\t,[MAKER]\r\n\t\t\t\t,[MAKER_DATE]\r\n\t\t\t\t,[CHECKER]\r\n\t\t\t\t,[CHECKER_DATE]\r\n\t\t\t\t,FILE_DATE\r\n\t\t\t\t,'9999-12-31'\r\n\t\t\t\t,1\r\n\t\t\t\t,1\r\n\t\t\t\t,LEFT(SRC.FILE_NAME,5)\r\n\t\t\t\t,'SEC'\r\n\t\t\t\t,SRC.FILE_NAME\r\n\t\t\t\t,CURRENT_TIMESTAMP\r\nFROM d360.STG_EDS_SEC_TBLCLIENT_GROUP_SRC SRC\r\nWHERE JSRC_FLG_CNT > 0\r\n\r\n"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "Manifest_file",
+							"type": "ExecutePipeline",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Workflow_Manifest_v2",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"MaxPipelineCalls": 5,
+									"RetryInterval": 600,
+									"DatetoProcessed": {
+										"value": "@substring(item(),0,10)",
+										"type": "Expression"
+									},
+									"tables": {
+										"value": "@concat('''',pipeline().parameters.tables1,'''')",
+										"type": "Expression"
+									},
+									"EndTime": "14:00",
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									},
+									"Bank_ID": {
+										"value": "@pipeline().parameters.Bank_ID",
+										"type": "Expression"
+									}
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"tables1": {
+				"type": "string",
+				"defaultValue": "SEC_CLIENT"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "SEC"
+			},
+			"Bank_ID": {
+				"type": "string",
+				"defaultValue": "CBC11"
+			}
+		},
+		"variables": {
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"CheckFEstatus": {
+				"type": "String",
+				"defaultValue": "True"
+			},
+			"Source": {
+				"type": "String",
+				"defaultValue": "DEP_FACT"
+			},
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-09-08T08:39:08Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

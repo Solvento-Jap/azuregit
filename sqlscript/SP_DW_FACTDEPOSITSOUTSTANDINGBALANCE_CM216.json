@@ -1,0 +1,20 @@
+{
+	"name": "SP_DW_FACTDEPOSITSOUTSTANDINGBALANCE_CM216",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nCREATE PROC [DW].[SP_DW_FACTDEPOSITSOUTSTANDINGBALANCE_CM216] @Businessdate [VARCHAR](10) AS\nBEGIN\n\nWITH CustomerAccountPeriodBalance\nAS(\n    SELECT * FROM BNKM.CustomerAccountPeriodBalance \n    WHERE PeriodBalanceTypeId = 'EOD Running Balance of Transaction Date'\n    AND SourceSystemCode = 'DEP' AND @Businessdate BETWEEN CONVERT(VARCHAR,PERIODSTARTDATE,112) AND ISNULL(CONVERT(VARCHAR,PERIODENDDATE,112),'20991231')\n)\n, CurrencyConversion\nAS(\n    SELECT * FROM BNKM.CurrencyConversion_FillGapDates WHERE ConvertToCurrencyId = 'PHP' AND RateId = 'REV'\n)\n,\nCNT_DCA\nAS\n(\nselect Accountid,\ncount(shareindicator) as CNT\n from dw.dimcustomeraccount where shareindicator = 'y'\n group by accountid\n\n)\n\nINSERT INTO DW.FactDepositsOutstandingBalance_CM216\n(\n     BusinessDateSK\n    ,BranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n    ,AverageDailBalanceAmountYTDFull_Original\n    ,AverageDailBalanceAmountYTDProrated_Original\n    ,Currency_Original\n    ,Currency_Target\n    ,PesoConversionRate\n    ,BalanceAmountFull\n    ,BalanceAmountProrated\n    ,SourceSystemCode\n    ,WorkFlowId\n    ,TaskRunId\n    ,InsertDttm\n)\n\nSELECT DISTINCT\n@Businessdate AS BusinessDateSK\n,DDB.BranchSK AS BranchSK\n,DDBK.BankSK AS BankSK\n,DDA.AccountSK AS AccountSK\n,DDA.AccountId AS AccountId\n,BCPB.BalanceAmount AS BalanceAmountFull_Original\n,ISNULL(BCPB.BalanceAmount / DCA.CNT,BCPB.BalanceAmount) AS BalanceAmountProrated_Original\n,BCPB.IsoCurrencyCode AS Currency_Original\n,'PHP' AS Currency_Target\n,ISNULL(CC.ConversionRate,1) AS PesoConversionRate\n,CASE WHEN BCA.IsoCurrencyCode <> 'PHP' THEN BCPB.BalanceAmount * CC.ConversionRate\n    ELSE BCPB.BalanceAmount END  AS BalanceAmountFull\n,CASE WHEN BCA.IsoCurrencyCode <> 'PHP' THEN (BCPB.BalanceAmount * CC.ConversionRate )/ ISNULL(NULLIF(DCA.CNT,''),1)  \n    ELSE BCPB.BalanceAmount / ISNULL(NULLIF(DCA.CNT,''),1)  \n    END AS BalanceAmountProrated\n,BCPB.SourceSystemCode AS SourceSystemCode\n,0 AS WorkFlowId\n,0 AS TaskRunId\n,Getdate() AS InsertDttm\nFROM \nCustomerAccountPeriodBalance BCPB\nJOIN BNKM.CustomerAccountFinancialProduct CAFP ON BCPB.CustomerAccountId = CAFP.CustomerAccountId AND BCPB.FinancialInstitutionId = CAFP.FinancialInstitutionId\nJOIN BNKM.FinancialProductApplication FPA ON CAFP.ProductId = FPA.FinancialProductId AND CAFP.FinancialInstitutionId = FPA.FinancialInstitutionId\nLEFT JOIN BNKM.CustomerAccount BCA ON BCPB.CustomerAccountId = BCA.CustomerAccountId\nLEFT JOIN DW.DimBranch DDB ON BCA.BranchId = DDB.BranchID AND DDB.CurrentIndicator = 1\nLEFT JOIN DW.DimBank DDBK ON BCPB.FinancialInstitutionId = DDBK.BankID\nLEFT JOIN DW.DimAccount DDA ON BCPB.CustomerAccountId = DDA.AccountID AND DDA.CurrentIndicator = 1\nLEFT JOIN CurrencyConversion CC ON BCPB.IsoCurrencyCode = CC.ConvertFromCurrencyId AND BCPB.FinancialInstitutionId = CC.FinancialInstitutionId AND @Businessdate = CC.CurrencyConversionTimestamp\nLEFT JOIN CNT_DCA DCA ON BCPB.CustomerAccountId = DCA.AccountId\nWHERE CAFP.ProductId NOT LIKE ('09%') \nAND FPA.FcbsApplicationId IN ('CAA', 'SBA', 'TDA') \nand @Businessdate NOT IN (SELECT BusinessDateSK FROM DW.FactDepositsOutstandingBalance)\n\nEND\nGO\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

@@ -1,0 +1,563 @@
+{
+	"name": "Workflow_EDS_DID_LEGALENTITYEXCLUSION",
+	"properties": {
+		"activities": [
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(pipeline().parameters.endDate),ticks(pipeline().parameters.startDate)),864000000000),1))",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append variable1",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "select fulldate\nfrom \n    eds.eds_ctl ect\ninner join \n    eds.date_dim dd\n    on \n    ect.TRY_Date=dd.previous_business_day and dd.business_day_flag='Y'\n",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "eds_ctl"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Iterate Execution of Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "OM_SRC_CHECK",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_EDS_DID_LEGALENTITYEXCLUSION",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@replace(substring(item(),0,10),'-','')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Get Success Count EDS",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "OM_SRC_CHECK",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_EDS_DID_LEGALENTITYEXCLUSION'',''EDS'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count EDS",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count EDS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count EDS').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "START_TASK_EDS_DID_LEGALENTITYEXCLUSION",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_DID_LEGALENTITYEXCLUSION",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_DID_LEGALENTITYEXCLUSION_SUCCESS",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_DID_LEGALENTITYEXCLUSION",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_DID_LEGALENTITYEXCLUSION",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_DID_LEGALENTITYEXCLUSION_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_DID_LEGALENTITYEXCLUSION",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_DID_LEGALENTITYEXCLUSION",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "EDS_DID_LEGALENTITYEXCLUSION",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_EDS_DID_LEGALENTITYEXCLUSION",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"parameters": [
+														{
+															"name": "EDS_SQL",
+															"type": "String",
+															"value": {
+																"value": "@pipeline().parameters.EDS_SQL",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														}
+													],
+													"type": "Query",
+													"text": "EXEC sp_executesql @EDS_SQL;"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"tables1": {
+				"type": "string",
+				"defaultValue": "DID_LEGALENTITYEXCLUSION"
+			},
+			"EDS_SQL": {
+				"type": "string",
+				"defaultValue": "BEGIN TRY     UPDATE TGT     SET         [ISLATEST] = 0,         [SCD_END_DATE] = (             SELECT PREVIOUS_BUSINESS_DAY \t\t\tFROM EDS.DATE_DIM \t\t\tINNER JOIN ( \t\t\t\tSELECT MAX(SCD_START_DATE) MX_DT \t\t\t\tFROM EDS.TRY_LEGALENTITY \t\t\t\t) MX_DT_TBL ON FULLDATE = MX_DT         )     FROM EDS.DID_LEGALENTITYEXCLUSION TGT     LEFT JOIN EDS.TRY_LEGALENTITY SRC         ON TGT.[ID] = SRC.[ID]     WHERE         TGT.ISLATEST = 1         AND HASHBYTES('SHA2_256', CONCAT_WS(             N'|',             ,SRC.[LEGAL_ENTITY]             ,SRC.[ROLES]             ,SRC.[FULL_NAME]             ,SRC.[SHORT_NAME]             ,SRC.[COUNTRY]             ,SRC.[PARENT]             ,SRC.[PARENT_SHORT_NAME]             ,SRC.[COMMENT]             ,SRC.[STATUS]             ,SRC.[EXTERNAL_REF]         )) <> HASHBYTES('SHA2_256', CONCAT_WS(             N'|',             ,TGT.[LEGAL_ENTITY]             ,TGT.[ROLES]             ,TGT.[FULL_NAME]             ,TGT.[SHORT_NAME]             ,TGT.[COUNTRY]             ,TGT.[PARENT]             ,TGT.[PARENT_SHORT_NAME]             ,TGT.[COMMENT]             ,TGT.[STATUS]             ,TGT.[EXTERNAL_REF]         ))          INSERT INTO EDS.DID_LEGALENTITYEXCLUSION (         [ID],         [LEGAL_ENTITY],         [ROLES],         [FULL_NAME],         [SHORT_NAME],         [COUNTRY],         [PARENT],         [PARENT_SHORT_NAME],         [COMMENT],         [STATUS],         [EXTERNAL_REF],         [SCD_START_DATE],         [SCD_END_DATE],         [ISACTIVE],         [ISLATEST],         [BNK_CODE],         [SOURCE_CODE],         [FILE_NAME],         [INSERT_DTTM]     )      SELECT         [ID],         [LEGAL_ENTITY],         [ROLES],         [FULL_NAME],         [SHORT_NAME],         [COUNTRY],         [PARENT],         [PARENT_SHORT_NAME],         [COMMENT],         [STATUS],         [EXTERNAL_REF],         [SCD_START_DATE],         CAST('9999-12-31' AS DATE) AS [SCD_END_DATE],         1 AS [ISACTIVE],         1 AS [ISLATEST],         LEFT(FILE_NAME, 5) AS [BNK_CODE],         'TRU' AS [SOURCE_CODE],         [FILE_NAME],         CURRENT_TIMESTAMP     FROM EDS.TRY_LEGALENTITY SRC     WHERE         [ISLATEST] = 1         AND NOT EXISTS (             SELECT 1             FROM EDS.DID_LEGALENTITYEXCLUSION TGT             WHERE                 TGT.[ID] = SRC.[ID]                 AND TGT.ISLATEST = 1                 AND HASHBYTES('SHA2_256', CONCAT_WS(                     N'|',                     ,SRC.[LEGAL_ENTITY]                     ,SRC.[ROLES]                     ,SRC.[FULL_NAME]                     ,SRC.[SHORT_NAME]                     ,SRC.[COUNTRY]                     ,SRC.[PARENT]                     ,SRC.[PARENT_SHORT_NAME]                     ,SRC.[COMMENT]                     ,SRC.[STATUS]                     ,SRC.[EXTERNAL_REF]                 )) = HASHBYTES('SHA2_256', CONCAT_WS(                     N'|',                     ,TGT.[LEGAL_ENTITY]                     ,TGT.[ROLES]                     ,TGT.[FULL_NAME]                     ,TGT.[SHORT_NAME]                     ,TGT.[COUNTRY]                     ,TGT.[PARENT]                     ,TGT.[PARENT_SHORT_NAME]                     ,TGT.[COMMENT]                     ,TGT.[STATUS]                     ,TGT.[EXTERNAL_REF]                 ))             AND (                 [STATUS] = 'Disabled' OR                 [ROLES] LIKE '%Agent%' OR                 [ROLES] LIKE '%Broker%' OR                 [ROLES] LIKE '%ProcessingOrg%' OR                 [ROLES] LIKE '%MarketPlace%' OR                 [ROLES] LIKE '%Guarantor%' OR                 [ROLES] LIKE '%IPA%' OR                 [ROLES] = 'Issuer' OR                 [FULL_NAME] LIKE 'GROUP-%' OR                 [FULL_NAME] LIKE 'SETTLEMENT BANK%'             )         ) END TRY BEGIN CATCH     DECLARE @msg NVARCHAR(2048) = ERROR_MESSAGE(); \tTHROW         51000 \t\t,@msg \t\t,1; END CATCH;"
+			}
+		},
+		"variables": {
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"CheckFEstatus": {
+				"type": "String",
+				"defaultValue": "True"
+			},
+			"Source": {
+				"type": "String",
+				"defaultValue": "TRY_FACT"
+			},
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-11-21T03:19:56Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

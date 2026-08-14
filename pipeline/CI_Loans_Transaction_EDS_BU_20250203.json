@@ -1,0 +1,234 @@
+{
+	"name": "CI_Loans_Transaction_EDS_BU_20250203",
+	"properties": {
+		"description": "Sources data from EDS tables",
+		"activities": [
+			{
+				"name": "Lns Transaction Retail",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "START_TASK_CI_EDS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "/*\r\n    Standardize the field names to business names\r\n    Add TRANSACTION_AMOUNT_PHP (Converted) field\r\n    Inclusion of CUSTOMER_ID -> This will be used to JOIN in CI_DEMOGRAPHIC\r\n*/\r\nSELECT \r\n     HTD.ACID\r\n    ,HTD.TRAN_ID AS TRANSACTION_ID\r\n    ,HTD.PART_TRAN_SRL_NUM AS TRANSACTION_SERIAL_NUMBER\r\n    ,HTD.TRAN_DATE AS TRANSACTION_DATE\r\n    ,HTD.TRAN_CRNCY_CODE AS TRANSACTION_CURRENCY_CODE\r\n    ,HTD.TRAN_AMT AS TRANSACTION_AMOUNT\r\n    ,HTD.TRANSACTION_AMOUNT_PHP AS TRANSACTION_AMOUNT_PHP\r\n    --,1 TRAN_CNT\r\n    ,HTD.DTH_INIT_SOL_ID AS INITIALIZING_BRANCH_CODE\r\n    ,HTD.PART_TRAN_TYPE AS TRANSACTION_TYPE\r\n    ,HTD.SOL_ID AS BRANCH_CODE\r\n    ,HTD.SOURCE_CODE AS SOURCE_CODE\r\n    ,HTD.TRAN_PARTICULAR AS TRANSACTION_PARTICULAR\r\n    ,HTD.TRAN_RMKS AS TRANSACTION_REMARKS\r\n    ,HTD.LCHG_TIME AS CHANGED_TIME\r\n    ,HTD.RCRE_TIME AS CREATED_TIME\r\n    ,HTD.PSTD_DATE AS POSTED_DATE\r\n    ,HTD.BANK_ID AS BANK_ID\r\n    ,CUST.ORGKEY AS FCBSCIF\r\n\t,ROW_NUMBER() OVER(ORDER BY HTD.ACID) SK\r\n\r\n/*\r\n    Remove the duplicates using ROW_NUMBER() window function\r\n    Convert the transaction amount to PHP (TRANSACTION_AMOUNT_PHP)\r\n*/\r\nFROM (\r\nSELECT\r\n    HTD.ACID\r\n    ,HTD.TRAN_ID\r\n    ,HTD.PART_TRAN_SRL_NUM\r\n    ,HTD.TRAN_DATE\r\n    ,HTD.TRAN_CRNCY_CODE\r\n    ,HTD.TRAN_AMT\r\n    ,CASE WHEN HTD.TRAN_CRNCY_CODE = 'PHP' THEN HTD.TRAN_AMT \r\n        ELSE HTD.TRAN_AMT * CC.ConversionRate END AS TRANSACTION_AMOUNT_PHP\r\n    --,1 TRAN_CNT\r\n    ,HTD.DTH_INIT_SOL_ID\r\n    ,HTD.PART_TRAN_TYPE\r\n    ,HTD.SOL_ID\r\n    ,HTD.SOURCE_CODE\r\n    ,HTD.TRAN_PARTICULAR\r\n    ,HTD.TRAN_RMKS\r\n    ,HTD.LCHG_TIME\r\n    ,HTD.RCRE_TIME\r\n    ,HTD.PSTD_DATE\r\n    ,HTD.BANK_ID\r\n    ,ROW_NUMBER() OVER(PARTITION BY HTD.ACID, HTD.TRAN_ID, HTD.PART_TRAN_SRL_NUM, HTD.TRAN_DATE  ORDER BY HTD.[FILE_NAME] DESC, HTD.INSERT_DTTM DESC ) RN\r\n    FROM [EDS].[LNS_HISTTRANDTL] HTD\r\n    LEFT JOIN  (SELECT * FROM bnkm.CurrencyConversion where ConvertToCurrencyId = 'PHP' AND RateId = 'REV') CC\r\n        ON HTD.BANK_ID = CC.FinancialInstitutionId\r\n        AND HTD.TRAN_CRNCY_CODE = CC.ConvertFromCurrencyId\r\n        AND HTD.TRAN_DATE = CC.CurrencyConversionTimestamp\r\n     WHERE BANK_ID = 'CBC01' AND DEL_FLG <> 'Y'\r\n    --AND DATEDIFF(M, TRAN_DATE, (SELECT LOANS_DATE FROM EDS.EDS_CTL)) <= 12\r\n    AND TRAN_DATE >= '2024-04-01'\r\n) HTD \r\n/*\r\n    Link all customers associated to the account of the transaction using AAS\r\n    Fetch the ORGKEY in CUSTOMER_DIM\r\n*/\r\nINNER JOIN eds.LNS_ACCTAUTHSIGN AAS\r\n    ON HTD.TRAN_DATE = AAS.AS_OF_DATE\r\n    AND HTD.ACID = AAS.ACID\r\n    AND HTD.BANK_ID = AAS.BANK_ID\r\n    AND AAS.DEL_FLG <> 'Y'\r\nINNER JOIN eds.CUSTOMER_DIM CUST\r\n    ON HTD.TRAN_DATE BETWEEN CUST.SCD_START_DATE AND CUST.SCD_END_DATE\r\n    AND AAS.CUST_ID = CUST.CORE_CUST_ID\r\n    AND CUSTOMER_TYPE = 'Retail'\r\nWHERE RN = 1",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "DelimitedTextSink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"formatSettings": {
+							"type": "DelimitedTextWriteSettings",
+							"quoteAllText": true,
+							"fileExtension": ".txt"
+						}
+					},
+					"enableStaging": false,
+					"translator": {
+						"type": "TabularTranslator",
+						"typeConversion": true,
+						"typeConversionSettings": {
+							"allowDataTruncation": true,
+							"treatBooleanAsNumber": false
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_EDS",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "-"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "CI_csv_gen",
+						"type": "DatasetReference",
+						"parameters": {
+							"Table": {
+								"value": "@toUpper(variables('tables'))",
+								"type": "Expression"
+							},
+							"Source": "TRANSACTION",
+							"Types": "Retail"
+						}
+					}
+				]
+			},
+			{
+				"name": "START_TASK_CI_EDS",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_START]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_CI_EDS_',toUpper(variables('tables')))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": null,
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_EDS_SUCCESSFUL",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Lns Transaction Retail",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_CI_EDS_',toUpper(variables('tables')))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "SUCCESSFUL",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_EDS_FAILED",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Lns Transaction Retail",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_CI_EDS_',toUpper(variables('tables')))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "FAILED",
+							"type": "String"
+						}
+					}
+				}
+			}
+		],
+		"variables": {
+			"tables": {
+				"type": "String",
+				"defaultValue": "CI_Lns_Tran_Retail"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-02-02T23:24:56Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

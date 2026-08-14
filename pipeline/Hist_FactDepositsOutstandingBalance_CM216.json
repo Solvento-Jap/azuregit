@@ -1,0 +1,219 @@
+{
+	"name": "Hist_FactDepositsOutstandingBalance_CM216",
+	"properties": {
+		"activities": [
+			{
+				"name": "Script1",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\nWITH CustomerAccountPeriodBalance\nAS(\n    SELECT * FROM BNKM.CustomerAccountPeriodBalance \n    WHERE PeriodBalanceTypeId = 'EOD Running Balance of Transaction Date'\n    AND SourceSystemCode = 'DEP' --AND @Businessdate BETWEEN CONVERT(VARCHAR,PERIODSTARTDATE,112) AND ISNULL(CONVERT(VARCHAR,PERIODENDDATE,112),'20991231')\n)\n,\nCnt_DCA\nAS(\n\nselect Accountid,\ncount(shareindicator) as CNT\n from dw.dimcustomeraccount where shareindicator = 'y'\n group by accountid\n)\n,\nBalance AS (\nSELECT \nCONVERT(VARCHAR,BCPB.PeriodStartDate,112)  AS BusinessDateSK\n,DDB.BranchSK AS BranchSK\n,DDBK.BankSK AS BankSK\n,DDA.AccountSK AS AccountSK\n,DDA.AccountId AS AccountId\n,BCPB.SourceSystemCode AS SourceSystemCode\n,0 AS WorkFlowId\n,0 AS TaskRunId\n,Getdate() AS InsertDttm\n,BCPB.IsoCurrencyCode\n,BCPB.FinancialInstitutionId\n,BCPB.BalanceAmount\n,ISNULL(NULLIF(DCA.CNT,''),1) CNT\nFROM \nCustomerAccountPeriodBalance BCPB\nJOIN BNKM.CustomerAccountFinancialProduct CAFP ON BCPB.CustomerAccountId = CAFP.CustomerAccountId AND BCPB.FinancialInstitutionId = CAFP.FinancialInstitutionId\nJOIN BNKM.FinancialProductApplication FPA ON CAFP.ProductId = FPA.FinancialProductId AND CAFP.FinancialInstitutionId = FPA.FinancialInstitutionId\nLEFT JOIN BNKM.CustomerAccount BCA ON BCPB.CustomerAccountId = BCA.CustomerAccountId\nLEFT JOIN DW.DimBranch DDB ON BCA.BranchId = DDB.BranchID\nLEFT JOIN DW.DimBank DDBK ON BCPB.FinancialInstitutionId = DDBK.BankID\nLEFT JOIN DW.DimAccount DDA ON BCPB.CustomerAccountId = DDA.AccountID\nLEFT JOIN Cnt_DCA DCA ON BCPB.CustomerAccountId = DCA.AccountId \nWHERE CAFP.ProductId NOT LIKE ('09%')\nAND FPA.FcbsApplicationId IN ('CAA', 'SBA', 'TDA')\n--and @Businessdate NOT IN (SELECT BusinessDateSK FROM DW.FactDepositsOutstandingBalance)\n)\nselect * into dw.factdepoutstdbal_Balance from Balance;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script1_copy1",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\nwith GetMinMaxDate AS (\nSELECT \n    BranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n    ,SourceSystemCode\n    ,convert(DATE, MIN(BusinessDateSK)) AS min_date\n    ,CONVERT(DATE, MAX(BusinessDateSK)) AS max_date \n  FROM \n     dw.factdepoutstdbal_Balance\nWHERE (BranchSK IS NOT NULL\n    AND BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL) AND BusinessDateSK >= '2023-01-01'\n\tGROUP BY BranchSK ,BankSK ,AccountSK ,AccountID ,SourceSystemCode\n)\n,FullDateBalance AS (\nSELECT \n\tBranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n\t,SourceSystemCode\n    ,CONVERT(VARCHAR,fulldate,112) AS fulldate2\n    ,a.FullDate\n    ,b.min_date \n    ,b.max_date \n  FROM \n    dw.dimdate a \n    LEFT JOIN GetMinMaxDate b\n\tON a.FullDate >= b.min_date \n    AND a.FullDate <= b.max_date \nWHERE (BranchSK IS NOT NULL\n    AND BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL)\n)\n,distinct_balance AS (\nSELECT DISTINCT \n    BranchSK ,BankSK ,AccountSK ,AccountId ,BusinessDateSK ,BalanceAmount ,SourceSystemCode ,WorkFlowId ,TaskRunId ,InsertDttm ,IsoCurrencyCode ,FinancialInstitutionId ,CNT\nFROM  dw.factdepoutstdbal_Balance b\nWHERE (BranchSK IS NOT NULL\n    AND BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL)\n)\n, join_balance as (\nselect \n CONVERT(VARCHAR,ISNULL(b.BusinessDateSK, a.FullDate),112)  AS BusinessDateSK\n,ISNULL(b.BranchSK,a.BranchSK) AS BranchSK\n,ISNULL(b.BankSK,a.BankSK) AS BankSK\n,ISNULL(b.AccountSK,a.AccountSK) AS AccountSK\n,ISNULL(b.AccountId,a.AccountId) AS AccountId\n,ISNULL(b.SourceSystemCode,a.SourceSystemCode) AS SourceSystemCode\n,ISNULL(b.WorkFlowId,0) AS WorkFlowId\n,ISNULL(b.TaskRunId,0) AS TaskRunId\n,ISNULL(b.InsertDttm,getdate()) AS InsertDttm                           \n,IsoCurrencyCode\n,FinancialInstitutionId\n,BalanceAmount\n,CNT\n,ROW_NUMBER() OVER (PARTITION BY a.BankSK,a.AccountId ORDER BY a.FullDate ) AS Row#\n, case when [BalanceAmount] is null then 0 else 1 end as ChangeIndicator\nFROM FullDateBalance a\nLEFT JOIN DISTINCT_BALANCE b\n    ON a.BranchSK = b.BranchSK\n    AND a.BankSK = b.BankSK\n    AND a.AccountSK = b.AccountSK\n    AND a.AccountID = b.AccountID\n    AND a.fulldate2 = b.BusinessDateSK\n    AND a.SourceSystemCode = b.SourceSystemCode\n\n)\nselect * into dw.factdepoutstdbal_join_balance from join_balance;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script1_copy1_copy1",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script1_copy1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "select *, Sum(ChangeIndicator) over (PARTITION BY BankSK, AccountId ORDER BY Row#) RowGroup into dw.factdepoutstdbal_rowgrp from dw.factdepoutstdbal_join_balance\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script1_copy1_copy1_copy1",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script1_copy1_copy1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "with final_balance as (\nselect \nBusinessDateSK\n,BranchSK\n,BankSK\n,AccountSK\n,AccountId\n,case when BCPB.IsoCurrencyCode is not null then BCPB.IsoCurrencyCode else first_value(BCPB.IsoCurrencyCode) over (partition by RowGroup,AccountId,BankSK ORDER BY Row#) end IsoCurrencyCode\n,case when BCPB.FinancialInstitutionId is not null then BCPB.FinancialInstitutionId else first_value(BCPB.FinancialInstitutionId) over (partition by RowGroup,AccountId,BankSK ORDER BY Row#) end FinancialInstitutionId\n,case when [BalanceAmount] is not null then BalanceAmount else first_value(BalanceAmount) over (partition by RowGroup,AccountId,BankSK ORDER BY Row#) end BalanceAmount\n,case when [CNT] is not null then CNT else first_value(CNT) over (partition by RowGroup,AccountId,BankSK ORDER BY Row#) end CNT\n,BCPB.SourceSystemCode\n,BCPB.WorkFlowId\n,BCPB.TaskRunId\n,BCPB.InsertDttm                           \nfrom dw.factdepoutstdbal_rowgrp BCPB) \n\nselect * into dw.factdepoutstdbal_final_balance from final_balance;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script1_copy1_copy1_copy1_copy1",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script1_copy1_copy1_copy1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "with CurrencyConversion\nAS(\n    SELECT * FROM BNKM.CurrencyConversion_FillGapDates WHERE ConvertToCurrencyId = 'PHP' AND RateId = 'REV'\n)\n\nINSERT INTO DW.FactDepositsOutstandingBalance\n(\n     BusinessDateSK\n    ,BranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n    ,BalanceAmountFull\n    ,BalanceAmountProrated\n    ,SourceSystemCode\n    ,WorkFlowId\n    ,TaskRunId\n    ,InsertDttm\n)\n\nselect \nCONVERT(VARCHAR,convert(date,BusinessDateSK),112)\n,BranchSK\n,BankSK\n,AccountSK\n,AccountId\n,CASE WHEN IsoCurrencyCode <> 'PHP' THEN BalanceAmount * CC.ConversionRate\n    ELSE BalanceAmount END BalanceAmountFull\n,CASE WHEN IsoCurrencyCode <> 'PHP' THEN (BalanceAmount * CC.ConversionRate )/ CNT\n    ELSE BalanceAmount / CNT  \n    END BalanceAmountProrated\n,BCPB.SourceSystemCode\n,BCPB.WorkFlowId\n,BCPB.TaskRunId\n,BCPB.InsertDttm    \n        \nfrom  dw.factdepoutstdbal_final_balance   BCPB\nLEFT JOIN CurrencyConversion CC ON  BCPB.IsoCurrencyCode  = CC.ConvertFromCurrencyId AND BCPB.FinancialInstitutionId = CC.FinancialInstitutionId AND CONVERT(VARCHAR,BCPB.BusinessDateSK) = CC.CurrencyConversionTimestamp\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script1_copy1_copy1_copy1_copy1_copy1",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script1_copy1_copy1_copy1_copy1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "drop table dw.factdepoutstdbal_Balance;\ndrop table dw.factdepoutstdbal_join_balance;\ndrop table dw.factdepoutstdbal_rowgrp;\ndrop table dw.factdepoutstdbal_final_balance;\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-12-13T08:38:43Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

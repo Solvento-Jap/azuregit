@@ -1,0 +1,20 @@
+{
+	"name": "rein_FactCardsCreditLimit",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nCREATE PROC [DW].[SP_DW_FACTCARDSCREDITLIMIT] AS\nBEGIN\n\n\nWITH \nCustomerAccountLimit\nAS(\n      SELECT * FROM [BNKM].[CustomerAccountLimit] WHERE SourceSystemCode = 'CCD'\n)\n\nINSERT INTO DW.FactCardsCreditLimit\n(\nBusinessDateSK\n,BranchSK\n,BankSK\n,AccountSK\n,AccountId\n,PermanentCreditLimit\n,CurrentCreditLimit\n,SourceSystemCode\n,WorkFlowId\n,TaskRunId\n,InsertDttm\n)\n\nSELECT\n BusinessDateSK\n,BranchSK\n,BankSK\n,AccountSK\n,AccountId\n,SUM(PermanentCreditLimit) PermanentCreditLimit\n,SUM(CurrentCreditLimit) CurrentCreditLimit\n,SourceSystemCode\n,WorkFlowId\n,TaskRunId\n,InsertDttm\nFROM (\nSELECT \n CONVERT(VARCHAR,BCL.[TIMESTAMP],112) AS BusinessDateSK\n,DDB.BranchSK AS BranchSK\n,DDBK.BankSK AS BankSK\n,DDA.AccountSK AS AccountSK\n,DDA.AccountId AS AccountId\n,CASE WHEN BCL.LimitTypeId = 'Permanent Credit Limit' THEN LimitAmount ELSE NULL END AS PermanentCreditLimit\n,CASE WHEN BCL.LimitTypeId = 'Credit Limit' THEN LimitAmount ELSE NULL END AS CurrentCreditLimit\n,BCL.SourceSystemCode AS SourceSystemCode\n,0 AS WorkFlowId\n,0 AS TaskRunId\n,Getdate() AS InsertDttm                                                                                          \nFROM \nCustomerAccountLimit BCL\nLEFT JOIN [BNKM].[CustomerAccount] BCA ON BCL.CustomerAccountId = BCA.CustomerAccountId\nLEFT JOIN [DW].[DimBranch] DDB ON BCA.BranchId = DDB.BranchID AND DDB.CurrentIndicator = 1\nLEFT JOIN [DW].[DimBank] DDBK ON BCL.FinancialInstitutionId = DDBK.BankID\nLEFT JOIN [DW].[DimAccount] DDA ON BCL.CustomerAccountId = DDA.AccountID AND DDA.CurrentIndicator = 1\nLEFT JOIN [BNKM].[CustomerAccountPaymentCard] BCP ON BCL.CustomerAccountId = BCP.CustomerAccountId\nLEFT JOIN [BNKM].[PaymentCard] BPC ON BPC.PaymentCardId = BCP.PaymentCardId\n\n) A\nwhere not exists (\n    select * from DW.FactCardsCreditLimit b\n    where \n    A.BusinessDateSK = b.[BusinessDateSK]\n    and A.AccountId = b.AccountId   \n)\nGROUP BY\nBusinessDateSK\n,BranchSK\n,BankSK\n,AccountSK\n,AccountId\n,SourceSystemCode\n,WorkFlowId\n,TaskRunId\n,InsertDttm\nEND\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

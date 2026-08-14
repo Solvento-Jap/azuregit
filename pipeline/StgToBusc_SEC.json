@@ -1,0 +1,3415 @@
+{
+	"name": "StgToBusc_SEC",
+	"properties": {
+		"activities": [
+			{
+				"name": "SEC_ACCOUNTLINK_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT COUNT(1) CNT FROM D360.STG_SEC_ACCOUNTLINK WHERE H = 'D'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_SEC_ACCOUNTLINK"
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition1",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "SEC_ACCOUNTLINK_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('SEC_ACCOUNTLINK_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "SEC_ACCOUNTLINK",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": "SELECT \nSTG.[ACCTKEY]\n,convert(numeric(19,0),ISNULL(NULLIF(REPLACE(STG.[CLTCODE],' ',''),''),0)) as CLTCODE\n,[LINKCODE]\n,1 as isActive\n,1 as isLatest\n,left(FILE_NAME, 5) as [BNK_CODE]\n,substring(FILE_NAME,7,3) as [SOURCE_CODE]\n,[FILE_NAME]\n,convert(date,[insert_dttm]) as insert_dttm\n FROM [BUSC].[SEC_ACCOUNTLINK_DELTA] DELTA\n LEFT JOIN [d360].[STG_SEC_ACCOUNTLINK] STG ON DELTA.ACCTKEY = STG.ACCTKEY AND DELTA.CLTCODE = STG.CLTCODE\nWhere H = 'D'",
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									},
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									}
+								},
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "ACCTKEY",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACCTKEY",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CLTCODE",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CLTCODE",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "LINKCODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "LINKCODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "isActive",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "isActive",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "isLatest",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "isLatest",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "BNK_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BNK_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SOURCE_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SOURCE_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FILE_NAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_SEC_ACCOUNTLINK"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_TGT",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "SEC_ACCOUNTLINK"
+									}
+								}
+							]
+						},
+						{
+							"name": "ErrorExecutionLog",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "SEC_ACCOUNTLINK",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 60,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[ErrorExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@pipeline().TriggerTime",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": {
+											"value": "@activity('SEC_ACCOUNTLINK').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": {
+											"value": "@activity('SEC_ACCOUNTLINK').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "@concat('FAILED - ',activity('SEC_ACCOUNTLINK').error.message)",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "SuccessExecutionLog",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "SEC_ACCOUNTLINK",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 60,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@addHours(pipeline().TriggerTime,+8)",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "SUCCESS",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "SEC_TBLCLIENT_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT COUNT(1) CNT FROM D360.STG_SEC_TBLCLIENT WHERE H = 'D'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_SEC_TBLCLIENT"
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition2",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "SEC_TBLCLIENT_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('SEC_TBLCLIENT_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE2",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "SEC_TBLCLIENT",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": "SELECT\nconvert(numeric(18,0),ISNULL(NULLIF(REPLACE(STG.[CLTCODE],' ',''),''),0)) as CLTCODE\n,[CLTTYPE]\n,[FNAME]\n,[LNAME]\n,[MNAME]\n,[SUFF]\n,[CNAME]\n,convert(date, [BDATE]) as BDATE\n,[BPLACE]\n,[MOTHER]\n,[SEX]\n,[CIVILSTAT]\n,[SPOUSE]\n,convert(date, [NATDATE]) as NATDATE\n,[CELLPHONE]\n,[PRIM_EMAIL]\n,[ALT_EMAIL]\n,[EMPFLAG]\n,[AFFILIATENAME]\n,[RMNUM]\n,[EMPLOYSTATUS]\n,[EMPLOYOTHERS]\n,[COMPNAME]\n,[BUSNATURE]\n,[COMPPOS]\n,convert(date, [COMPSTART]) as COMPSTART\n,convert(numeric(9,0),ISNULL(NULLIF(REPLACE([COMPYEARS],' ',''),''),0)) as COMPYEARS\n,[SSSNUMBER]\n,[PASSPORT]\n,[DRVLICENSE]\n,[INCORP_REGNO]\n,convert(date, [INCORP_DATE]) as INCORP_DATE\n,[INCORP_CERT]\n,[TAXFLAG]\n,[TAXREM]\n,[HOME_ADDR1]\n,[HOME_ADDR2]\n,[HOME_ADDR3]\n,[HOME_ZIP]\n,[HOME_PHONE]\n,[HOME_FAX]\n,[OFC_ADDR1]\n,[OFC_ADDR2]\n,[OFC_ADDR3]\n,[OFC_ZIP]\n,[OFC_PHONE]\n,[OFC_PHONE2]\n,[OFC_FAX]\n,[OFC_FAX2]\n,[PERM_ADDR1]\n,[PERM_ADDR2]\n,[PERM_ADDR3]\n,[PERM_ZIP]\n,[PERM_PHONE]\n,[PERM_FAX]\n,[BROKEREMPLOY]\n,[BROKEREMPNAME]\n,[PSEOFFICER]\n,[PSECNAME]\n,[ACCTBROKER]\n,[ACCTBROKERNAME]\n,[NETWORTH_CURR]\n,[NETWORTH_RANGE]\n,[ANNINC_CURR]\n,[ANNINC_RANGE]\n,[ASSETS_CURR]\n,[ASSETS_RANGE]\n,[INVESTOBJ]\n,[FUNDSOURCE]\n,[ASSETS]\n,[NETWORTH]\n,[ANNUAL_INCOME]\n,[ACCTKEY]\n,convert(date, [DVRLICENSE_EXPRD]) as DVRLICENSE_EXPRD\n,convert(date, [PASSPORT_EXPRD]) as PASSPORT_EXPRD\n,[NATIONALITY]\n,[TIN]\n,[INCORP_COUNTRY]\n,[HOME_COUNTRY]\n,[OFC_COUNTRY]\n,[PERM_COUNTRY]\n,[BROKEROFFICER]\n,[NATIONALITY2]\n,convert(numeric(10,0),ISNULL(NULLIF(REPLACE([SUBACCT],' ',''),''),0)) as SUBACCT\n,[RISKCLASS]\n,[SETA_BRANCHCODE]\n,[SETA_BRANCHNAME]\n,[SETA_ACCTNO]\n,[OCCUPATION]\n,[EMPLOYER_NAME]\n,[TRUSTFLAG]\n,[LFFLAG]\n,[RELATEDPARTY_FLAG]\n,[AFFILIATEFLAG]\n,[FATCAFLAG]\n,[RELATIONSHIP]\n,[BUSSECTOR]\n,[RISK_SCORE]\n,[REFERREDBY]\n,[KYC]\n,STG.[STATUS]\n,[CELLPHONE2]\n,[CONTACTPERSON]\n,[CONTACTPOSITION]\n,convert(date, [DATE_CREATED]) as DATE_CREATED\n,convert(date, [LASTUPDATED]) as LASTUPDATED\n,[AMLC_WATCHLIST]\n,[PEPFLAG]\n,[FUNDSOURCE_COUNTRY]\n,[GOVTINST]\n,[GOVTEMP]\n,[NDVFLAG]\n,[EMPRANK]\n,[BUSREG_CERT]\n,[INCORP_REGCERT]\n,[STOCK_GRANTEE]\n,[EMPID]\n,[MAKER]\n,convert(date, [MAKER_DATE]) as MAKER_DATE\n,[CHECKER]\n,convert(date, [CHECKER_DATE]) as CHECKER_DATE\n,1 as isActive\n,1 as isLatest\n,left(FILE_NAME, 5) as [BNK_CODE]\n,substring(FILE_NAME,7,3) as [SOURCE_CODE]\n,[FILE_NAME]\n,convert(date,[insert_dttm]) as insert_dttm\n FROM [BUSC].[SEC_TBLCLIENT_DELTA] DELTA\n LEFT JOIN [d360].[STG_SEC_TBLCLIENT] STG ON DELTA.CLTCODE = STG.CLTCODE\nWHERE H='D'",
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									},
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									}
+								},
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "CLTCODE",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CLTCODE",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CLTTYPE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CLTTYPE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FNAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FNAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "LNAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "LNAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "MNAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "MNAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SUFF",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SUFF",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CNAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CNAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BDATE",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "BDATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "BPLACE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BPLACE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "MOTHER",
+												"type": "String"
+											},
+											"sink": {
+												"name": "MOTHER",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SEX",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SEX",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CIVILSTAT",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CIVILSTAT",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SPOUSE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SPOUSE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "NATDATE",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "NATDATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "CELLPHONE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CELLPHONE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "PRIM_EMAIL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PRIM_EMAIL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ALT_EMAIL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ALT_EMAIL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "EMPFLAG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "EMPFLAG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "AFFILIATENAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "AFFILIATENAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "RMNUM",
+												"type": "String"
+											},
+											"sink": {
+												"name": "RMNUM",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "EMPLOYSTATUS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "EMPLOYSTATUS",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "EMPLOYOTHERS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "EMPLOYOTHERS",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "COMPNAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "COMPNAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "COMPPOS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "COMPPOS",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BUSNATURE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BUSNATURE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "COMPSTART",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "COMPSTART",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "COMPYEARS",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "COMPYEARS",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SSSNUMBER",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SSSNUMBER",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "PASSPORT",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PASSPORT",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "DRVLICENSE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "DRVLICENSE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "INCORP_REGNO",
+												"type": "String"
+											},
+											"sink": {
+												"name": "INCORP_REGNO",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "INCORP_DATE",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "INCORP_DATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "INCORP_CERT",
+												"type": "String"
+											},
+											"sink": {
+												"name": "INCORP_CERT",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "TAXFLAG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "TAXFLAG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "TAXREM",
+												"type": "String"
+											},
+											"sink": {
+												"name": "TAXREM",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "HOME_ADDR1",
+												"type": "String"
+											},
+											"sink": {
+												"name": "HOME_ADDR1",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "HOME_ADDR2",
+												"type": "String"
+											},
+											"sink": {
+												"name": "HOME_ADDR2",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "HOME_ADDR3",
+												"type": "String"
+											},
+											"sink": {
+												"name": "HOME_ADDR3",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "HOME_ZIP",
+												"type": "String"
+											},
+											"sink": {
+												"name": "HOME_ZIP",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "HOME_PHONE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "HOME_PHONE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "HOME_FAX",
+												"type": "String"
+											},
+											"sink": {
+												"name": "HOME_FAX",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "OFC_ADDR1",
+												"type": "String"
+											},
+											"sink": {
+												"name": "OFC_ADDR1",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "OFC_ADDR2",
+												"type": "String"
+											},
+											"sink": {
+												"name": "OFC_ADDR2",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "OFC_ADDR3",
+												"type": "String"
+											},
+											"sink": {
+												"name": "OFC_ADDR3",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "OFC_ZIP",
+												"type": "String"
+											},
+											"sink": {
+												"name": "OFC_ZIP",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "OFC_PHONE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "OFC_PHONE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "OFC_PHONE2",
+												"type": "String"
+											},
+											"sink": {
+												"name": "OFC_PHONE2",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "OFC_FAX",
+												"type": "String"
+											},
+											"sink": {
+												"name": "OFC_FAX",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "OFC_FAX2",
+												"type": "String"
+											},
+											"sink": {
+												"name": "OFC_FAX2",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "PERM_ADDR1",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PERM_ADDR1",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "PERM_ADDR2",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PERM_ADDR2",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "PERM_ADDR3",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PERM_ADDR3",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "PERM_ZIP",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PERM_ZIP",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "PERM_PHONE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PERM_PHONE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "PERM_FAX",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PERM_FAX",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BROKEREMPLOY",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BROKEREMPLOY",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BROKEREMPNAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BROKEREMPNAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "PSEOFFICER",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PSEOFFICER",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "PSECNAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PSECNAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCTBROKER",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACCTBROKER",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCTBROKERNAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACCTBROKERNAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "NETWORTH_CURR",
+												"type": "String"
+											},
+											"sink": {
+												"name": "NETWORTH_CURR",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "NETWORTH_RANGE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "NETWORTH_RANGE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ANNINC_CURR",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ANNINC_CURR",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ANNINC_RANGE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ANNINC_RANGE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ASSETS_CURR",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ASSETS_CURR",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ASSETS_RANGE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ASSETS_RANGE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "INVESTOBJ",
+												"type": "String"
+											},
+											"sink": {
+												"name": "INVESTOBJ",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FUNDSOURCE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FUNDSOURCE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ASSETS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ASSETS",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "NETWORTH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "NETWORTH",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ANNUAL_INCOME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ANNUAL_INCOME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCTKEY",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACCTKEY",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "DVRLICENSE_EXPRD",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "DVRLICENSE_EXPRD",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "PASSPORT_EXPRD",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "PASSPORT_EXPRD",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "NATIONALITY",
+												"type": "String"
+											},
+											"sink": {
+												"name": "NATIONALITY",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "TIN",
+												"type": "String"
+											},
+											"sink": {
+												"name": "TIN",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "INCORP_COUNTRY",
+												"type": "String"
+											},
+											"sink": {
+												"name": "INCORP_COUNTRY",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "HOME_COUNTRY",
+												"type": "String"
+											},
+											"sink": {
+												"name": "HOME_COUNTRY",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "OFC_COUNTRY",
+												"type": "String"
+											},
+											"sink": {
+												"name": "OFC_COUNTRY",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "PERM_COUNTRY",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PERM_COUNTRY",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BROKEROFFICER",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BROKEROFFICER",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "NATIONALITY2",
+												"type": "String"
+											},
+											"sink": {
+												"name": "NATIONALITY2",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SUBACCT",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "SUBACCT",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "RISKCLASS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "RISKCLASS",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SETA_BRANCHCODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SETA_BRANCHCODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SETA_BRANCHNAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SETA_BRANCHNAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SETA_ACCTNO",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SETA_ACCTNO",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "OCCUPATION",
+												"type": "String"
+											},
+											"sink": {
+												"name": "OCCUPATION",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "EMPLOYER_NAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "EMPLOYER_NAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "TRUSTFLAG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "TRUSTFLAG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "LFFLAG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "LFFLAG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "RELATEDPARTY_FLAG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "RELATEDPARTY_FLAG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "AFFILIATEFLAG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "AFFILIATEFLAG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FATCAFLAG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FATCAFLAG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "RELATIONSHIP",
+												"type": "String"
+											},
+											"sink": {
+												"name": "RELATIONSHIP",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BUSSECTOR",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BUSSECTOR",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "RISK_SCORE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "RISK_SCORE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "REFERREDBY",
+												"type": "String"
+											},
+											"sink": {
+												"name": "REFERREDBY",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "KYC",
+												"type": "String"
+											},
+											"sink": {
+												"name": "KYC",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "STATUS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "STATUS",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CELLPHONE2",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CELLPHONE2",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CONTACTPERSON",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CONTACTPERSON",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CONTACTPOSITION",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CONTACTPOSITION",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "DATE_CREATED",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "DATE_CREATED",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "LASTUPDATED",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "LASTUPDATED",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "AMLC_WATCHLIST",
+												"type": "String"
+											},
+											"sink": {
+												"name": "AMLC_WATCHLIST",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "PEPFLAG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PEPFLAG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FUNDSOURCE_COUNTRY",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FUNDSOURCE_COUNTRY",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "GOVTINST",
+												"type": "String"
+											},
+											"sink": {
+												"name": "GOVTINST",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "GOVTEMP",
+												"type": "String"
+											},
+											"sink": {
+												"name": "GOVTEMP",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "NDVFLAG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "NDVFLAG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "EMPRANK",
+												"type": "String"
+											},
+											"sink": {
+												"name": "EMPRANK",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BUSREG_CERT",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BUSREG_CERT",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "INCORP_REGCERT",
+												"type": "String"
+											},
+											"sink": {
+												"name": "INCORP_REGCERT",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "STOCK_GRANTEE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "STOCK_GRANTEE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "EMPID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "EMPID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "MAKER",
+												"type": "String"
+											},
+											"sink": {
+												"name": "MAKER",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "MAKER_DATE",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "MAKER_DATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "CHECKER",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CHECKER",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CHECKER_DATE",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "CHECKER_DATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "isActive",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "isActive",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "isLatest",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "isLatest",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "BNK_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BNK_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SOURCE_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SOURCE_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FILE_NAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_SEC_TBLCLIENT"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_TGT",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "SEC_TBLCLIENT"
+									}
+								}
+							]
+						},
+						{
+							"name": "ErrorExecutionLog_3",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "SEC_TBLCLIENT",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 60,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@pipeline().TriggerTime",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": {
+											"value": "@activity('SEC_TBLCLIENT').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": {
+											"value": "@activity('SEC_TBLCLIENT').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "@concat('FAILED - ',activity('SEC_TBLCLIENT').error.message)",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "SuccessExecutionLog_3",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "SEC_TBLCLIENT",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 60,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@addHours(pipeline().TriggerTime,+8)",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "SUCCESS",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "SEC_TBLACCOUNTS_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT COUNT(1) CNT FROM D360.STG_SEC_TBLACCOUNTS WHERE H = 'D'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_SEC_TBLACCOUNTS"
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition3",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "SEC_TBLACCOUNTS_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('SEC_TBLACCOUNTS_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE3",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "SEC_TBLACCOUNTS",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": "SELECT\nSTG.[ACCTCODE]\n,[LAST6_ACCT_NUM]\n,[ACCTKEY]\n,[ACCTNAME]\n,[ACCTTYPE]\n,[CUSTTYPE]\n,NULL as [CNAME]\n,[LFFLAG]\n,[PCFLAG]\n,[COMMTYPE]\n,[TRADETYPE]\n,[RESTRICTCD]\n,[USERID]\n,[MKTXREF]\n,STG.[STATUS]\n,convert(datetime2, stuff(stuff(stuff(STATUSDATE, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) as STATUSDATE\n,[MAILPREF]\n,[MAILSTATUS]\n,convert(numeric(18,10),ISNULL(NULLIF(REPLACE([COMMRATE1],' ',''),''),0)) as COMMRATE1\n,convert(numeric(18,10),ISNULL(NULLIF(REPLACE([COMMRATE2],' ',''),''),0)) as COMMRATE2\n,[MARGINFLAG]\n,convert(numeric(18,2),ISNULL(NULLIF(REPLACE([CRLIMIT],' ',''),''),0)) as CRLIMIT\n,convert(datetime2, stuff(stuff(stuff(LASTTRADEDATE, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) as LASTTRADEDATE\n,convert(date, [DATE_OPEN]) as DATE_OPEN\n,convert(datetime2, stuff(stuff(stuff(DATE_CLOSED, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) as DATE_CLOSED\n,[AGENTCODE]\n,[TAXFLAG]\n,[TAXREM]\n,[AFFILIATEFLAG]\n,[RELATEDPARTY_FLAG]\n,[COMMBASE]\n,[USERTYPE]\n,[AMLC_CLASS]\n,[PCDTAXCODE]\n,[WITHNOCD]\n,[NOCDACCTNO]\n,convert(date, [NOCDUPLOAD_DATE]) as NOCDUPLOAD_DATE\n,[CURRCODE]\n,[BSP_DOSRI]\n,[REFERREDBY]\n,[REFERROR_CODE]\n,[AREA]\n,[REGION]\n,[RISKCLASS]\n,[PSESHARES_RELATEDPARTY_FLAG]\n,[RTS]\n,convert(date, [DATE_UPDATED]) as DATE_UPDATED\n,convert(date, [DATE_ONLINE]) as DATE_ONLINE\n,[STOCK_GRANTEE]\n,1 as isActive\n,1 as isLatest\n,left(FILE_NAME, 5) as [BNK_CODE]\n,substring(FILE_NAME,7,3) as [SOURCE_CODE]\n,[FILE_NAME]\n,convert(date,[insert_dttm]) as insert_dttm\n FROM [BUSC].[SEC_TBLACCOUNTS_DELTA] DELTA\n LEFT JOIN [d360].[STG_SEC_TBLACCOUNTS] STG ON DELTA.ACCTCODE = STG.ACCTCODE \nWhere H='D'",
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									},
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									}
+								},
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "ACCTCODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACCTCODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCTNAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACCTNAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CNAME",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "CNAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCTTYPE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACCTTYPE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CUSTTYPE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CUSTTYPE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "LFFLAG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "LFFLAG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "PCFLAG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PCFLAG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "COMMTYPE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "COMMTYPE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "TRADETYPE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "TRADETYPE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "RESTRICTCD",
+												"type": "String"
+											},
+											"sink": {
+												"name": "RESTRICTCD",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "USERID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "USERID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "MKTXREF",
+												"type": "String"
+											},
+											"sink": {
+												"name": "MKTXREF",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "STATUS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "STATUS",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "STATUSDATE",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "STATUSDATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "MAILPREF",
+												"type": "String"
+											},
+											"sink": {
+												"name": "MAILPREF",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "COMMRATE1",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "COMMRATE1",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "COMMRATE2",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "COMMRATE2",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "MARGINFLAG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "MARGINFLAG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CRLIMIT",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "CRLIMIT",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "LASTTRADEDATE",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "LASTTRADEDATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "DATE_OPEN",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "DATE_OPEN",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "DATE_CLOSED",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "DATE_CLOSED",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "AGENTCODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "AGENTCODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "TAXFLAG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "TAXFLAG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "TAXREM",
+												"type": "String"
+											},
+											"sink": {
+												"name": "TAXREM",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "AFFILIATEFLAG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "AFFILIATEFLAG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "RELATEDPARTY_FLAG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "RELATEDPARTY_FLAG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "COMMBASE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "COMMBASE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "USERTYPE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "USERTYPE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "AMLC_CLASS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "AMLC_CLASS",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "PCDTAXCODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PCDTAXCODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "WITHNOCD",
+												"type": "String"
+											},
+											"sink": {
+												"name": "WITHNOCD",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "NOCDACCTNO",
+												"type": "String"
+											},
+											"sink": {
+												"name": "NOCDACCTNO",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "NOCDUPLOAD_DATE",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "NOCDUPLOAD_DATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "CURRCODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CURRCODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BSP_DOSRI",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BSP_DOSRI",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "REFERREDBY",
+												"type": "String"
+											},
+											"sink": {
+												"name": "REFERREDBY",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "REFERROR_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "REFERROR_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "AREA",
+												"type": "String"
+											},
+											"sink": {
+												"name": "AREA",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "REGION",
+												"type": "String"
+											},
+											"sink": {
+												"name": "REGION",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "RISKCLASS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "RISKCLASS",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "PSESHARES_RELATEDPARTY_FLAG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "PSESHARES_RELATEDPARTY_FLAG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "RTS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "RTS",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "DATE_UPDATED",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "DATE_UPDATED",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "DATE_ONLINE",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "DATE_ONLINE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "STOCK_GRANTEE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "STOCK_GRANTEE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "MAILSTATUS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "MAILSTATUS",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCTKEY",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACCTKEY",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "isActive",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "isActive",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "isLatest",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "isLatest",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "LAST6_ACCT_NUM",
+												"type": "String"
+											},
+											"sink": {
+												"name": "LAST6_ACCT_NUM",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BNK_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BNK_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SOURCE_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SOURCE_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FILE_NAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_SEC_TBLACCOUNTS"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_TGT",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "SEC_TBLACCOUNTS"
+									}
+								}
+							]
+						},
+						{
+							"name": "ErrorExecutionLog_2",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "SEC_TBLACCOUNTS",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 60,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@pipeline().TriggerTime",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": {
+											"value": "@activity('SEC_TBLACCOUNTS').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": {
+											"value": "@activity('SEC_TBLACCOUNTS').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "@concat('FAILED - ',activity('SEC_TBLACCOUNTS').error.message)",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "SuccessExecutionLog_2",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "SEC_TBLACCOUNTS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 60,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@addHours(pipeline().TriggerTime,+8)",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "SUCCESS",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "SEC_PORTFOLIO_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT COUNT(1) CNT FROM D360.STG_SEC_PORTFOLIO WHERE H = 'D'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_SEC_PORTFOLIO"
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition4",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "SEC_PORTFOLIO_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('SEC_PORTFOLIO_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE4",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "SEC_PORTFOLIO",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": "SELECT\nCUSTCODE\n,[LAST6_ACCT_NUM]\n,[SECURITY]\n,convert(numeric(4,0),ISNULL(NULLIF(REPLACE([MSYEAR],' ',''),''),0)) as MSYEAR\n,convert(numeric(18,0),ISNULL(NULLIF(REPLACE([ENDSHARES],' ',''),''),0)) as ENDSHARES\n,convert(numeric(18,2),ISNULL(NULLIF(REPLACE([ENDVALUE],' ',''),''),0)) as ENDVALUE\n,convert(numeric(18,0),ISNULL(NULLIF(REPLACE(STG.[ID],' ',''),''),0)) as ID\n,convert(date, [REFDATE]) as REFDATE\n,1 as isActive\n,1 as isLatest\n,0 as EXECPRICE\n,0 as SELLVALUE\n,0 as GAINLOSS\n,left(FILE_NAME, 5) as [BNK_CODE]\n,substring(FILE_NAME,7,3) as [SOURCE_CODE]\n,[FILE_NAME]\n,convert(date,[insert_dttm]) as insert_dttm\n FROM [BUSC].[SEC_PORTFOLIO_DELTA] DELTA\n LEFT JOIN [d360].[STG_SEC_PORTFOLIO] STG ON DELTA.ID = STG.ID \nwhere H = 'D'",
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									},
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									}
+								},
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "SECURITY",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SECURITY",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ENDSHARES",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "ENDSHARES",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "ENDVALUE",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "ENDVALUE",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "CUSTCODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CUSTCODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ID",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "isActive",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "isActive",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "isLatest",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "isLatest",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "LAST6_ACCT_NUM",
+												"type": "String"
+											},
+											"sink": {
+												"name": "LAST6_ACCT_NUM",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "MSYEAR",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "MSYEAR",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "REFDATE",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "REFDATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "EXECPRICE",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "EXECPRICE",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SELLVALUE",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "SELLVALUE",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "GAINLOSS",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "GAINLOSS",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "BNK_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BNK_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SOURCE_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SOURCE_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FILE_NAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_SEC_PORTFOLIO"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_TGT",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "SEC_PORTFOLIO"
+									}
+								}
+							]
+						},
+						{
+							"name": "ErrorExecutionLog_1",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "SEC_PORTFOLIO",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 60,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@pipeline().TriggerTime",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": {
+											"value": "@activity('SEC_PORTFOLIO').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": {
+											"value": "@activity('SEC_PORTFOLIO').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "@concat('FAILED - ',activity('SEC_PORTFOLIO').error.message)",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "SuccessExecutionLog_1",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "SEC_PORTFOLIO",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 60,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@addHours(pipeline().TriggerTime,+8)",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "SUCCESS",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "SEC_LEDGER_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT COUNT(1) CNT FROM D360.STG_SEC_LEDGER WHERE H = 'D'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_SEC_LEDGER"
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition5",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "SEC_LEDGER_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('SEC_LEDGER_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE5",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "SEC_LEDGER",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": "SELECT \n    CUSTCODE\n    ,LAST6_ACCT_NUM\n    ,REFCODE\n    ,convert(date,REFDATE) AS REFDATE\n    ,CURRCODE\n    ,convert(numeric(18,2),ISNULL(NULLIF(REPLACE(CURRAMT,' ',''),''),0)) AS CURRAMT\n    ,1 as isActive\n    ,1 as isLatest\n    ,left(FILE_NAME, 5) as BNK_CODE\n    ,substring(FILE_NAME,7,3) as SOURCE_CODE\n    ,FILE_NAME\n    ,convert(date,insert_dttm) as insert_dttm\nFROM d360.STG_SEC_LEDGER\nWHERE H = 'D'",
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									},
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									}
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_SEC_LEDGER"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_TGT",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "SEC_LEDGER"
+									}
+								}
+							]
+						},
+						{
+							"name": "ErrorExecutionLog5",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "SEC_LEDGER",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 60,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@pipeline().TriggerTime",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": {
+											"value": "@activity('SEC_LEDGER').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": {
+											"value": "@activity('SEC_LEDGER').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "@concat('FAILED - ',activity('SEC_LEDGER').error.message)",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "SuccessExecutionLog5",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "SEC_LEDGER",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 60,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@addHours(pipeline().TriggerTime,+8)",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "SUCCESS",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-10-19T07:27:55Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,20 @@
+{
+	"name": "customeraccountstatus_dup",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "\nSELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'BNKM' AND TABLE_NAME ='customeraccountstatus';\n\nCREATE TABLE [BNKM].[customeraccountstatus_WITH_DUP_20230504]\n( \n\t[RN] [bigint]  NULL,\n\t[CustomerAccountId] [nvarchar](32)  NOT NULL,\n\t[PeriodStartTimestamp] [datetime]  NOT NULL,\n\t[PeriodEndTimestamp] [datetime]  NULL,\n\t[CustomerAccountStatusTypeId] [nvarchar](32)  NULL,\n\t[CustomerAccountStatusNote] [nvarchar](1024)  NULL,\n\t[CustomerId] [nvarchar](64)  NULL,\n\t[FinancialInstitutionId] [nvarchar](32)  NULL,\n\t[SourceSystemCode] [varchar](50)  NOT NULL,\n\t[TaskRunId] [bigint]  NOT NULL,\n\t[WorkFlowId] [bigint]  NOT NULL,\n\t[InsertDttm] [datetime]  NOT NULL\n)\nWITH\n(\n\tDISTRIBUTION = ROUND_ROBIN,\n\tCLUSTERED COLUMNSTORE INDEX\n)\nGO\n\n\n--1 CHECK DUPLICATE\nSELECT  CustomerAccountId, PeriodStartTimestamp, CustomerAccountStatusTypeId,FinancialInstitutionId,SOURCESYSTEMCODE, count(1)\nFROM bnkm.customeraccountstatus -- WHERE CUSTOMERACCOUNTID = ''\nGROUP BY CustomerAccountId, PeriodStartTimestamp, CustomerAccountStatusTypeId,FinancialInstitutionId,SOURCESYSTEMCODE\nHAVING count(1) > 1\n--\nSELECT * FROM bnkm.customeraccountstatus WHERE CUSTOMERACCOUNTID = ''\n\n--2 TAGGED DUPLICATE   with pipeline alternative\nSELECT ROW_NUMBER() OVER(PARTITION BY  CustomerAccountId, PeriodStartTimestamp, CustomerAccountStatusTypeId,FinancialInstitutionId,SOURCESYSTEMCODE ORDER BY PeriodEndTimestamp DESC, INSERTDTTM DESC ) RN , --define PKs in partition by\n* \nINTO bnkm.customeraccountstatus_WITH_DUP_20230504  --Name of backup table to store duplicate records\nFROM bnkm.customeraccountstatus; --Target table to remove duplicate\n--\nSELECT * FROM bnkm.customeraccountstatus_WITH_DUP_20230504 WHERE CUSTOMERACCOUNTID = '' ORDER BY RN\n\n--3 CHECK COUNT MAIN AND BU TABLE\nSELECT COUNT(*) FROM bnkm.customeraccountstatus_WITH_DUP_20230504\n8386616\nSELECT COUNT(*) FROM bnkm.customeraccountstatus\n8386616\n\n--4 CLEAN DUP\nTRUNCATE TABLE bnkm.customeraccountstatus; -- Truncate target table to remove duplicate\n\n--5 INSERT BACK UNIQUE RECORDS ONLY\nINSERT INTO bnkm.customeraccountstatus --Target table to remove duplicate\nSELECT  \nCustomerAccountId\n,PeriodStartTimestamp\n,PeriodEndTimestamp\n,CustomerAccountStatusTypeId\n,CustomerAccountStatusNote\n,CustomerId\n,FinancialInstitutionId\n,SourceSystemCode\n,TaskRunId\n,WorkFlowId\n,InsertDttm\nFROM bnkm.customeraccountstatus_WITH_DUP_20230504 -- Name of backup table to store duplicate records\nWHERE RN = 1;\n\n--6 CHECK IF STILL HAVE DUP\nSELECT  CustomerAccountId, PeriodStartTimestamp, CustomerAccountStatusTypeId,FinancialInstitutionId,SOURCESYSTEMCODE, count(1)\nFROM bnkm.customeraccountstatus -- WHERE CUSTOMERACCOUNTID = ''\nGROUP BY CustomerAccountId, PeriodStartTimestamp, CustomerAccountStatusTypeId,FinancialInstitutionId,SOURCESYSTEMCODE\nHAVING count(1) > 1\n\nSELECT * FROM bnkm.customeraccountstatus WHERE CUSTOMERACCOUNTID = ''\n\n--7 COUNT\nSELECT COUNT(*) FROM bnkm.customeraccountstatus\n4392141\n\n\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

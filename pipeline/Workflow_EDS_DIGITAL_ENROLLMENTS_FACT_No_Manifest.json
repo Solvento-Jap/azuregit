@@ -1,0 +1,577 @@
+{
+	"name": "Workflow_EDS_DIGITAL_ENROLLMENTS_FACT_No_Manifest",
+	"properties": {
+		"activities": [
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(variables('V_endDate')),ticks(variables('V_startDate'))),864000000000),1))\n",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append Process Date",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Iterate Execution of Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "OM_SRC_CHECK_DIGITAL_ENROLLMENTS_FACT",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_EDS_DIGITAL_ENROLLMENTS_FACT",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@replace(substring(item(),0,10),'-','')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Get Success Count EDS",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "OM_SRC_CHECK_DIGITAL_ENROLLMENTS_FACT",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_EDS_DIGITAL_FIN_TXN_FACT'',''EDS'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count EDS",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count EDS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count EDS').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "START_TASK_EDS_DIGITAL_ENROLLMENTS_FACT",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_DIGITAL_ENROLLMENTS_FACT",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_DIGITAL_ENROLLMENTS_FACT_SUCCESSFUL",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_DIGITAL_ENROLLMENTS_FACT",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_DIGITAL_ENROLLMENTS_FACT",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_DIGITAL_ENROLLMENTS_FACT_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_DIGITAL_ENROLLMENTS_FACT",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_DIGITAL_ENROLLMENTS_FACT",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "EDS_DIGITAL_ENROLLMENTS_FACT",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_EDS_DIGITAL_ENROLLMENTS_FACT",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testsqlpool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"parameters": [
+														{
+															"name": "process_date",
+															"type": "Datetime",
+															"value": {
+																"value": "@substring(item(),0,10)",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														}
+													],
+													"type": "NonQuery",
+													"text": "\r\nINSERT INTO EDS.DIGITAL_ENROLLMENTS_FACT\r\n(\r\n     BANK_ID\r\n    ,SOURCE_CODE\r\n    ,CIF_ID\r\n    ,RELATIONSHIPOPENINGDATE\r\n    ,USER_NAME\r\n    ,STATUS\r\n    ,STD_STATUS\r\n    ,STATUS_DATE\r\n    ,ENROLLMENT_DATE\r\n    ,SCD_START_DATE\r\n    ,SCD_END_DATE\r\n    ,INSERT_DTTM\r\n)\r\nSELECT MBK_RTBKCUSTOMERMTB.BNK_CODE AS BANK_ID\r\n\t, MBK_RTBKCUSTOMERMTB.SOURCE_CODE\r\n\t, MBK_RTBKCUSTOMERMTB.CIF_NO AS CIF_ID\r\n\t, CUSTOMER_DIM.RELATIONSHIPOPENINGDATE AS RELATIONSHIPOPENINGDATE\r\n\t, MBK_RTBKCUSTOMERMTB.USER_ID AS USER_NAME\r\n\t, CAST(MBK_RTBKCUSTOMERMTB.STATUS AS CHAR(1)) AS STATUS\r\n\t, ENROLLMENT_STATUS_DIM.STD_STATUS\r\n\t, MBK_RTBKCUSTOMERMTB.STATUS_CHANGE_DT AS STATUS_DATE\r\n\t, MBK_RTBKCUSTOMERMTB.CREATED_DATE AS ENROLLMENT_DATE\r\n\t, MBK_RTBKCUSTOMERMTB.SCD_START_DATE\r\n\t, MBK_RTBKCUSTOMERMTB.SCD_END_DATE\r\n\t, MBK_RTBKCUSTOMERMTB.INSERT_DTTM\r\nFROM EDS.MBK_RTBKCUSTOMERMTB\r\nJOIN EDS.ENROLLMENT_STATUS_DIM\r\nON ENROLLMENT_STATUS_DIM.STATUS_ID = CAST(MBK_RTBKCUSTOMERMTB.STATUS AS CHAR(1))\r\nLEFT JOIN EDS.CUSTOMER_DIM ON MBK_RTBKCUSTOMERMTB.CIF_NO = CUSTOMER_DIM.ORGKEY \r\nAND CUSTOMER_DIM.ISACTIVE = 1 AND CUSTOMER_DIM.ISLATEST = 1 AND CUSTOMER_DIM.BNK_CODE = 'CBC01'\r\nWHERE MBK_RTBKCUSTOMERMTB.BNK_CODE = 'CBC01'\r\nUNION ALL\r\nSELECT RIB_CUSTOMERLOCATION.BANK_ID\r\n\t, RIB_CUSTOMERLOCATION.SOURCE_CODE\r\n\t, RIB_CUSTOMERLOCATION.CUST_ID\r\n\t, CUSTOMER_DIM.RELATIONSHIPOPENINGDATE AS RELATIONSHIPOPENINGDATE\r\n\t, RIB_CUSTOMERLOCATION.CORP_USER\r\n\t, RIB_CUSTOMERLOCATION.DEL_FLG\r\n\t, ENROLLMENT_STATUS_DIM.STD_STATUS\r\n\t, CASE WHEN RIB_CUSTOMERLOCATION.DEL_FLG = 'Y' THEN CAST(RIB_CUSTOMERLOCATION.R_MOD_TIME AS DATE) ELSE CAST(RIB_CUSTOMERLOCATION.R_CRE_TIME AS DATE) END STATUS_DATE\r\n\t, CAST(RIB_CUSTOMERLOCATION.R_CRE_TIME AS DATE) R_CRE_TIME\r\n\t, RIB_CUSTOMERLOCATION.SCD_START_DATE\r\n\t, RIB_CUSTOMERLOCATION.SCD_END_DATE\r\n\t, RIB_CUSTOMERLOCATION.INSERT_DTTM\r\nFROM EDS.RIB_CUSTOMERLOCATION\r\nJOIN EDS.ENROLLMENT_STATUS_DIM\r\nON ENROLLMENT_STATUS_DIM.STATUS_ID = RIB_CUSTOMERLOCATION.DEL_FLG\r\nLEFT JOIN EDS.CUSTOMER_DIM ON RIB_CUSTOMERLOCATION.CUST_ID = CUSTOMER_DIM.ORGKEY \r\nAND CUSTOMER_DIM.ISACTIVE = 1 AND CUSTOMER_DIM.ISLATEST = 1 AND CUSTOMER_DIM.BNK_CODE = 'CBC01'\r\nWHERE RIB_CUSTOMERLOCATION.BANK_ID = 'CBC01'\r\nUNION ALL\r\nSELECT 'CBC01' AS BANK_ID\r\n\t, 'D30' AS SOURCE_CODE\r\n\t, D30_CUSTOMER.CIF_ID\r\n\t, CUSTOMER_DIM.RELATIONSHIPOPENINGDATE AS RELATIONSHIPOPENINGDATE\r\n\t, D30_CUSTOMER.USERNAME\r\n\t, D30_CUSTOMER.STATUS\r\n\t, ENROLLMENT_STATUS_DIM.STD_STATUS\r\n\t, D30_CUSTOMER.ENROLLMENT_DATE\r\n\t, D30_CUSTOMER.ENROLLMENT_DATE\t\r\n\t, NULL SCD_START_DATE\r\n\t, NULL SCD_END_DATE\r\n\t, NULL INSERT_DTTM\r\nFROM EDS.D30_CUSTOMER\r\nJOIN EDS.ENROLLMENT_STATUS_DIM\r\nON ENROLLMENT_STATUS_DIM.STATUS_ID = D30_CUSTOMER.STATUS\r\nLEFT JOIN EDS.CUSTOMER_DIM ON D30_CUSTOMER.CIF_ID = CUSTOMER_DIM.ORGKEY\r\nAND CUSTOMER_DIM.ISACTIVE = 1 AND CUSTOMER_DIM.ISLATEST = 1 AND CUSTOMER_DIM.BNK_CODE = 'CBC01';"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "select fulldate\nfrom \n    eds.eds_ctl ect\ninner join \n    eds.date_dim dd\n    on \n    ect.DEPOSITS_Date=dd.previous_business_day and dd.business_day_flag='Y'\n",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "Get Process Date Failed",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "No Process date retrieved, Terminating execution.",
+								"errorCode": "100"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"tables": {
+				"type": "string"
+			},
+			"src_sys": {
+				"type": "string"
+			}
+		},
+		"variables": {
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"CheckFEstatus": {
+				"type": "String",
+				"defaultValue": "True"
+			},
+			"Source": {
+				"type": "String"
+			},
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-02-20T03:46:02Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

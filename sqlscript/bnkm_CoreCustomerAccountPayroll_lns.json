@@ -1,0 +1,20 @@
+{
+	"name": "bnkm_CoreCustomerAccountPayroll_lns",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "ALTER PROCEDURE BNKM.SP_CORECUSTOMERACCOUNTPAYROLL_LNS\nAS\nBEGIN\n--------------GET DELTA FROM BUSC\nWITH TEMP_BNKM_CoreCustomerAccountPayroll AS \n(\nSELECT\n\tBLM.FORACID AS CustomerAccountId\n\t,BLG.LCHG_TIME AS Timestamp\n\t,BLG.FREE_CODE_3 AS EmployeePayrollAccountIndicator\n\t,BLG.FREE_CODE_4 AS EmployerPayrollAccountIndicator\n\t,BLG.BANK_ID AS FinancialInstitutionId\n\t,'LNS' AS SourceSystemCode\n\t,0 AS TaskRunId\n\t,0 AS WorkFlowId\n\t,BLG.INSERT_DTTM AS InsertDttm\n\t,BLGD.RECORD_STATUS\nFROM BUSC.LNS_GENACCTCLASS_DELTA BLGD\nLEFT JOIN BUSC.LNS_GENACCTCLASS BLG ON BLGD.ACID = BLG.ACID AND BLGD.BANK_ID = BLG.BANK_ID AND BLG.ISLATEST = 1\nLEFT JOIN BUSC.LNS_GENERALACCTMAST BLM ON BLG.ACID = BLM.ACID AND BLM.ISLATEST = 1\n\n)\n\nSELECT * INTO #TEMP_BNKM_CoreCustomerAccountPayroll FROM TEMP_BNKM_CoreCustomerAccountPayroll;\n\n-------------CHECK IF THERE IS DELTA \nWITH\nTEMP_BNKM_CoreCustomerAccountPayroll_SRC\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nCustomerAccountId\n,Timestamp\n,EmployeePayrollAccountIndicator\n,EmployerPayrollAccountIndicator\n,FinancialInstitutionId\n)) HASHROW, CustomerAccountId, RECORD_STATUS \nFROM #TEMP_BNKM_CoreCustomerAccountPayroll WHERE RECORD_STATUS = 'UPDATE'\n)\n,\nTEMP_BNKM_CoreCustomerAccountPayroll_TGT\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nCustomerAccountId\n,Timestamp\n,EmployeePayrollAccountIndicator\n,EmployerPayrollAccountIndicator\n,FinancialInstitutionId\n)) HASHROW, CustomerAccountId\nFROM BNKM.CoreCustomerAccountPayroll WHERE SourceSystemCode = 'LNS'\t\n)\n,\nTEMP_BNKM_CoreCustomerAccountPayroll_DELTA\nAS\n(\nSELECT\t\n\tSRC.HASHROW AS SRC_HR\n\t,TGT.HASHROW AS TGT_HR\n\t,ISNULL(SRC.CustomerAccountId,TGT.CustomerAccountId) AS CustomerAccountId\n\t,CASE\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n\tELSE NULL END AS RECORD_STATUS\n\t\nFROM TEMP_BNKM_CoreCustomerAccountPayroll_SRC\tSRC\nFULL OUTER JOIN TEMP_BNKM_CoreCustomerAccountPayroll_TGT\tTGT\nON\tSRC.CustomerAccountId = TGT.CustomerAccountId\nWHERE SRC.HASHROW <> TGT.HASHROW \n)\n\nSELECT * INTO #TEMP_BNKM_CoreCustomerAccountPayroll_DELTA FROM TEMP_BNKM_CoreCustomerAccountPayroll_DELTA;\n\n---------UPDATE TO BNKM\nUPDATE TGT \nSET\n\tCustomerAccountId = SRC.CustomerAccountId\n\t,Timestamp = SRC.Timestamp\n\t,EmployeePayrollAccountIndicator = SRC.EmployeePayrollAccountIndicator\n\t,EmployerPayrollAccountIndicator = SRC.EmployerPayrollAccountIndicator\n\t,FinancialInstitutionId = SRC.FinancialInstitutionId\n\t,SourceSystemCode = 'LNS'\n\t,TaskRunId = 0\n\t,WorkFlowId = 0\n\t,InsertDttm = SRC.InsertDttm\nFROM BNKM.CoreCustomerAccountPayroll TGT\nJOIN #TEMP_BNKM_CoreCustomerAccountPayroll_DELTA DELTA ON DELTA.CustomerAccountId = TGT.CustomerAccountId  AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_CoreCustomerAccountPayroll SRC ON SRC.CustomerAccountId = TGT.CustomerAccountId ;\n\n \n-------INSERT TO BNKM\nINSERT INTO BNKM.CoreCustomerAccountPayroll\n(\n\tCustomerAccountId\n\t,Timestamp\n\t,EmployeePayrollAccountIndicator\n\t,EmployerPayrollAccountIndicator\n\t,FinancialInstitutionId\n\t,SourceSystemCode\n\t,TaskRunId\n\t,WorkFlowId\n\t,InsertDttm)\nSELECT\n\tCustomerAccountId\n\t,Timestamp\n\t,EmployeePayrollAccountIndicator\n\t,EmployerPayrollAccountIndicator\n\t,FinancialInstitutionId\n\t,'LNS' AS SourceSystemCode\n\t,0 AS TaskRunId\n\t,0 AS WorkFlowId\n\t,InsertDttm \nFROM #TEMP_BNKM_CoreCustomerAccountPayroll\nWHERE RECORD_STATUS IN ('INSERT');\n\nDROP TABLE #TEMP_BNKM_CoreCustomerAccountPayroll;\nDROP TABLE #TEMP_BNKM_CoreCustomerAccountPayroll_DELTA;\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

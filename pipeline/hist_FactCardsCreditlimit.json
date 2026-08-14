@@ -1,0 +1,219 @@
+{
+	"name": "hist_FactCardsCreditlimit",
+	"properties": {
+		"activities": [
+			{
+				"name": "Script1",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "WITH \r\nCustomerAccountLimit\r\nAS(\r\n      SELECT * FROM [BNKM].[CustomerAccountLimit] WHERE SourceSystemCode = 'CCD'\r\n)\r\n,Balance AS (\r\nSELECT\r\n BusinessDateSK\r\n,BranchSK\r\n,BankSK\r\n,AccountSK\r\n,AccountId\r\n,SUM(PermanentCreditLimit) PermanentCreditLimit\r\n,SUM(CurrentCreditLimit) CurrentCreditLimit\r\n,SourceSystemCode\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\nFROM (\r\nSELECT \r\n CONVERT(VARCHAR,BCL.[TIMESTAMP],112) AS BusinessDateSK\r\n,DDB.BranchSK AS BranchSK\r\n,DDBK.BankSK AS BankSK\r\n,DDA.AccountSK AS AccountSK\r\n,DDA.AccountId AS AccountId\r\n,CASE WHEN BCL.LimitTypeId = 'Permanent Credit Limit' THEN ISNULL(LimitAmount,0) ELSE 0 END AS PermanentCreditLimit\r\n,CASE WHEN BCL.LimitTypeId = 'Credit Limit' THEN ISNULL(LimitAmount,0) ELSE 0 END AS CurrentCreditLimit\r\n,BCL.SourceSystemCode AS SourceSystemCode\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,Getdate() AS InsertDttm                                                                                          \r\nFROM \r\nCustomerAccountLimit BCL\r\nLEFT JOIN [BNKM].[CustomerAccount] BCA ON BCL.CustomerAccountId = BCA.CustomerAccountId\r\nLEFT JOIN [DW].[DimBranch] DDB ON BCA.BranchId = DDB.BranchID AND DDB.CurrentIndicator = 1\r\nLEFT JOIN [DW].[DimBank] DDBK ON BCL.FinancialInstitutionId = DDBK.BankID\r\nLEFT JOIN [DW].[DimAccount] DDA ON BCL.CustomerAccountId = DDA.AccountID AND DDA.CurrentIndicator = 1\r\nLEFT JOIN [BNKM].[CustomerAccountPaymentCard] BCP ON BCL.CustomerAccountId = BCP.CustomerAccountId\r\nLEFT JOIN [BNKM].[PaymentCard] BPC ON BPC.PaymentCardId = BCP.PaymentCardId\r\n) A\r\nGROUP BY\r\nBusinessDateSK\r\n,BranchSK\r\n,BankSK\r\n,AccountSK\r\n,AccountId\r\n,SourceSystemCode\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\n\r\nselect * into dw.factcardscreditlimit_Balance from Balance;\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script2",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "WITH GetMinMaxDate AS (\nSELECT\n\tBranchSK,\n\tBankSK,\n\tAccountSK,\n    AccountId,\n\tSourceSystemCode,\n    MIN(BusinessDateSK) as min_date, \n    MAX(BusinessDateSK) AS max_date \n  FROM \n    dw.factcardscreditlimit_Balance\nWHERE (--BranchSK IS NOT NULL\n     BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL) AND BusinessDateSk >= '2023-01-01'\n    GROUP BY BranchSK ,BankSK ,AccountSK ,AccountID ,SourceSystemCode\n)\n,FullDateBalance AS (\nSELECT\n\tb.BranchSK,\n    b.BankSK,\n    b.AccountSK,\n    b.AccountID,\n\tb.SourceSystemCode,\n\tCONVERT(VARCHAR,FullDate,112) AS FullDate2,\n    a.FullDate, \n    b.min_date, \n    b.max_date \n  FROM \n    dw.dimdate a \n    LEFT JOIN GetMinMaxDate b\n\tON a.FullDate >= b.min_date \n    AND a.FullDate <= b.max_date \n  WHERE \n    (--BranchSK IS NOT NULL\n     BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL)\n)\n,Distinct_Balance AS (\nSELECT DISTINCT \n    BranchSK, BankSK, AccountSK, AccountId, BusinessDateSK, PermanentCreditLimit, CurrentCreditLimit, SourceSystemCode, WorkFlowId, TaskRunId, InsertDttm\nFROM dw.factcardscreditlimit_Balance b\nWHERE (--BranchSK IS NOT NULL\n     BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL)\n)\n, join_balance as (\nselect \n CONVERT(VARCHAR,CONVERT(DATE,ISNULL(b.BusinessDateSK, a.FullDate)),112)  AS BusinessDateSK\n,ISNULL(b.BranchSK,a.BranchSK) AS BranchSK\n,ISNULL(b.BankSK,a.BankSK) AS BankSK\n,ISNULL(b.AccountSK,a.AccountSK) AS AccountSK\n,ISNULL(b.AccountId,a.AccountId) AS AccountId\n,ISNULL(b.SourceSystemCode,a.SourceSystemCode) AS SourceSystemCode\n,ISNULL(b.WorkFlowId,0) AS WorkFlowId\n,ISNULL(b.TaskRunId,0) AS TaskRunId\n,ISNULL(b.InsertDttm,getdate()) AS InsertDttm        \n,PermanentCreditLimit\n,CurrentCreditLimit\n--,LimitTypeId\n--,LimitAmount \n--,CNT\n,ROW_NUMBER() OVER (PARTITION BY a.BankSK,a.AccountId ORDER BY a.FullDate ) AS Row#\n, case when ([CurrentCreditLimit] is null or [CurrentCreditLimit] = 0) AND ([PermanentCreditLimit] is null or [PermanentCreditLimit] = 0) then 0 else 1 end as ChangeIndicator\nFROM FullDateBalance a\nLEFT JOIN DISTINCT_BALANCE b\n    ON --a.BranchSK = b.BranchSK\n     a.BankSK = b.BankSK\n    AND a.AccountSK = b.AccountSK\n    AND a.AccountID = b.AccountID\n    AND a.fulldate2 = b.BusinessDateSK\n    AND a.SourceSystemCode = b.SourceSystemCode\n --   AND a.DemandFlowId = b.DemandFlowId\n\n)\nselect * into dw.factcardscreditlimit_join_balance from join_balance;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script3",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script2",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "select *, Sum(ChangeIndicator) over (PARTITION BY BankSK, AccountId ORDER BY Row#) RowGroup into dw.factcardscreditlimit_rowgrp from dw.factcardscreditlimit_join_balance;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script4",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script3",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "with final_balance as (\r\nselect \r\nBusinessDateSK\r\n,BranchSK\r\n,BankSK\r\n,AccountSK\r\n,AccountId\r\n,case when PermanentCreditLimit is not null then PermanentCreditLimit else first_value(PermanentCreditLimit) over (partition by RowGroup,AccountId,BankSK ORDER BY Row#) end PermanentCreditLimit\r\n,case when CurrentCreditLimit  is not null then CurrentCreditLimit  else first_value(CurrentCreditLimit) over (partition by RowGroup,AccountId,BankSK ORDER BY Row#) end CurrentCreditLimit \r\n--,case when [DemandAmount] is not null then DemandAmount else first_value(DemandAmount) over (partition by RowGroup,AccountId,BankSK,DemandFlowId ORDER BY Row#) end DemandAmount\r\n--,case when [CNT] is not null then CNT else first_value(CNT) over (partition by RowGroup,AccountId,BankSK,DemandFlowId ORDER BY Row#) end CNT\r\n--,case when [AmortizationAmount] is not null then AmortizationAmount else first_value(AmortizationAmount) over (partition by RowGroup,AccountId,BankSK,DemandFlowId ORDER BY Row#) end AmortizationAmount\r\n--,case when [PenaltyAmount] is not null then PenaltyAmount else first_value(PenaltyAmount) over (partition by RowGroup,AccountId,BankSK,DemandFlowId ORDER BY Row#) end PenaltyAmount\r\n--,case when [InterestAmount] is not null then InterestAmount else first_value(InterestAmount) over (partition by RowGroup,AccountId,BankSK,DemandFlowId ORDER BY Row#) end InterestAmount\r\n,SourceSystemCode\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm                           \r\nfrom dw.factcardscreditlimit_rowgrp) \r\n\r\nselect * into dw.cardscreditlimit_final_balance from final_balance;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script5",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script4",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "INSERT INTO dw.factcardscreditlimit\r\n(\r\nBusinessDateSK\r\n,BranchSK\r\n,BankSK\r\n,AccountSK\r\n,AccountId\r\n,PermanentCreditLimit\r\n,CurrentCreditLimit\r\n,SourceSystemCode\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\n\r\nSELECT\r\nBusinessDateSK\r\n,BranchSK\r\n,BankSK\r\n,AccountSK\r\n,AccountId\r\n,PermanentCreditLimit\r\n,CurrentCreditLimit\r\n,SourceSystemCode\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\nFROM dw.cardscreditlimit_final_balance a\r\n--LEFT JOIN Distinct_Balance b\r\n--    ON a.BranchSK = b.BranchSK\r\n--    AND a.BankSK = b.BankSK\r\n--    AND a.AccountSK = b.AccountSK\r\n--    AND a.AccountID = b.AccountID\r\n--    AND a.fulldate2 = b.BusinessDateSK\r\n--    AND a.SourceSystemCode = b.SourceSystemCode"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script6",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script5",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "drop table dw.factcardscreditlimit_Balance\r\ndrop table dw.factcardscreditlimit_join_balance\r\ndrop table dw.factcardscreditlimit_rowgrp\r\ndrop table dw.cardscreditlimit_final_balance"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-09-25T07:03:20Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

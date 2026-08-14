@@ -1,0 +1,144 @@
+{
+	"name": "PGPDecrypt_EDS_CRM_Accounts",
+	"properties": {
+		"activities": [
+			{
+				"name": "List All Encrypted Files",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "adls_src_encrypt_sourcecode",
+						"type": "DatasetReference",
+						"parameters": {
+							"sourcecode": "*CRM*"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "Decrypt Multiple CRM Accounts",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Get CRM Accounts Only",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Get CRM Accounts Only').output.value",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "PGP Decrypt CRM Accounts",
+							"type": "AzureFunctionActivity",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "7.00:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"functionName": "PGPDecrypt",
+								"body": {
+									"value": "{\nfilePath: \"data360/dev/encrypt/@{item().name}\",\noutputPath: \"data360/dev/decrypted/CRM/@{replace(item().name,'.gpg','')}\",\nkvsecpass: \"cbcpassp\",\nkvsecpriv: \"cbcprivkey\"\n}",
+									"type": "Expression"
+								},
+								"method": "POST"
+							},
+							"linkedServiceName": {
+								"referenceName": "PGPFunction",
+								"type": "LinkedServiceReference"
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Get CRM Accounts Only",
+				"type": "Filter",
+				"dependsOn": [
+					{
+						"activity": "List All Encrypted Files",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('List All Encrypted Files').output.childItems",
+						"type": "Expression"
+					},
+					"condition": {
+						"value": "@contains(item().name,'CRM_ACCOUNTS')",
+						"type": "Expression"
+					}
+				}
+			}
+		],
+		"variables": {
+			"filepath": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-05-03T07:56:38Z",
+		"lastUpdateUtc": "2023-01-19T03:21:20Z",
+		"createTimeUtc": "2022-09-09T04:25:01Z",
+		"sqlPools": [
+			{
+				"Name": "testSQLpool",
+				"Properties": {
+					"maxSizeBytes": 0,
+					"lastUpdateUtc": "2022-05-17T08:11:18Z",
+					"createTimeUtc": "2022-05-17T08:11:18Z"
+				},
+				"ETag": "a301584b-0000-1800-0000-628358a60000"
+			}
+		],
+		"managedVirtualNetworks": [
+			{
+				"Name": "default",
+				"Properties": {
+					"vNetId": "5c7c2ffe-e050-4f1e-be39-a1f58dbbeaa8",
+					"preventDataExfiltration": false,
+					"alias": "cbcd360devsynpssg",
+					"lastUpdateUtc": "2022-12-15T19:04:34Z",
+					"createTimeUtc": "2022-05-05T02:44:30Z"
+				},
+				"ETag": "450020bc-0000-1800-0000-639b6fc20000"
+			}
+		]
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,20 @@
+{
+	"name": "LoadRefRowLevelSecurityFilter",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "TRUNCATE TABLE [DW].[RefRowLevelSecurityFilter]\n\nDECLARE @UserEmail varchar(80)\nDECLARE @BankSk int\nDECLARE @BankCode [varchar](20)\nDECLARE @SourceSystemCode varchar(50)\nDECLARE @counter int = 1\nDECLARE @recordCount int = (SELECT COUNT(1) FROM DW.RefRowLevelSecurity )\n\n-- Loop through records in RefRowLevelSecurity\n\nWHILE @counter <= @recordCount \nBEGIN  \n\n\t\tSELECT @UserEmail = UserEmail, @BankCode = BankID, @SourceSystemCode =  SourceSystemCode \n\t\tFROM (SELECT A.UserEmail, A.BankID, A.SourceSystemCode, ROW_NUMBER() OVER(ORDER BY A.UserEmail) AS RN FROM DW.RefRowLevelSecurity A  ) as T\n\t\tWHERE T.RN = @counter\n\n\n\n\t\tINSERT INTO DW.RefRowLevelSecurityFilter (UserEmail, BankSk, BankID, SourceSystemCode)\n\t\t\n\t\tSELECT @UserEmail, D.BankSK,  D.BankID, A.SourceSystemCode\n\t\t---- WorkFlowId, TaskRunId\n\t\tFROM DW.DimBank D \n\t\tCROSS APPLY   \n\t\t\t(SELECT SourceSystemCode FROM [DW].RefSourceSystem) A\n\t\tWHERE D.BankID = CASE WHEN UPPER(TRIM(@BankCode)) = 'ALL' THEN D.BankID ELSE  @BankCode END\n        AND A.SourceSystemCode = CASE WHEN UPPER(TRIM(@SourceSystemCode)) = 'ALL' THEN A.SourceSystemCode ELSE  @SourceSystemCode END\n\t\t\n\t\tEXCEPT\n\t\tSELECT UserEmail, BankSk, BankID, SourceSystemCode  FROM [DW].[RefRowLevelSecurityFilter]\n\n\t\tSET @counter = @counter + 1\nEND\n\n\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

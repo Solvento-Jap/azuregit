@@ -1,0 +1,401 @@
+{
+	"name": "CUSTOMER_REMDUP",
+	"properties": {
+		"activities": [
+			{
+				"name": "CHECK DUPLICATE",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT CUST_ID, COUNT(1) CNT FROM BUSC.ATM_CUSTOMER\nWHERE ISLATEST = 1\nGROUP BY CUST_ID\nHAVING COUNT(1) > 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "TAGGED DUPLICATE",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CHECK DUPLICATE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT ROW_NUMBER() OVER(PARTITION BY CUST_ID ORDER BY [FILE_NAME] DESC, INSERT_DTTM DESC ) RN , --define PKs in partition by\n* into BUSC.ATM_CUSTOMER_WITH_DUP_20240321\nFROM BUSC.ATM_CUSTOMER; --Target table to remove duplicate"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CHECK COUNT MAIN",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "TAGGED DUPLICATE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.ATM_CUSTOMER;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CHECK COUNT DUP TABLE",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CHECK COUNT MAIN",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.ATM_CUSTOMER_WITH_DUP_20240321;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "UPDATE ISLATEST",
+				"description": "",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CREATE BU TABLE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "UPDATE BUSC.ATM_CUSTOMER_WITH_DUP_20240321 SET ISLATEST = 0 WHERE RN > 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CLEAN DUP",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "UPDATE ISLATEST",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "TRUNCATE TABLE BUSC.ATM_CUSTOMER; -- Truncate target table to remove duplicate"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CREATE BU TABLE",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CHECK COUNT DUP TABLE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT * INTO BUSC.ATM_CUSTOMER_BU_20240321\nFROM BUSC.ATM_CUSTOMER;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "INSERT",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CLEAN DUP",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "INSERT INTO BUSC.ATM_CUSTOMER --Target table to remove duplicate\nSELECT\nCUST_ID\n,CUST_NUMBER\n,CUST_TITLE\n,CUST_FIRST_NAME\n,CUST_MIDDLE_NAME\n,CUST_LAST_NAME\n,CUST_CCNY_ID\n,CUST_GENDER\n,CUST_DOB\n,CUST_EMAIL_ADDRESS\n,CUST_STATUS\n,CUST_WORK_PHONE\n,CUST_MOBILE_PHONE\n,CUST_DEVICE_ID\n,CUST_CCAT_ID\n,CUST_NAT_CTY_ISO_ID\n,CUST_CUSTOM_DATA\n,CUST_CREATED_DATE_TS\n,CUST_LAST_UPDATE_TS\n,CUST_LIMIT_CONFIG\n,CUST_HOME_PHONE\n,CUST_CUIT_CODE_1\n,CUST_IDENT_NUMBER_1\n,CUST_CUIT_CODE_2\n,CUST_IDENT_NUMBER_2\n,CUST_CUIT_CODE_3\n,CUST_IDENT_NUMBER_3\n,CUST_ISS_ID\n,CUST_RESIDENCE_IND\n,CUST_BACKGROUND_IND\n,CUST_IDENT_NUMBER_1_EKY_ID\n,CUST_IDENT_NUMBER_2_EKY_ID\n,CUST_IDENT_NUMBER_3_EKY_ID\n,isActive\n,isLatest\n,BNK_CODE\n,SOURCE_CODE\n,FILE_NAME\n,insert_dttm\n FROM BUSC.ATM_CUSTOMER_WITH_DUP_20240321; -- Name of backup table to store duplicate records"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CHECK IF STILL HAVE DUP",
+				"description": "",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "INSERT",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT CUST_ID, COUNT(1) CNT FROM BUSC.ATM_CUSTOMER\nWHERE ISLATEST = 1\nGROUP BY CUST_ID\nHAVING COUNT(1) > 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "COUNT TARGET",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CHECK IF STILL HAVE DUP",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.ATM_CUSTOMER;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "COUNT DUPS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "COUNT TARGET",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.ATM_CUSTOMER_WITH_DUP_20240321"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-03-22T06:48:07Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

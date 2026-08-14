@@ -1,0 +1,656 @@
+{
+	"name": "MANIFEST_DEP",
+	"properties": {
+		"activities": [
+			{
+				"name": "ManifestFile",
+				"type": "Until",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(\n    equals(variables('HasPipelineSucceed'), true),\n    greater(formatDateTime(addHours(utcnow(), 8), 'HH:mm'), pipeline().parameters.EndTime)\n    )",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "Get DEP Manifest CBC01",
+							"type": "GetMetadata",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "SFTP_OnPrem",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filepath": "data360/uat/CBC01/DEP/encrypt",
+										"Filename": {
+											"value": "@concat('CBC01_DEP_MANIFEST_001_', replace(pipeline().parameters.DatetoProcessed, '-', ''),'.csv.gpg')\n",
+											"type": "Expression"
+										}
+									}
+								},
+								"fieldList": [
+									"exists"
+								],
+								"storeSettings": {
+									"type": "SftpReadSettings",
+									"recursive": true,
+									"enablePartitionDiscovery": false,
+									"disableChunking": false
+								},
+								"formatSettings": {
+									"type": "BinaryReadSettings"
+								}
+							}
+						},
+						{
+							"name": "If Condition1",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get DEP Manifest CBC01",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "Get DEP Manifest CBC02",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@and(activity('Get DEP Manifest CBC01').output.exists,activity('Get DEP Manifest CBC02').output.exists)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "Wait1_copy1_copy1_copy1",
+										"type": "Wait",
+										"dependsOn": [
+											{
+												"activity": "Fail1",
+												"dependencyConditions": [
+													"Skipped"
+												]
+											}
+										],
+										"userProperties": [],
+										"typeProperties": {
+											"waitTimeInSeconds": {
+												"value": "@pipeline().parameters.RetryInterval",
+												"type": "Expression"
+											}
+										}
+									},
+									{
+										"name": "Fail1",
+										"type": "Fail",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"message": "'Manifest File not found'",
+											"errorCode": "404"
+										}
+									}
+								],
+								"ifTrueActivities": [
+									{
+										"name": "Set variable1_copy1_copy1_copy1",
+										"type": "SetVariable",
+										"dependsOn": [],
+										"policy": {
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"variableName": "HasPipelineSucceed",
+											"value": true
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "Get DEP Manifest CBC02",
+							"type": "GetMetadata",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "SFTP_OnPrem",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filepath": "data360/uat/CBC02/DEP/encrypt",
+										"Filename": {
+											"value": "@concat('CBC02_DEP_MANIFEST_001_', replace(pipeline().parameters.DatetoProcessed, '-', ''),'.csv.gpg')\n",
+											"type": "Expression"
+										}
+									}
+								},
+								"fieldList": [
+									"exists"
+								],
+								"storeSettings": {
+									"type": "SftpReadSettings",
+									"recursive": true,
+									"enablePartitionDiscovery": false,
+									"disableChunking": false
+								},
+								"formatSettings": {
+									"type": "BinaryReadSettings"
+								}
+							}
+						}
+					],
+					"timeout": "0.12:00:00"
+				}
+			},
+			{
+				"name": "Fail2",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "ManifestFile",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": "FILE NOT FOUND",
+					"errorCode": "404"
+				}
+			},
+			{
+				"name": "Load_manifest_to_STG_CBC01",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "PGP Decrypt Manifest",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "DelimitedTextSource",
+						"additionalColumns": [
+							{
+								"name": "INSERT_DTTM",
+								"value": {
+									"value": "@pipeline().TriggerTime",
+									"type": "Expression"
+								}
+							}
+						],
+						"storeSettings": {
+							"type": "AzureBlobFSReadSettings",
+							"recursive": true,
+							"wildcardFolderPath": "dev/decrypted/DEP",
+							"wildcardFileName": {
+								"value": "@concat('CBC01_DEP_MANIFEST', '*', replace(pipeline().parameters.DatetoProcessed, '-', ''),'*')",
+								"type": "Expression"
+							},
+							"enablePartitionDiscovery": false
+						},
+						"formatSettings": {
+							"type": "DelimitedTextReadSettings"
+						}
+					},
+					"sink": {
+						"type": "SqlDWSink",
+						"preCopyScript": "DELETE FROM D360.MANIFEST_FILE WHERE SUBSTRING(FILENAME,1,9) = 'CBC01_DEP'",
+						"allowCopyCommand": true,
+						"disableMetricsCollection": false
+					},
+					"enableStaging": true,
+					"stagingSettings": {
+						"linkedServiceName": {
+							"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+							"type": "LinkedServiceReference"
+						},
+						"path": "data360/dev/stg_synapse"
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": " ",
+							"SourceCode": " "
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "MANIFEST_FILE"
+						}
+					}
+				]
+			},
+			{
+				"name": "Source File",
+				"type": "Until",
+				"dependsOn": [
+					{
+						"activity": "Load_manifest_to_STG_CBC01",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Load_manifest_to_STG_CBC02",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(\n    equals(variables('HasPipelineSucceed'), true),\n    greater(formatDateTime(addHours(utcnow(), 8), 'HH:mm'), pipeline().parameters.EndTime)\n)",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "Wait1",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "Manifest_sub1",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": {
+									"value": "@pipeline().parameters.RetryInterval",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "Set variable1",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "Manifest_sub1",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "HasPipelineSucceed",
+								"value": true
+							}
+						},
+						{
+							"name": "Manifest_sub1",
+							"type": "ExecutePipeline",
+							"dependsOn": [],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Manifest_sub_DEP",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true
+							}
+						},
+						{
+							"name": "Append variable1_copy1_copy2",
+							"type": "AppendVariable",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "RetryTracker",
+								"value": "5"
+							}
+						}
+					],
+					"timeout": "0.12:00:00"
+				}
+			},
+			{
+				"name": "Onprem",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "ManifestFile",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "OnPremToADLS_MANIFEST_DEP",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@replace(substring(pipeline().parameters.DatetoProcessed,0,10),'-','')\n\n\n",
+							"type": "Expression"
+						},
+						"tables": {
+							"value": "@pipeline().parameters.tables",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "PGP Decrypt Manifest",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Onprem",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PGPDecrypt_DEP_Manifest",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@replace(substring(pipeline().parameters.DatetoProcessed,0,10),'-','')\n",
+							"type": "Expression"
+						},
+						"tables": {
+							"value": "@pipeline().parameters.tables",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_Workflow8",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "ManifestFile",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Workflow",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "Fail2_copy1",
+				"type": "Fail",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Source File",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": "TEST",
+					"errorCode": "404"
+				}
+			},
+			{
+				"name": "Load_manifest_to_STG_CBC02",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "PGP Decrypt Manifest",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "DelimitedTextSource",
+						"additionalColumns": [
+							{
+								"name": "INSERT_DTTM",
+								"value": {
+									"value": "@pipeline().TriggerTime",
+									"type": "Expression"
+								}
+							}
+						],
+						"storeSettings": {
+							"type": "AzureBlobFSReadSettings",
+							"recursive": true,
+							"wildcardFolderPath": "dev/decrypted/DEP",
+							"wildcardFileName": {
+								"value": "@concat('CBC02_DEP_MANIFEST', '*', replace(pipeline().parameters.DatetoProcessed, '-', ''),'*')\n",
+								"type": "Expression"
+							},
+							"enablePartitionDiscovery": false
+						},
+						"formatSettings": {
+							"type": "DelimitedTextReadSettings"
+						}
+					},
+					"sink": {
+						"type": "SqlDWSink",
+						"preCopyScript": "DELETE FROM D360.MANIFEST_FILE WHERE  SUBSTRING(FILENAME,1,9) = 'CBC02_DEP'",
+						"allowCopyCommand": true,
+						"disableMetricsCollection": false
+					},
+					"enableStaging": true,
+					"stagingSettings": {
+						"linkedServiceName": {
+							"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+							"type": "LinkedServiceReference"
+						},
+						"path": "data360/dev/stg_synapse"
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": " ",
+							"SourceCode": " "
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "MANIFEST_FILE"
+						}
+					}
+				]
+			},
+			{
+				"name": "Failed_Workflow9",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Onprem",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Workflow",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "Failed_Workflow10",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "PGP Decrypt Manifest",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Workflow",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "SUCCESS",
+				"type": "Wait",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Source File",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"waitTimeInSeconds": 1
+				}
+			}
+		],
+		"parameters": {
+			"MaxPipelineCalls": {
+				"type": "int",
+				"defaultValue": 5
+			},
+			"RetryInterval": {
+				"type": "int",
+				"defaultValue": 60
+			},
+			"DatetoProcessed": {
+				"type": "string"
+			},
+			"tables": {
+				"type": "string"
+			},
+			"EndTime": {
+				"type": "string",
+				"defaultValue": "05:00"
+			}
+		},
+		"variables": {
+			"HasPipelineSucceed": {
+				"type": "Boolean",
+				"defaultValue": false
+			},
+			"RetryTracker": {
+				"type": "Array"
+			},
+			"v_datetoprocessed": {
+				"type": "String"
+			},
+			"v_tables": {
+				"type": "String"
+			},
+			"CurrentTimestamp": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-03-13T06:35:37Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

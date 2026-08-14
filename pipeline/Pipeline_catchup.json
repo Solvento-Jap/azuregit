@@ -1,0 +1,177 @@
+{
+	"name": "Pipeline_catchup",
+	"properties": {
+		"activities": [
+			{
+				"name": "Send_Email_Start",
+				"type": "ExecutePipeline",
+				"dependsOn": [],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Send_Email",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"PipelineName": {
+							"value": "@pipeline().Pipeline",
+							"type": "Expression"
+						},
+						"ProcessDate": {
+							"value": "@formatDateTime(addHours(utcNow(), 8), 'yyyy-MM-dd')",
+							"type": "Expression"
+						},
+						"RunDateTime": {
+							"value": "@addhours(pipeline().TriggerTime,8)",
+							"type": "Expression"
+						},
+						"Eml_Recipient": "japeth.hernandez@solventoph.com, jolenizo@chinabank.ph",
+						"Eml_Subject": "Start of Execution -",
+						"ENV": "[MONITORING-PRD]"
+					}
+				}
+			},
+			{
+				"name": "Send_Email_End",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "ForEachMissing",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Send_Email",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"PipelineName": {
+							"value": "@pipeline().Pipeline",
+							"type": "Expression"
+						},
+						"ProcessDate": {
+							"value": "@formatDateTime(addHours(utcNow(), 8), 'yyyy-MM-dd')",
+							"type": "Expression"
+						},
+						"RunDateTime": {
+							"value": "@addhours(pipeline().TriggerTime,8)",
+							"type": "Expression"
+						},
+						"Eml_Sender": "donotreply@advisory.chinabank.ph",
+						"Eml_Recipient": "japeth.hernandez@solventoph.com, jolenizo@chinabank.ph",
+						"Eml_Subject": "End of Execution - ",
+						"EndDateTime": {
+							"value": "@addhours(utcNow(),8)",
+							"type": "Expression"
+						},
+						"ENV": "[MONITORING-PRD]"
+					}
+				}
+			},
+			{
+				"name": "GetDates",
+				"type": "Lookup",
+				"dependsOn": [
+					{
+						"activity": "Send_Email_Start",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT FULLDATE AS [VALUE]\nFROM EDS.DATE_DIM\nWHERE BUSINESS_DAY_FLAG = 'Y' AND\n    FULLDATE BETWEEN '2026-02-02' AND '2026-05-28'\nORDER BY FULLDATE",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_EDS",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "DATE_DIM"
+						}
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "ForEachMissing",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "GetDates",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('GetDates').output.value",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Workflow",
+							"type": "ExecutePipeline",
+							"dependsOn": [],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Workflow_EDS_TREASURY_ACCOUNT_HOLDER",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"startDate": {
+										"value": "@item().value",
+										"type": "Expression"
+									},
+									"endDate": {
+										"value": "@item().value",
+										"type": "Expression"
+									}
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"variables": {
+			"v_datestoprocess_arr": {
+				"type": "Array"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-05-29T05:43:29Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

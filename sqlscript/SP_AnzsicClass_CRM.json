@@ -1,0 +1,20 @@
+{
+	"name": "SP_AnzsicClass_CRM",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nALTER PROC [BNKM].[SP_AnzsicClass_CRM] AS\nBEGIN\n--------------GET DELTA FROM BUSC\nWITH TEMP_BNKM_AnzsicClass\nAS(\n    SELECT\n     BCC.[VALUE] AS AnzsicClassCode\n    ,BCC.DESCRIPTION  AS AnzsicClassName\n    ,BCC.BANK_ID AS FinancialInstitutionId\n    ,BCC.CATEGORYID AS CategoryId\n    ,'CRM' AS SourceSystemCode\n    ,BCC.INSERT_DTTM AS InsertDttm\nFROM BUSC.CRM_CATEGORIES BCC \nWHERE BCC.ISLATEST = 1 AND CATEGORYTYPE = 'INDUSTRY_TYPE'\n\n)\n\nSELECT * INTO #TEMP_BNKM_AnzsicClass FROM TEMP_BNKM_AnzsicClass;\n\n-------------CHECK IF THERE IS DELTA \nWITH\nTEMP_BNKM_AnzsicClass_SRC\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nAnzsicClassCode\n,AnzsicClassName\n,FinancialInstitutionId\n,CategoryId\n\n)) HASHROW, AnzsicClassCode,FinancialInstitutionId,CategoryId\nFROM #TEMP_BNKM_AnzsicClass \n)\n,\nTEMP_BNKM_AnzsicClass_TGT\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nAnzsicClassCode\n,AnzsicClassName\n,FinancialInstitutionId\n,CategoryId\n)) HASHROW, AnzsicClassCode, FinancialInstitutionId,CategoryId\nFROM BNKM.AnzsicClass WHERE SourceSystemCode = 'CRM'\t\n)\n,\nTEMP_BNKM_AnzsicClass_DELTA\nAS\n(\nSELECT\t\n\tSRC.HASHROW AS SRC_HR\n\t,TGT.HASHROW AS TGT_HR\n\t,ISNULL(SRC.CategoryId,TGT.CategoryId) AS CategoryId\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\n    ,ISNULL(SRC.AnzsicClassCode,TGT.AnzsicClassCode) AS AnzsicClassCode\n\t,CASE\n        WHEN TGT.HASHROW IS NULL THEN 'INSERT'\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n\tELSE NULL END AS RECORD_STATUS\n\t\nFROM TEMP_BNKM_AnzsicClass_SRC\tSRC\nFULL OUTER JOIN TEMP_BNKM_AnzsicClass_TGT\tTGT\nON\tSRC.CategoryId = TGT.CategoryId\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\nAND SRC.AnzsicClassCode = TGT.AnzsicClassCode\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\n)\n\nSELECT * INTO #TEMP_BNKM_AnzsicClass_DELTA FROM TEMP_BNKM_AnzsicClass_DELTA;\n\n\nUPDATE TGT \nSET\n AnzsicClassCode = SRC.AnzsicClassCode\n,AnzsicClassName = SRC.AnzsicClassName\n,AnzsicClassDescription = NULL\n,AnzsicGroupCode = NULL\n,FinancialInstitutionId = SRC.FinancialInstitutionId\n,CategoryId = SRC.CategoryId\nFROM BNKM.AnzsicClass TGT\nJOIN #TEMP_BNKM_AnzsicClass_DELTA DELTA ON DELTA.CategoryId = TGT.CategoryId AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId AND DELTA.AnzsicClassCode = TGT.AnzsicClassCode AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_AnzsicClass SRC ON SRC.CategoryId = TGT.CategoryId AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId AND SRC.AnzsicClassCode = TGT.AnzsicClassCode;\n \n\n----INSERT TO BNKM\nINSERT INTO BNKM.AnzsicClass\n([AnzsicClassCode]\n,[AnzsicClassName]\n,[AnzsicClassDescription]\n,[AnzsicGroupCode]\n,[FinancialInstitutionId]\n,[CategoryId]\n,[SourceSystemCode]\n,[WorkFlowId]\n,[TaskRunId]\n,[InsertDttm] )\n\nSELECT\n     SRC.AnzsicClassCode AS AnzsicClassCode\n    ,AnzsicClassName AS AnzsicClassName\n    ,NULL AS AnzsicClassDescription\n    ,NULL AS AnzsicGroupCode\n    ,SRC.FinancialInstitutionId AS FinancialInstitutionId\n    ,SRC.CategoryId AS CategoryId\n    ,SourceSystemCode AS SourceSystemCode\n    ,0 AS WorkFlowId\n    ,0 AS TaskRunId\n    ,InsertDttm AS InsertDttm\nFROM #TEMP_BNKM_AnzsicClass SRC\nJOIN #TEMP_BNKM_AnzsicClass_DELTA DELTA ON DELTA.CategoryId = SRC.CategoryId AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId AND DELTA.AnzsicClassCode = SRC.AnzsicClassCode\nWHERE DELTA.RECORD_STATUS = 'INSERT'\n\nDROP TABLE #TEMP_BNKM_AnzsicClass;\nDROP TABLE #TEMP_BNKM_AnzsicClass_DELTA;\n\nEND\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

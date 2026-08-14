@@ -1,0 +1,39 @@
+{
+	"name": "HashLog_DEP_ACCOUNTRELATIONSHIP",
+	"properties": {
+		"activities": [
+			{
+				"name": "HashLog_DEP_ACCOUNTRELATIONSHIP",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "WITH CTE1 \r\nAS(\r\nSELECT convert(numeric(25,5),COUNT(*)) COUNT_tgt\r\n, isnull(sum(convert(numeric(25,5),ACCT_POA_AS_AMT_ALWD)),0) ACCT_POA_AS_AMT_ALWD_tgt\r\n, isnull(sum(convert(numeric(25,5),GUARANTOR_LIAB_PCNT)),0) GUARANTOR_LIAB_PCNT_tgt\r\n, isnull(sum(convert(numeric(25,5),TS_CNT)),0) TS_CNT_tgt\r\n\r\n, FILE_NAME, INSERT_DTTM \r\nFROM d360.STG_DEP_ACCOUNTRELATIONSHIP WHERE H = 'D'\r\nGROUP BY FILE_NAME, INSERT_DTTM\r\n\r\n)\r\n,\r\nCTE2 AS (\r\nSELECT CONVERT(numeric(25,5),REPLACE(H,'F-','')) COUNT_src\r\n, CONVERT(numeric(25,5),ACCT_POA_AS_AMT_ALWD) ACCT_POA_AS_AMT_ALWD_src\r\n, CONVERT(numeric(25,5),GUARANTOR_LIAB_PCNT) GUARANTOR_LIAB_PCNT_src\r\n, CONVERT(numeric(25,5),TS_CNT) TS_CNT_src\r\n\r\n, FILE_NAME, INSERT_DTTM FROM d360.STG_DEP_ACCOUNTRELATIONSHIP WHERE H <> 'D'\r\n)\r\n,\r\nCTE12 as (\r\nSELECT COUNT_SRC, COUNT_TGT\r\n, ACCT_POA_AS_AMT_ALWD_tgt\r\n, GUARANTOR_LIAB_PCNT_tgt\r\n, TS_CNT_tgt\r\n, ACCT_POA_AS_AMT_ALWD_src\r\n, GUARANTOR_LIAB_PCNT_src\r\n, TS_CNT_src\r\n\r\n, A.FILE_NAME, A.INSERT_DTTM, CONVERT(DATE,(left(right(A.FILE_NAME, 12),8))) DATE FROM CTE1 A\r\nJOIN CTE2 B ON A.FILE_NAME = B.FILE_NAME AND A.INSERT_DTTM = B.INSERT_DTTM\r\n)\r\n\r\nINSERT INTO [EDS].[EDS_HASH_LOG_TBL]\r\nSELECT \r\nFILE_NAME\r\n,DATE\r\n,insert_dttm\r\n,REPLACE(METRICS,'_SRC','') METRICS\r\n,SRC\r\n,TGT \r\n\r\nFROM\r\n(\r\nSELECT \r\nCAST(COUNT_SRC AS NUMERIC(25,5)) COUNT_SRC\r\n,CAST(COUNT_TGT AS NUMERIC(25,5)) COUNT_TGT\r\n,CAST(ACCT_POA_AS_AMT_ALWD_tgt AS NUMERIC(25,5)) ACCT_POA_AS_AMT_ALWD_tgt\r\n,CAST(GUARANTOR_LIAB_PCNT_tgt AS NUMERIC(25,5)) GUARANTOR_LIAB_PCNT_tgt\r\n,CAST(TS_CNT_tgt AS NUMERIC(25,5)) TS_CNT_tgt\r\n,CAST(ACCT_POA_AS_AMT_ALWD_src AS NUMERIC(25,5)) ACCT_POA_AS_AMT_ALWD_src\r\n,CAST(GUARANTOR_LIAB_PCNT_src AS NUMERIC(25,5)) GUARANTOR_LIAB_PCNT_src\r\n,CAST(TS_CNT_src AS NUMERIC(25,5)) TS_CNT_src\r\n,FILE_NAME\r\n,INSERT_DTTM\r\n,[DATE]\r\nFROM CTE12\r\n) pvt\r\n\r\nUNPIVOT\r\n(\r\nSRC FOR METRICS IN (COUNT_SRC\r\n, ACCT_POA_AS_AMT_ALWD_src\r\n, GUARANTOR_LIAB_PCNT_src\r\n, TS_CNT_src\r\n )\r\n) pvt1\r\n\r\nUNPIVOT\r\n(\r\nTGT For METRICS2 IN (COUNT_TGT\r\n, ACCT_POA_AS_AMT_ALWD_tgt\r\n, GUARANTOR_LIAB_PCNT_tgt\r\n, TS_CNT_tgt\r\n )\r\n) pvt2\r\n \r\nWHERE REPLACE(METRICS,'_SRC','') = REPLACE(METRICS2,'_TGT','');\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2025-02-18T05:54:57Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

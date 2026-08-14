@@ -1,0 +1,20 @@
+{
+	"name": "bnkm_BranchGroupBranch_dep_bu_20230623",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nCREATE PROC [BNKM].[SP_BranchGroupBranch_DEP] AS\nBEGIN\n\n--------------GET DELTA FROM BUSC\nWITH TEMP_BNKM_BranchGroupBranch AS \n(\nSELECT\n\tBDS.SET_ID AS BranchGroupId\n\t,BDS.SOL_ID AS BranchId\n\t,BDS.BANK_ID AS FinancialInstitutionId\n\t,CASE \n\t\tWHEN BDS.SET_ID like 'AR%' THEN 'Branch Area'\n\t\tWHEN BDS.SET_ID like 'REG%' THEN 'Branch Region' \n\t\tEND AS BranchRelatedRegionTypeId\n\t,'DEP' AS SourceSystemCode\n\t,0 AS WorkFlowId\n\t,0 AS TaskRunId\n\t,BDS.INSERT_DTTM AS InsertDttm\n    ,BDSD.RECORD_STATUS\nFROM BUSC.DEP_SOLIDSETTABLE_DELTA BDSD\nLEFT JOIN BUSC.DEP_SOLIDSETTABLE BDS ON BDSD.SET_ID = BDS.SET_ID AND BDSD.BANK_ID = BDS.BANK_ID AND BDS.ISLATEST = 1\n)\n\nSELECT * INTO #TEMP_BNKM_BranchGroupBranch FROM TEMP_BNKM_BranchGroupBranch;\n\n-------------CHECK IF THERE IS DELTA \nWITH\nTEMP_BNKM_BranchGroupBranch_SRC\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nBranchGroupId\n,BranchId\n,FinancialInstitutionId\n,BranchRelatedRegionTypeId\n)) HASHROW, BranchGroupId, RECORD_STATUS \nFROM #TEMP_BNKM_BranchGroupBranch WHERE RECORD_STATUS = 'UPDATE'\n)\n,\nTEMP_BNKM_BranchGroupBranch_TGT\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nBranchGroupId\n,BranchId\n,FinancialInstitutionId\n,BranchRelatedRegionTypeId\n)) HASHROW, BranchGroupId\nFROM BNKM.BranchGroupBranch WHERE SourceSystemCode = 'DEP'\t\n)\n,\nTEMP_BNKM_BranchGroupBranch_DELTA\nAS\n(\nSELECT\t\n\tSRC.HASHROW AS SRC_HR\n\t,TGT.HASHROW AS TGT_HR\n\t,ISNULL(SRC.BranchGroupId,TGT.BranchGroupId) AS BranchGroupId\n\t,CASE\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n\tELSE NULL END AS RECORD_STATUS\n\t\nFROM TEMP_BNKM_BranchGroupBranch_SRC\tSRC\nFULL OUTER JOIN TEMP_BNKM_BranchGroupBranch_TGT\tTGT\nON\tSRC.BranchGroupId = TGT.BranchGroupId\nWHERE SRC.HASHROW <> TGT.HASHROW \n)\n\nSELECT * INTO #TEMP_BNKM_BranchGroupBranch_DELTA FROM TEMP_BNKM_BranchGroupBranch_DELTA;\n\n---------UPDATE TO BNKM\nUPDATE TGT \nSET\n\tBranchGroupId = SRC.BranchGroupId\n\t,BranchId = SRC.BranchId\n\t,FinancialInstitutionId = SRC.FinancialInstitutionId\n\t,BranchRelatedRegionTypeId = SRC.BranchRelatedRegionTypeId\n\t,SourceSystemCode = 'DEP'\n\t,TaskRunId = 0\n\t,WorkFlowId = 0\n\t,InsertDttm = SRC.InsertDttm\nFROM BNKM.BranchGroupBranch TGT\nJOIN #TEMP_BNKM_BranchGroupBranch_DELTA DELTA ON DELTA.BranchGroupId = TGT.BranchGroupId  AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_BranchGroupBranch SRC ON SRC.BranchGroupId = TGT.BranchGroupId ;\n\n \n-------INSERT TO BNKM\nINSERT INTO BNKM.BranchGroupBranch\n(\n\tBranchGroupId\n\t,BranchId\n\t,FinancialInstitutionId\n\t,BranchRelatedRegionTypeId\n\t,SourceSystemCode\n\t,TaskRunId\n\t,WorkFlowId\n\t,InsertDttm\n)\nSELECT\n\tBranchGroupId\n\t,BranchId\n\t,FinancialInstitutionId\n\t,BranchRelatedRegionTypeId\n\t,'DEP' AS SourceSystemCode\n\t,0 AS TaskRunId\n\t,0 AS WorkFlowId\n\t,InsertDttm\nFROM #TEMP_BNKM_BranchGroupBranch\nWHERE RECORD_STATUS IN ('INSERT');\n\nDROP TABLE #TEMP_BNKM_BranchGroupBranch;\nDROP TABLE #TEMP_BNKM_BranchGroupBranch_DELTA;\n\nEND\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

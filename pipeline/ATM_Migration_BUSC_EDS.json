@@ -1,0 +1,327 @@
+{
+	"name": "ATM_Migration_BUSC_EDS",
+	"properties": {
+		"activities": [
+			{
+				"name": "ATM_CARDACCOUNT",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "IF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'ATM_CARDACCOUNT' and table_schema = 'EDS' and table_type = 'BASE TABLE')\r\nBEGIN\r\n   DROP TABLE EDS.ATM_CARDACCOUNT;\r\nEND;\r\nIF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'ATM_CARDACCOUNT' and table_schema = 'EDS' and table_type = 'VIEW')\r\nBEGIN\r\n   DROP VIEW EDS.ATM_CARDACCOUNT;\r\nEND;\r\n\r\nCREATE TABLE EDS.ATM_CARDACCOUNT\r\nWITH\r\n(\r\n\tHEAP, DISTRIBUTION=HASH(CAT_CRD_ID)\r\n)\r\nAS\r\nSELECT CAT_CRD_ID\r\n\t, CAT_ACN_ID\r\n\t, CAT_DEFAULT_FOR_TYPE\r\n\t, CAT_OVERALL_DEFAULT\r\n\t, CAT_LAST_UPDATE_TS\r\n\t, FileName\r\n\t, TABLE_NAME\r\n\t, CAST(Left(Right(FILE_NAME, 12), 8) AS DATE) AS SCD_START_DATE\r\n\t, COALESCE(DATE_DIM.Previous_Business_Day, CAST('99991231' AS DATE)) AS SCD_END_DATE\r\n\t, ISACTIVE\r\n\t, CASE WHEN DATE_DIM.Previous_Business_Day is null then 1 else 0 end as ISLATEST\r\n\t, BNK_CODE\r\n\t, SOURCE_CODE\r\n\t, FILE_NAME\r\n\t, insert_dttm\r\n\r\nFROM\r\n(\r\n\tSELECT CAT_CRD_ID\r\n\t\t, CAT_ACN_ID\r\n\t\t, CAT_DEFAULT_FOR_TYPE\r\n\t\t, CAT_OVERALL_DEFAULT\r\n\t\t, CAT_LAST_UPDATE_TS\r\n\t\t, FileName\r\n\t\t, TABLE_NAME\r\n\t\t, isActive\r\n\t\t, isLatest\r\n\t\t, BNK_CODE\r\n\t\t, SOURCE_CODE\r\n\t\t, FILE_NAME\r\n\t\t, insert_dttm\r\n\t\t, CAST(Left(Right(FILE_NAME, 12), 8) AS DATE) START_DATE     \r\n\t\t, Max(Left(Right(FILE_NAME, 12), 8)) Over (PARTITION BY CAT_CRD_ID\r\n\t\t\tORDER BY Left(Right(FILE_NAME, 12), 8) ROWS BETWEEN 1 Following AND 1 Following) END_DATE                  \t\t\t\t\r\n\tFROM\r\n\t(\r\n\t\tSELECT CAT_CRD_ID\r\n\t\t\t, CAT_ACN_ID\r\n\t\t\t, CAT_DEFAULT_FOR_TYPE\r\n\t\t\t, CAT_OVERALL_DEFAULT\r\n\t\t\t, CAT_LAST_UPDATE_TS\r\n\t\t\t, FileName\r\n\t\t\t, TABLE_NAME\r\n\t\t\t, isActive\r\n\t\t\t, isLatest\r\n\t\t\t, BNK_CODE\r\n\t\t\t, SOURCE_CODE\r\n\t\t\t, FILE_NAME\r\n\t\t\t, insert_dttm\r\n\t\t\t, row_number() \r\n\t\t\t\tover( partition by CAT_CRD_ID\r\n\t\t\t\t\t\t, CAT_ACN_ID\r\n\t\t\t\t\t\t, CAT_DEFAULT_FOR_TYPE\r\n\t\t\t\t\t\t, CAT_OVERALL_DEFAULT\r\n\t\t\t\t\t\t, CAT_LAST_UPDATE_TS\r\n\t\t\t\t\t\t, FileName\r\n\t\t\t\t\t\t, TABLE_NAME\r\n\t\t\t\t\t\t, isActive\r\n\t\t\t\t\t\t, isLatest\r\n\t\t\t\t\t\t, BNK_CODE\r\n\t\t\t\t\t\t, SOURCE_CODE\r\n\t\t\t\t\t\t, FILE_NAME\r\n\t\t\t\t\torder by insert_dttm DESC) AS SEQ_NO\r\n\t\tFROM BUSC.ATM_CARDACCOUNT\r\n\r\n\t) AS TMP\r\n\tWHERE SEQ_NO = 1\r\n) AS SCDT2\r\nLEFT JOIN EDS.DATE_DIM\r\n\tON CAST(END_DATE AS INTEGER) = DATE_DIM.DATESK;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ATM_CASHCARD",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ATM_CARDACCOUNT",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "IF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'ATM_CASHCARD' and table_schema = 'EDS' and table_type = 'BASE TABLE')\r\nBEGIN\r\n   DROP TABLE EDS.ATM_CASHCARD;\r\nEND;\r\nIF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'ATM_CASHCARD' and table_schema = 'EDS' and table_type = 'VIEW')\r\nBEGIN\r\n   DROP VIEW EDS.ATM_CASHCARD;\r\nEND;\r\n\r\nCREATE TABLE EDS.ATM_CASHCARD\r\nWITH\r\n(\r\n\tHEAP, DISTRIBUTION=HASH(CSH_ID)\r\n)\r\nAS\r\nSELECT CSH_ID\r\n\t, CSH_UUID\r\n\t, CSH_INS_ID\r\n\t, CSH_BRN_ID\r\n\t, CSH_CARD_NUMBER\r\n\t, CSH_ISSUE_DATE\r\n\t, CSH_EXPIRY_DATE\r\n\t, CSH_CARDHOLDER_NAME\r\n\t, CAST(CSH_CREATION_DATE AS DATE) AS CSH_CREATION_DATE\r\n\t, CSH_AUTO_RENEWAL\r\n\t, CSH_STS_ID\r\n\t--, CAST(CSH_STATUS_DATE AS DATETIME2) AS CSH_STATUS_DATE\r\n\t,CASE\r\n    \tWHEN ISNUMERIC(CSH_STATUS_DATE) = 1 THEN CAST(STUFF(STUFF(STUFF(CSH_STATUS_DATE, 13, 0, ':'), 11, 0, ':'), 9, 0, ' ') AS DATETIME2)\r\n    \tELSE FORMAT( CONVERT(BIGINT,NULLIF(CSH_STATUS_DATE,'')), '####-##-## ##:##:##')\r\n\tEND AS CSH_STATUS_DATE \r\n\t, CSH_CREATED_BY\r\n\t, CSH_CREATED_TS\r\n \t, CSH_UPDATED_BY\r\n\t, CSH_UPDATED_TS\r\n\t, CSH_AUDIT_LOG\r\n\t, CSH_PRS_ID\r\n\t, CSH_EMB_ID\r\n\t, CSH_CTS_ID\r\n\t, CSH_KIT_NUMBER\r\n\t, CSH_IS_LINKED\r\n\t, CSH_BCR_ID\r\n\t, CSH_CARD_NUMBER_ENC\r\n\t, CSH_CARD_NUMBER_MASKED\r\n\t, CSH_BRN_ID_ORIGINAL\r\n\t, CSH_CCL_ID\r\n\t, CSH_IS_CARD_POSTED\r\n\t, CSH_PREVIOUS_CSH_ID\r\n\t, CSH_SEQUENCE_NUMBER\r\n\t, CSH_LIFE_CYCLE\r\n\t, CSH_PIN_OFFSET\r\n\t--, CAST(CSH_PIN_OFFSET_TS AS DATETIME2) AS CSH_PIN_OFFSET_TS\r\n\t,CASE\r\n    \tWHEN ISNUMERIC(CSH_PIN_OFFSET_TS) = 1 THEN CAST(STUFF(STUFF(STUFF(CSH_PIN_OFFSET_TS, 13, 0, ':'), 11, 0, ':'), 9, 0, ' ') AS DATETIME2)\r\n    \tELSE FORMAT( CONVERT(BIGINT,NULLIF(CSH_PIN_OFFSET_TS,'')), '####-##-## ##:##:##')\r\n\tEND AS CSH_PIN_OFFSET_TS \r\n\t, CSH_IS_CORPORATE\r\n\t, CSH_CORPORATE_CIF\r\n\t, CSH_CORPORATE_NAME\r\n\t, CSH_KEY_ROTATION_NUMBER\r\n\t, CSH_EMBOSSING_NAME\r\n\t, CSH_IS_PRIMARY\r\n\t, CSH_PIN_GENERATED\r\n\r\n\t, CAST(Left(Right(FILE_NAME, 12), 8) AS DATE) AS SCD_START_DATE\r\n\t, COALESCE(DATE_DIM.Previous_Business_Day, CAST('99991231' AS DATE)) AS SCD_END_DATE\r\n\t, ISACTIVE\r\n\t, CASE WHEN DATE_DIM.Previous_Business_Day is null then 1 else 0 end as ISLATEST\r\n\t, BNK_CODE\r\n\t, SOURCE_CODE\r\n\t, FILE_NAME\r\n\t, insert_dttm\r\n\r\nFROM\r\n(\r\n\tSELECT CSH_ID\r\n\t\t, CSH_UUID\r\n\t\t, CSH_INS_ID\r\n\t\t, CSH_BRN_ID\r\n\t\t, CSH_CARD_NUMBER\r\n\t\t, CSH_ISSUE_DATE\r\n\t\t, CSH_EXPIRY_DATE\r\n\t\t, CSH_CARDHOLDER_NAME\r\n\t\t, CSH_CREATION_DATE\r\n\t\t, CSH_AUTO_RENEWAL\r\n\t\t, CSH_STS_ID\r\n\t\t, CSH_STATUS_DATE\r\n\t\t, CSH_CREATED_BY\r\n\t\t, CSH_CREATED_TS\r\n\t\t, CSH_UPDATED_BY\r\n\t\t, CSH_UPDATED_TS\r\n\t\t, CSH_AUDIT_LOG\r\n\t\t, CSH_PRS_ID\r\n\t\t, CSH_EMB_ID\r\n\t\t, CSH_CTS_ID\r\n\t\t, CSH_KIT_NUMBER\r\n\t\t, CSH_IS_LINKED\r\n\t\t, CSH_BCR_ID\r\n\t\t, CSH_CARD_NUMBER_ENC\r\n\t\t, CSH_CARD_NUMBER_MASKED\r\n\t\t, CSH_BRN_ID_ORIGINAL\r\n\t\t, CSH_CCL_ID\r\n\t\t, CSH_IS_CARD_POSTED\r\n\t\t, CSH_PREVIOUS_CSH_ID\r\n\t\t, CSH_SEQUENCE_NUMBER\r\n\t\t, CSH_LIFE_CYCLE\r\n\t\t, CSH_PIN_OFFSET\r\n\t\t, CSH_PIN_OFFSET_TS\r\n\t\t, CSH_IS_CORPORATE\r\n\t\t, CSH_CORPORATE_CIF\r\n\t\t, CSH_CORPORATE_NAME\r\n\t\t, CSH_KEY_ROTATION_NUMBER\r\n\t\t, CSH_EMBOSSING_NAME\r\n\t\t, CSH_IS_PRIMARY\r\n\t\t, CSH_PIN_GENERATED\r\n\t\t, isActive\r\n\t\t, isLatest\r\n\t\t, BNK_CODE\r\n\t\t, SOURCE_CODE\r\n\t\t, FILE_NAME\r\n\t\t, insert_dttm\r\n\t\t, CAST(Left(Right(FILE_NAME, 12), 8) AS DATE) START_DATE     \r\n\t\t, Max(Left(Right(FILE_NAME, 12), 8)) Over (PARTITION BY CSH_ID\r\n\t\t\tORDER BY Left(Right(FILE_NAME, 12), 8) ROWS BETWEEN 1 Following AND 1 Following) END_DATE                  \t\t\t\t\r\n\tFROM\r\n\t(\r\n\t\tSELECT CSH_ID\r\n\t\t\t, CSH_UUID\r\n\t\t\t, CSH_INS_ID\r\n\t\t\t, CSH_BRN_ID\r\n\t\t\t, CSH_CARD_NUMBER\r\n\t\t\t, CSH_ISSUE_DATE\r\n\t\t\t, CSH_EXPIRY_DATE\r\n\t\t\t, CSH_CARDHOLDER_NAME\r\n\t\t\t, CSH_CREATION_DATE\r\n\t\t\t, CSH_AUTO_RENEWAL\r\n\t\t\t, CSH_STS_ID\r\n\t\t\t, CSH_STATUS_DATE\r\n\t\t\t, CSH_CREATED_BY\r\n\t\t\t, CSH_CREATED_TS\r\n\t\t\t, CSH_UPDATED_BY\r\n\t\t\t, CSH_UPDATED_TS\r\n\t\t\t, CSH_AUDIT_LOG\r\n\t\t\t, CSH_PRS_ID\r\n\t\t\t, CSH_EMB_ID\r\n\t\t\t, CSH_CTS_ID\r\n\t\t\t, CSH_KIT_NUMBER\r\n\t\t\t, CSH_IS_LINKED\r\n\t\t\t, CSH_BCR_ID\r\n\t\t\t, CSH_CARD_NUMBER_ENC\r\n\t\t\t, CSH_CARD_NUMBER_MASKED\r\n\t\t\t, CSH_BRN_ID_ORIGINAL\r\n\t\t\t, CSH_CCL_ID\r\n\t\t\t, CSH_IS_CARD_POSTED\r\n\t\t\t, CSH_PREVIOUS_CSH_ID\r\n\t\t\t, CSH_SEQUENCE_NUMBER\r\n\t\t\t, CSH_LIFE_CYCLE\r\n\t\t\t, CSH_PIN_OFFSET\r\n\t\t\t, CSH_PIN_OFFSET_TS\r\n\t\t\t, CSH_IS_CORPORATE\r\n\t\t\t, CSH_CORPORATE_CIF\r\n\t\t\t, CSH_CORPORATE_NAME\r\n\t\t\t, CSH_KEY_ROTATION_NUMBER\r\n\t\t\t, CSH_EMBOSSING_NAME\r\n\t\t\t, CSH_IS_PRIMARY\r\n\t\t\t, CSH_PIN_GENERATED\r\n\t\t\t, isActive\r\n\t\t\t, isLatest\r\n\t\t\t, BNK_CODE\r\n\t\t\t, SOURCE_CODE\r\n\t\t\t, FILE_NAME\r\n\t\t\t, insert_dttm\r\n\t\t\t, row_number() \r\n\t\t\t\tover( partition by CSH_ID\r\n\t\t\t\t\t\t, CSH_UUID\r\n\t\t\t\t\t\t, CSH_INS_ID\r\n\t\t\t\t\t\t, CSH_BRN_ID\r\n\t\t\t\t\t\t, CSH_CARD_NUMBER\r\n\t\t\t\t\t\t, CSH_ISSUE_DATE\r\n\t\t\t\t\t\t, CSH_EXPIRY_DATE\r\n\t\t\t\t\t\t, CSH_CARDHOLDER_NAME\r\n\t\t\t\t\t\t, CSH_CREATION_DATE\r\n\t\t\t\t\t\t, CSH_AUTO_RENEWAL\r\n\t\t\t\t\t\t, CSH_STS_ID\r\n\t\t\t\t\t\t, CSH_STATUS_DATE\r\n\t\t\t\t\t\t, CSH_CREATED_BY\r\n\t\t\t\t\t\t, CSH_CREATED_TS\r\n\t\t\t\t\t\t, CSH_UPDATED_BY\r\n\t\t\t\t\t\t, CSH_UPDATED_TS\r\n\t\t\t\t\t\t, CSH_AUDIT_LOG\r\n\t\t\t\t\t\t, CSH_PRS_ID\r\n\t\t\t\t\t\t, CSH_EMB_ID\r\n\t\t\t\t\t\t, CSH_CTS_ID\r\n\t\t\t\t\t\t, CSH_KIT_NUMBER\r\n\t\t\t\t\t\t, CSH_IS_LINKED\r\n\t\t\t\t\t\t, CSH_BCR_ID\r\n\t\t\t\t\t\t, CSH_CARD_NUMBER_ENC\r\n\t\t\t\t\t\t, CSH_CARD_NUMBER_MASKED\r\n\t\t\t\t\t\t, CSH_BRN_ID_ORIGINAL\r\n\t\t\t\t\t\t, CSH_CCL_ID\r\n\t\t\t\t\t\t, CSH_IS_CARD_POSTED\r\n\t\t\t\t\t\t, CSH_PREVIOUS_CSH_ID\r\n\t\t\t\t\t\t, CSH_SEQUENCE_NUMBER\r\n\t\t\t\t\t\t, CSH_LIFE_CYCLE\r\n\t\t\t\t\t\t, CSH_PIN_OFFSET\r\n\t\t\t\t\t\t, CSH_PIN_OFFSET_TS\r\n\t\t\t\t\t\t, CSH_IS_CORPORATE\r\n\t\t\t\t\t\t, CSH_CORPORATE_CIF\r\n\t\t\t\t\t\t, CSH_CORPORATE_NAME\r\n\t\t\t\t\t\t, CSH_KEY_ROTATION_NUMBER\r\n\t\t\t\t\t\t, CSH_EMBOSSING_NAME\r\n\t\t\t\t\t\t, CSH_IS_PRIMARY\r\n\t\t\t\t\t\t, CSH_PIN_GENERATED\r\n\t\t\t\t\t\t, isActive\r\n\t\t\t\t\t\t, isLatest\r\n\t\t\t\t\t\t, BNK_CODE\r\n\t\t\t\t\t\t, SOURCE_CODE\r\n\t\t\t\t\t\t, FILE_NAME\r\n\t\t\t\t\torder by insert_dttm DESC) AS SEQ_NO\r\n\t\tFROM BUSC.ATM_CASHCARD\r\n\r\n\t) AS TMP\r\n\tWHERE SEQ_NO = 1\r\n) AS SCDT2\r\nLEFT JOIN EDS.DATE_DIM\r\n\tON CAST(END_DATE AS INTEGER) = DATE_DIM.DATESK;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ATM_CASHCARDACCMAPPING",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ATM_CASHCARD",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "IF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'ATM_CASHCARDACCMAPPING' and table_schema = 'EDS' and table_type = 'BASE TABLE')\r\nBEGIN\r\n   DROP TABLE EDS.ATM_CASHCARDACCMAPPING;\r\nEND;\r\nIF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'ATM_CASHCARDACCMAPPING' and table_schema = 'EDS' and table_type = 'VIEW')\r\nBEGIN\r\n   DROP VIEW EDS.ATM_CASHCARDACCMAPPING;\r\nEND;\r\n\r\nCREATE TABLE EDS.ATM_CASHCARDACCMAPPING\r\nWITH\r\n(\r\n\tHEAP, DISTRIBUTION=HASH(CAM_CLT_ID)\r\n)\r\nAS\r\nSELECT CAM_ID\r\n\t, CAM_UUID\r\n\t, CAM_CLT_ID\r\n\t, CAM_CAC_ID\r\n\t, CAM_CSH_ID\r\n\t, CAM_STS_ID\r\n\t, CAM_CREATED_BY\r\n\t, CAM_CREATED_TS\r\n\t, CAM_UPDATED_BY\r\n\t, CAM_UPDATED_TS\r\n\t, CAM_AUDIT_LOG\r\n\t, CAM_INS_ID\r\n\r\n\t, CAST(Left(Right(FILE_NAME, 12), 8) AS DATE) AS SCD_START_DATE\r\n\t, COALESCE(DATE_DIM.Previous_Business_Day, CAST('99991231' AS DATE)) AS SCD_END_DATE\r\n\t, ISACTIVE\r\n\t, CASE WHEN DATE_DIM.Previous_Business_Day is null then 1 else 0 end as ISLATEST\r\n\t, BNK_CODE\r\n\t, SOURCE_CODE\r\n\t, FILE_NAME\r\n\t, insert_dttm\r\nFROM\r\n(\r\n\tSELECT CAM_ID\r\n\t\t, CAM_UUID\r\n\t\t, CAM_CLT_ID\r\n\t\t, CAM_CAC_ID\r\n\t\t, CAM_CSH_ID\r\n\t\t, CAM_STS_ID\r\n\t\t, CAM_CREATED_BY\r\n\t\t, CAM_CREATED_TS\r\n\t\t, CAM_UPDATED_BY\r\n\t\t, CAM_UPDATED_TS\r\n\t\t, CAM_AUDIT_LOG\r\n\t\t, CAM_INS_ID\r\n\t\t, isActive\r\n\t\t, isLatest\r\n\t\t, BNK_CODE\r\n\t\t, SOURCE_CODE\r\n\t\t, FILE_NAME\r\n\t\t, insert_dttm\r\n\r\n\t\t, CAST(Left(Right(FILE_NAME, 12), 8) AS DATE) START_DATE     \r\n\t\t, Max(Left(Right(FILE_NAME, 12), 8)) Over (PARTITION BY CAM_ID\r\n\t\t\tORDER BY Left(Right(FILE_NAME, 12), 8) ROWS BETWEEN 1 Following AND 1 Following) END_DATE                  \t\t\t\t\r\n\tFROM\r\n\t(\r\n\t\tSELECT CAM_ID\r\n\t\t\t, CAM_UUID\r\n\t\t\t, CAM_CLT_ID\r\n\t\t\t, CAM_CAC_ID\r\n\t\t\t, CAM_CSH_ID\r\n\t\t\t, CAM_STS_ID\r\n\t\t\t, CAM_CREATED_BY\r\n\t\t\t, CAM_CREATED_TS\r\n\t\t\t, CAM_UPDATED_BY\r\n\t\t\t, CAM_UPDATED_TS\r\n\t\t\t, CAM_AUDIT_LOG\r\n\t\t\t, CAM_INS_ID\r\n\t\t\t, isActive\r\n\t\t\t, isLatest\r\n\t\t\t, BNK_CODE\r\n\t\t\t, SOURCE_CODE\r\n\t\t\t, FILE_NAME\r\n\t\t\t, insert_dttm\r\n\t\t\t, row_number() \r\n\t\t\t\tover( partition by CAM_ID\r\n\t\t\t\t\t\t, CAM_UUID\r\n\t\t\t\t\t\t, CAM_CLT_ID\r\n\t\t\t\t\t\t, CAM_CAC_ID\r\n\t\t\t\t\t\t, CAM_CSH_ID\r\n\t\t\t\t\t\t, CAM_STS_ID\r\n\t\t\t\t\t\t, CAM_CREATED_BY\r\n\t\t\t\t\t\t, CAM_CREATED_TS\r\n\t\t\t\t\t\t, CAM_UPDATED_BY\r\n\t\t\t\t\t\t, CAM_UPDATED_TS\r\n\t\t\t\t\t\t, CAM_AUDIT_LOG\r\n\t\t\t\t\t\t, CAM_INS_ID\r\n\t\t\t\t\t\t, isActive\r\n\t\t\t\t\t\t, isLatest\r\n\t\t\t\t\t\t, BNK_CODE\r\n\t\t\t\t\t\t, SOURCE_CODE\r\n\t\t\t\t\t\t, FILE_NAME\r\n\r\n\t\t\t\t\torder by insert_dttm DESC) AS SEQ_NO\r\n\t\tFROM BUSC.ATM_CASHCARDACCMAPPING\r\n\r\n\t) AS TMP\r\n\tWHERE SEQ_NO = 1\r\n) AS SCDT2\r\nLEFT JOIN EDS.DATE_DIM\r\n\tON CAST(END_DATE AS INTEGER) = DATE_DIM.DATESK;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ATM_CASHCARDACCOUNT",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ATM_CASHCARDACCMAPPING",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "IF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'ATM_CASHCARDACCOUNT' and table_schema = 'EDS' and table_type = 'BASE TABLE')\r\nBEGIN\r\n   DROP TABLE EDS.ATM_CASHCARDACCOUNT;\r\nEND;\r\nIF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'ATM_CASHCARDACCOUNT' and table_schema = 'EDS' and table_type = 'VIEW')\r\nBEGIN\r\n   DROP VIEW EDS.ATM_CASHCARDACCOUNT;\r\nEND;\r\n\r\nCREATE TABLE EDS.ATM_CASHCARDACCOUNT\r\nWITH\r\n(\r\n\tHEAP, DISTRIBUTION=HASH(CAC_CLT_ID)\r\n)\r\nAS\r\nSELECT CAC_ID\r\n\t, CAC_UUID\r\n\t, CAC_CLT_ID\r\n\t, CAC_ACCOUNT_NUMBER\r\n\t, CAC_BAT_ID\r\n\t, CAC_STS_ID\r\n\t, CAC_CREATED_BY\r\n\t, CAC_CREATED_TS\r\n\t, CAC_UPDATED_BY\r\n\t, CAC_UPDATED_TS\r\n\t, CAC_BRN_ID\r\n\t, CAC_PRS_ID\r\n\t, CAC_AUDIT_LOG\r\n\t, CAC_INS_ID\r\n\t, CAC_ACCOUNT_NUMBER_MASKED\r\n\t, CAC_KEY_ROTATION_NUMBER\r\n\r\n\t, CAST(Left(Right(FILE_NAME, 12), 8) AS DATE) AS SCD_START_DATE\r\n\t, COALESCE(DATE_DIM.Previous_Business_Day, CAST('99991231' AS DATE)) AS SCD_END_DATE\r\n\t, ISACTIVE\r\n\t, CASE WHEN DATE_DIM.Previous_Business_Day is null then 1 else 0 end as ISLATEST\r\n\t, BNK_CODE\r\n\t, SOURCE_CODE\r\n\t, FILE_NAME\r\n\t, insert_dttm\r\n\r\nFROM\r\n(\r\n\tSELECT CAC_ID\r\n\t\t, CAC_UUID\r\n\t\t, CAC_CLT_ID\r\n\t\t, CAC_ACCOUNT_NUMBER\r\n\t\t, CAC_BAT_ID\r\n\t\t, CAC_STS_ID\r\n\t\t, CAC_CREATED_BY\r\n\t\t, CAC_CREATED_TS\r\n\t\t, CAC_UPDATED_BY\r\n\t\t, CAC_UPDATED_TS\r\n\t\t, CAC_BRN_ID\r\n\t\t, CAC_PRS_ID\r\n\t\t, CAC_AUDIT_LOG\r\n\t\t, CAC_INS_ID\r\n\t\t, CAC_ACCOUNT_NUMBER_MASKED\r\n\t\t, CAC_KEY_ROTATION_NUMBER\r\n\t\t, isActive\r\n\t\t, isLatest\r\n\t\t, BNK_CODE\r\n\t\t, SOURCE_CODE\r\n\t\t, FILE_NAME\r\n\t\t, insert_dttm\r\n\r\n\t\t, CAST(Left(Right(FILE_NAME, 12), 8) AS DATE) START_DATE     \r\n\t\t, Max(Left(Right(FILE_NAME, 12), 8)) Over (PARTITION BY CAC_ID\r\n\t\t\tORDER BY Left(Right(FILE_NAME, 12), 8) ROWS BETWEEN 1 Following AND 1 Following) END_DATE                  \t\t\t\t\r\n\tFROM\r\n\t(\r\n\t\tSELECT CAC_ID\r\n\t\t\t, CAC_UUID\r\n\t\t\t, CAC_CLT_ID\r\n\t\t\t, CAC_ACCOUNT_NUMBER\r\n\t\t\t, CAC_BAT_ID\r\n\t\t\t, CAC_STS_ID\r\n\t\t\t, CAC_CREATED_BY\r\n\t\t\t, CAC_CREATED_TS\r\n\t\t\t, CAC_UPDATED_BY\r\n\t\t\t, CAC_UPDATED_TS\r\n\t\t\t, CAC_BRN_ID\r\n\t\t\t, CAC_PRS_ID\r\n\t\t\t, CAC_AUDIT_LOG\r\n\t\t\t, CAC_INS_ID\r\n\t\t\t, CAC_ACCOUNT_NUMBER_MASKED\r\n\t\t\t, CAC_KEY_ROTATION_NUMBER\r\n\t\t\t, isActive\r\n\t\t\t, isLatest\r\n\t\t\t, BNK_CODE\r\n\t\t\t, SOURCE_CODE\r\n\t\t\t, FILE_NAME\r\n\t\t\t, insert_dttm\r\n\t\t\t, row_number() \r\n\t\t\t\tover( partition by CAC_ID\r\n\t\t\t\t\t\t, CAC_UUID\r\n\t\t\t\t\t\t, CAC_CLT_ID\r\n\t\t\t\t\t\t, CAC_ACCOUNT_NUMBER\r\n\t\t\t\t\t\t, CAC_BAT_ID\r\n\t\t\t\t\t\t, CAC_STS_ID\r\n\t\t\t\t\t\t, CAC_CREATED_BY\r\n\t\t\t\t\t\t, CAC_CREATED_TS\r\n\t\t\t\t\t\t, CAC_UPDATED_BY\r\n\t\t\t\t\t\t, CAC_UPDATED_TS\r\n\t\t\t\t\t\t, CAC_BRN_ID\r\n\t\t\t\t\t\t, CAC_PRS_ID\r\n\t\t\t\t\t\t, CAC_AUDIT_LOG\r\n\t\t\t\t\t\t, CAC_INS_ID\r\n\t\t\t\t\t\t, CAC_ACCOUNT_NUMBER_MASKED\r\n\t\t\t\t\t\t, CAC_KEY_ROTATION_NUMBER\r\n\t\t\t\t\t\t, isActive\r\n\t\t\t\t\t\t, isLatest\r\n\t\t\t\t\t\t, BNK_CODE\r\n\t\t\t\t\t\t, SOURCE_CODE\r\n\t\t\t\t\t\t, FILE_NAME\r\n\t\t\t\t\torder by insert_dttm DESC) AS SEQ_NO\r\n\t\tFROM BUSC.ATM_CASHCARDACCOUNT\r\n\r\n\t) AS TMP\r\n\tWHERE SEQ_NO = 1\r\n) AS SCDT2\r\nLEFT JOIN EDS.DATE_DIM\r\n\tON CAST(END_DATE AS INTEGER) = DATE_DIM.DATESK;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ATM_CUSTOMER",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ATM_CASHCARDACCOUNT",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "IF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'ATM_CUSTOMER' and table_schema = 'EDS' and table_type = 'BASE TABLE')\r\nBEGIN\r\n   DROP TABLE EDS.ATM_CUSTOMER;\r\nEND;\r\nIF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'ATM_CUSTOMER' and table_schema = 'EDS' and table_type = 'VIEW')\r\nBEGIN\r\n   DROP VIEW EDS.ATM_CUSTOMER;\r\nEND;\r\n\r\nCREATE TABLE EDS.ATM_CUSTOMER\r\nWITH\r\n(\r\n\tHEAP, DISTRIBUTION=HASH(CUST_ID)\r\n)\r\nAS\r\nSELECT CUST_ID\r\n\t, CUST_NUMBER\r\n\t, CUST_TITLE\r\n\t, CUST_FIRST_NAME\r\n\t, CUST_MIDDLE_NAME\r\n\t, CUST_LAST_NAME\r\n\t, CUST_CCNY_ID\r\n\t, CUST_GENDER\r\n\t, CUST_DOB\r\n\t, CUST_EMAIL_ADDRESS\r\n\t, CUST_STATUS\r\n\t, CUST_WORK_PHONE\r\n\t, CUST_MOBILE_PHONE\r\n\t, CUST_DEVICE_ID\r\n\t, CUST_CCAT_ID\r\n\t, CUST_NAT_CTY_ISO_ID\r\n\t, CUST_CUSTOM_DATA\r\n\t, CUST_CREATED_DATE_TS\r\n\t, CUST_LAST_UPDATE_TS\r\n\t, CUST_LIMIT_CONFIG\r\n\t, CUST_HOME_PHONE\r\n\t, CUST_CUIT_CODE_1\r\n\t, CUST_IDENT_NUMBER_1\r\n\t, CUST_CUIT_CODE_2\r\n\t, CUST_IDENT_NUMBER_2\r\n\t, CUST_CUIT_CODE_3\r\n\t, CUST_IDENT_NUMBER_3\r\n\t, CUST_ISS_ID\r\n\t, CUST_RESIDENCE_IND\r\n\t, CUST_BACKGROUND_IND\r\n\t, CUST_IDENT_NUMBER_1_EKY_ID\r\n\t, CUST_IDENT_NUMBER_2_EKY_ID\r\n\t, CUST_IDENT_NUMBER_3_EKY_ID\r\n\r\n\t, CAST(Left(Right(FILE_NAME, 12), 8) AS DATE) AS SCD_START_DATE\r\n\t, COALESCE(DATE_DIM.Previous_Business_Day, CAST('99991231' AS DATE)) AS SCD_END_DATE\r\n\t, ISACTIVE\r\n\t, CASE WHEN DATE_DIM.Previous_Business_Day is null then 1 else 0 end as ISLATEST\r\n\t, BNK_CODE\r\n\t, SOURCE_CODE\r\n\t, FILE_NAME\r\n\t, insert_dttm\r\n\r\nFROM\r\n(\r\n\tSELECT CUST_ID\r\n\t\t, CUST_NUMBER\r\n\t\t, CUST_TITLE\r\n\t\t, CUST_FIRST_NAME\r\n\t\t, CUST_MIDDLE_NAME\r\n\t\t, CUST_LAST_NAME\r\n\t\t, CUST_CCNY_ID\r\n\t\t, CUST_GENDER\r\n\t\t, CUST_DOB\r\n\t\t, CUST_EMAIL_ADDRESS\r\n\t\t, CUST_STATUS\r\n\t\t, CUST_WORK_PHONE\r\n\t\t, CUST_MOBILE_PHONE\r\n\t\t, CUST_DEVICE_ID\r\n\t\t, CUST_CCAT_ID\r\n\t\t, CUST_NAT_CTY_ISO_ID\r\n\t\t, CUST_CUSTOM_DATA\r\n\t\t, CUST_CREATED_DATE_TS\r\n\t\t, CUST_LAST_UPDATE_TS\r\n\t\t, CUST_LIMIT_CONFIG\r\n\t\t, CUST_HOME_PHONE\r\n\t\t, CUST_CUIT_CODE_1\r\n\t\t, CUST_IDENT_NUMBER_1\r\n\t\t, CUST_CUIT_CODE_2\r\n\t\t, CUST_IDENT_NUMBER_2\r\n\t\t, CUST_CUIT_CODE_3\r\n\t\t, CUST_IDENT_NUMBER_3\r\n\t\t, CUST_ISS_ID\r\n\t\t, CUST_RESIDENCE_IND\r\n\t\t, CUST_BACKGROUND_IND\r\n\t\t, CUST_IDENT_NUMBER_1_EKY_ID\r\n\t\t, CUST_IDENT_NUMBER_2_EKY_ID\r\n\t\t, CUST_IDENT_NUMBER_3_EKY_ID\r\n\t\t, isActive\r\n\t\t, isLatest\r\n\t\t, BNK_CODE\r\n\t\t, SOURCE_CODE\r\n\t\t, FILE_NAME\r\n\t\t, insert_dttm\r\n\r\n\t\t, CAST(Left(Right(FILE_NAME, 12), 8) AS DATE) START_DATE     \r\n\t\t, Max(Left(Right(FILE_NAME, 12), 8)) Over (PARTITION BY CUST_ID\r\n\t\t\tORDER BY Left(Right(FILE_NAME, 12), 8) ROWS BETWEEN 1 Following AND 1 Following) END_DATE                  \t\t\t\t\r\n\tFROM\r\n\t(\r\n\t\tSELECT CUST_ID\r\n\t\t\t, CUST_NUMBER\r\n\t\t\t, CUST_TITLE\r\n\t\t\t, CUST_FIRST_NAME\r\n\t\t\t, CUST_MIDDLE_NAME\r\n\t\t\t, CUST_LAST_NAME\r\n\t\t\t, CUST_CCNY_ID\r\n\t\t\t, CUST_GENDER\r\n\t\t\t, CUST_DOB\r\n\t\t\t, CUST_EMAIL_ADDRESS\r\n\t\t\t, CUST_STATUS\r\n\t\t\t, CUST_WORK_PHONE\r\n\t\t\t, CUST_MOBILE_PHONE\r\n\t\t\t, CUST_DEVICE_ID\r\n\t\t\t, CUST_CCAT_ID\r\n\t\t\t, CUST_NAT_CTY_ISO_ID\r\n\t\t\t, CUST_CUSTOM_DATA\r\n\t\t\t, CUST_CREATED_DATE_TS\r\n\t\t\t, CUST_LAST_UPDATE_TS\r\n\t\t\t, CUST_LIMIT_CONFIG\r\n\t\t\t, CUST_HOME_PHONE\r\n\t\t\t, CUST_CUIT_CODE_1\r\n\t\t\t, CUST_IDENT_NUMBER_1\r\n\t\t\t, CUST_CUIT_CODE_2\r\n\t\t\t, CUST_IDENT_NUMBER_2\r\n\t\t\t, CUST_CUIT_CODE_3\r\n\t\t\t, CUST_IDENT_NUMBER_3\r\n\t\t\t, CUST_ISS_ID\r\n\t\t\t, CUST_RESIDENCE_IND\r\n\t\t\t, CUST_BACKGROUND_IND\r\n\t\t\t, CUST_IDENT_NUMBER_1_EKY_ID\r\n\t\t\t, CUST_IDENT_NUMBER_2_EKY_ID\r\n\t\t\t, CUST_IDENT_NUMBER_3_EKY_ID\r\n\t\t\t, isActive\r\n\t\t\t, isLatest\r\n\t\t\t, BNK_CODE\r\n\t\t\t, SOURCE_CODE\r\n\t\t\t, FILE_NAME\r\n\t\t\t, insert_dttm\r\n\r\n\t\t\t, row_number() \r\n\t\t\t\tover( partition by CUST_ID\r\n\t\t\t\t\t\t, CUST_NUMBER\r\n\t\t\t\t\t\t, CUST_TITLE\r\n\t\t\t\t\t\t, CUST_FIRST_NAME\r\n\t\t\t\t\t\t, CUST_MIDDLE_NAME\r\n\t\t\t\t\t\t, CUST_LAST_NAME\r\n\t\t\t\t\t\t, CUST_CCNY_ID\r\n\t\t\t\t\t\t, CUST_GENDER\r\n\t\t\t\t\t\t, CUST_DOB\r\n\t\t\t\t\t\t, CUST_EMAIL_ADDRESS\r\n\t\t\t\t\t\t, CUST_STATUS\r\n\t\t\t\t\t\t, CUST_WORK_PHONE\r\n\t\t\t\t\t\t, CUST_MOBILE_PHONE\r\n\t\t\t\t\t\t, CUST_DEVICE_ID\r\n\t\t\t\t\t\t, CUST_CCAT_ID\r\n\t\t\t\t\t\t, CUST_NAT_CTY_ISO_ID\r\n\t\t\t\t\t\t, CUST_CUSTOM_DATA\r\n\t\t\t\t\t\t, CUST_CREATED_DATE_TS\r\n\t\t\t\t\t\t, CUST_LAST_UPDATE_TS\r\n\t\t\t\t\t\t, CUST_LIMIT_CONFIG\r\n\t\t\t\t\t\t, CUST_HOME_PHONE\r\n\t\t\t\t\t\t, CUST_CUIT_CODE_1\r\n\t\t\t\t\t\t, CUST_IDENT_NUMBER_1\r\n\t\t\t\t\t\t, CUST_CUIT_CODE_2\r\n\t\t\t\t\t\t, CUST_IDENT_NUMBER_2\r\n\t\t\t\t\t\t, CUST_CUIT_CODE_3\r\n\t\t\t\t\t\t, CUST_IDENT_NUMBER_3\r\n\t\t\t\t\t\t, CUST_ISS_ID\r\n\t\t\t\t\t\t, CUST_RESIDENCE_IND\r\n\t\t\t\t\t\t, CUST_BACKGROUND_IND\r\n\t\t\t\t\t\t, CUST_IDENT_NUMBER_1_EKY_ID\r\n\t\t\t\t\t\t, CUST_IDENT_NUMBER_2_EKY_ID\r\n\t\t\t\t\t\t, CUST_IDENT_NUMBER_3_EKY_ID\r\n\t\t\t\t\t\t, isActive\r\n\t\t\t\t\t\t, isLatest\r\n\t\t\t\t\t\t, BNK_CODE\r\n\t\t\t\t\t\t, SOURCE_CODE\r\n\t\t\t\t\t\t, FILE_NAME\r\n\r\n\t\t\t\t\torder by insert_dttm DESC) AS SEQ_NO\r\n\t\tFROM BUSC.ATM_CUSTOMER\r\n\r\n\t) AS TMP\r\n\tWHERE SEQ_NO = 1\r\n) AS SCDT2\r\nLEFT JOIN EDS.DATE_DIM\r\n\tON CAST(END_DATE AS INTEGER) = DATE_DIM.DATESK;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ATM_ISSCARD",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ATM_CUSTOMER",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "IF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'ATM_ISSCARD' and table_schema = 'EDS' and table_type = 'BASE TABLE')\r\nBEGIN\r\n   DROP TABLE EDS.ATM_ISSCARD;\r\nEND;\r\nIF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'ATM_ISSCARD' and table_schema = 'EDS' and table_type = 'VIEW')\r\nBEGIN\r\n   DROP VIEW EDS.ATM_ISSCARD;\r\nEND;\r\n\r\nCREATE TABLE EDS.ATM_ISSCARD\r\nWITH\r\n(\r\n\tHEAP, DISTRIBUTION=HASH(CRD_ID)\r\n)\r\nAS\r\nSELECT CRD_ID\r\n\t, CRD_UUID\r\n\t, CRD_BCR_ID\r\n\t, CRD_PRS_ID\r\n\t, CRD_INS_ID\r\n\t, CRD_BRN_ID\r\n\t, CRD_NUMBER\r\n\t, CRD_ISSUE_DATE\r\n\t, CRD_EXPIRY_DATE\r\n\t, CRD_PREVIOUS_CRD_ID\r\n\t, CRD_CARDHOLDER_NAME\r\n\t, CRD_CREATION_DATE\r\n\t, CRD_STS_ID\r\n\t, CRD_STATUS_DATE\r\n\t, CRD_CREATED_BY\r\n\t, CRD_CREATED_TS\r\n\t, CRD_UPDATED_BY\r\n\t, CRD_UPDATED_TS\r\n\t, CRD_AUDIT_LOG\r\n\t, CRD_PARENT_CRD_ID\r\n\t, CRD_ALLOW_RENEWAL\r\n\t, CRD_IS_PRIMARY\r\n\t, CRD_KIT_NUMBER\r\n\t, CRD_IS_LINKED\r\n\t, CRD_CTS_ID\r\n\t, CRD_EMB_ID\r\n\t, CRD_BRN_ID_ORIGINAL\r\n\t, CRD_NUMBER_ENC\r\n\t, CRD_NUMBER_MASKED\r\n\t, CRD_CCL_ID\r\n\t, CRD_IS_CARD_POSTED\r\n\t, CRD_SEQUENCE_NUMBER\r\n\t, CRD_LIFE_CYCLE\r\n\t, CRD_PIN_OFFSET\r\n    ,CASE\r\n        WHEN ISDATE(CAST(STUFF(STUFF(STUFF(STUFF(STUFF(CRD_PIN_OFFSET_TS, 13, 0, ':'),11, 0, ':'),9, 0, ' '),7, 0, '-'), 5, 0, '-') AS DATETIME)) = 1 \r\n            THEN CAST(STUFF(STUFF(STUFF(STUFF(STUFF(CRD_PIN_OFFSET_TS, 13, 0, ':'),11, 0, ':'),9, 0, ' '),7, 0, '-'), 5, 0, '-') AS DATETIME)\r\n        ELSE NULL  \r\n    END AS CRD_PIN_OFFSET_TS\r\n\t, CRD_IS_CORPORATE\r\n\t, CRD_CORPORATE_CIF\r\n\t, CRD_CORPORATE_NAME\r\n\t, CRD_KEY_ROTATION_NUMBER\r\n\t, CRD_EMBOSSING_NAME\r\n\t, CRD_PIN_GENERATED\r\n\t, CAST(Left(Right(FILE_NAME, 12), 8) AS DATE) AS SCD_START_DATE\r\n\t, COALESCE(DATE_DIM.Previous_Business_Day, CAST('99991231' AS DATE)) AS SCD_END_DATE\r\n\t, ISACTIVE\r\n\t, CASE WHEN DATE_DIM.Previous_Business_Day is null then 1 else 0 end as ISLATEST\r\n\t, BNK_CODE\r\n\t, SOURCE_CODE\r\n\t, FILE_NAME\r\n\t, insert_dttm\r\n\r\nFROM\r\n(\r\n\tSELECT CRD_ID\r\n\t\t, CRD_UUID\r\n\t\t, CRD_BCR_ID\r\n\t\t, CRD_PRS_ID\r\n\t\t, CRD_INS_ID\r\n\t\t, CRD_BRN_ID\r\n\t\t, CRD_NUMBER\r\n\t\t, CRD_ISSUE_DATE\r\n\t\t, CRD_EXPIRY_DATE\r\n\t\t, CRD_PREVIOUS_CRD_ID\r\n\t\t, CRD_CARDHOLDER_NAME\r\n\t\t, CRD_CREATION_DATE\r\n\t\t, CRD_STS_ID\r\n\t\t, CRD_STATUS_DATE\r\n\t\t, CRD_CREATED_BY\r\n\t\t, CRD_CREATED_TS\r\n\t\t, CRD_UPDATED_BY\r\n\t\t, CRD_UPDATED_TS\r\n\t\t, CRD_AUDIT_LOG\r\n\t\t, CRD_PARENT_CRD_ID\r\n\t\t, CRD_ALLOW_RENEWAL\r\n\t\t, CRD_IS_PRIMARY\r\n\t\t, CRD_KIT_NUMBER\r\n\t\t, CRD_IS_LINKED\r\n\t\t, CRD_CTS_ID\r\n\t\t, CRD_EMB_ID\r\n\t\t, CRD_BRN_ID_ORIGINAL\r\n\t\t, CRD_NUMBER_ENC\r\n\t\t, CRD_NUMBER_MASKED\r\n\t\t, CRD_CCL_ID\r\n\t\t, CRD_IS_CARD_POSTED\r\n\t\t, CRD_SEQUENCE_NUMBER\r\n\t\t, CRD_LIFE_CYCLE\r\n\t\t, CRD_PIN_OFFSET\r\n\t\t, CRD_PIN_OFFSET_TS\r\n\t\t, CRD_IS_CORPORATE\r\n\t\t, CRD_CORPORATE_CIF\r\n\t\t, CRD_CORPORATE_NAME\r\n\t\t, CRD_KEY_ROTATION_NUMBER\r\n\t\t, CRD_EMBOSSING_NAME\r\n\t\t, CRD_PIN_GENERATED\r\n\t\t, isActive\r\n\t\t, isLatest\r\n\t\t, BNK_CODE\r\n\t\t, SOURCE_CODE\r\n\t\t, FILE_NAME\r\n\t\t, insert_dttm\r\n\r\n\t\t, CAST(Left(Right(FILE_NAME, 12), 8) AS DATE) START_DATE     \r\n\t\t, Max(Left(Right(FILE_NAME, 12), 8)) Over (PARTITION BY CRD_ID\r\n\t\t\tORDER BY Left(Right(FILE_NAME, 12), 8) ROWS BETWEEN 1 Following AND 1 Following) END_DATE                  \t\t\t\t\r\n\tFROM\r\n\t(\r\n\t\tSELECT CRD_ID\r\n\t\t\t, CRD_UUID\r\n\t\t\t, CRD_BCR_ID\r\n\t\t\t, CRD_PRS_ID\r\n\t\t\t, CRD_INS_ID\r\n\t\t\t, CRD_BRN_ID\r\n\t\t\t, CRD_NUMBER\r\n\t\t\t, CRD_ISSUE_DATE\r\n\t\t\t, CRD_EXPIRY_DATE\r\n\t\t\t, CRD_PREVIOUS_CRD_ID\r\n\t\t\t, CRD_CARDHOLDER_NAME\r\n\t\t\t, CRD_CREATION_DATE\r\n\t\t\t, CRD_STS_ID\r\n\t\t\t, CRD_STATUS_DATE\r\n\t\t\t, CRD_CREATED_BY\r\n\t\t\t, CRD_CREATED_TS\r\n\t\t\t, CRD_UPDATED_BY\r\n\t\t\t, CRD_UPDATED_TS\r\n\t\t\t, CRD_AUDIT_LOG\r\n\t\t\t, CRD_PARENT_CRD_ID\r\n\t\t\t, CRD_ALLOW_RENEWAL\r\n\t\t\t, CRD_IS_PRIMARY\r\n\t\t\t, CRD_KIT_NUMBER\r\n\t\t\t, CRD_IS_LINKED\r\n\t\t\t, CRD_CTS_ID\r\n\t\t\t, CRD_EMB_ID\r\n\t\t\t, CRD_BRN_ID_ORIGINAL\r\n\t\t\t, CRD_NUMBER_ENC\r\n\t\t\t, CRD_NUMBER_MASKED\r\n\t\t\t, CRD_CCL_ID\r\n\t\t\t, CRD_IS_CARD_POSTED\r\n\t\t\t, CRD_SEQUENCE_NUMBER\r\n\t\t\t, CRD_LIFE_CYCLE\r\n\t\t\t, CRD_PIN_OFFSET\r\n\t\t\t, CRD_PIN_OFFSET_TS\r\n\t\t\t, CRD_IS_CORPORATE\r\n\t\t\t, CRD_CORPORATE_CIF\r\n\t\t\t, CRD_CORPORATE_NAME\r\n\t\t\t, CRD_KEY_ROTATION_NUMBER\r\n\t\t\t, CRD_EMBOSSING_NAME\r\n\t\t\t, CRD_PIN_GENERATED\r\n\t\t\t, isActive\r\n\t\t\t, isLatest\r\n\t\t\t, BNK_CODE\r\n\t\t\t, SOURCE_CODE\r\n\t\t\t, FILE_NAME\r\n\t\t\t, insert_dttm\r\n\r\n\t\t\t, row_number() \r\n\t\t\t\tover( partition by CRD_ID\r\n\t\t\t\t\t\t, CRD_UUID\r\n\t\t\t\t\t\t, CRD_BCR_ID\r\n\t\t\t\t\t\t, CRD_PRS_ID\r\n\t\t\t\t\t\t, CRD_INS_ID\r\n\t\t\t\t\t\t, CRD_BRN_ID\r\n\t\t\t\t\t\t, CRD_NUMBER\r\n\t\t\t\t\t\t, CRD_ISSUE_DATE\r\n\t\t\t\t\t\t, CRD_EXPIRY_DATE\r\n\t\t\t\t\t\t, CRD_PREVIOUS_CRD_ID\r\n\t\t\t\t\t\t, CRD_CARDHOLDER_NAME\r\n\t\t\t\t\t\t, CRD_CREATION_DATE\r\n\t\t\t\t\t\t, CRD_STS_ID\r\n\t\t\t\t\t\t, CRD_STATUS_DATE\r\n\t\t\t\t\t\t, CRD_CREATED_BY\r\n\t\t\t\t\t\t, CRD_CREATED_TS\r\n\t\t\t\t\t\t, CRD_UPDATED_BY\r\n\t\t\t\t\t\t, CRD_UPDATED_TS\r\n\t\t\t\t\t\t, CRD_AUDIT_LOG\r\n\t\t\t\t\t\t, CRD_PARENT_CRD_ID\r\n\t\t\t\t\t\t, CRD_ALLOW_RENEWAL\r\n\t\t\t\t\t\t, CRD_IS_PRIMARY\r\n\t\t\t\t\t\t, CRD_KIT_NUMBER\r\n\t\t\t\t\t\t, CRD_IS_LINKED\r\n\t\t\t\t\t\t, CRD_CTS_ID\r\n\t\t\t\t\t\t, CRD_EMB_ID\r\n\t\t\t\t\t\t, CRD_BRN_ID_ORIGINAL\r\n\t\t\t\t\t\t, CRD_NUMBER_ENC\r\n\t\t\t\t\t\t, CRD_NUMBER_MASKED\r\n\t\t\t\t\t\t, CRD_CCL_ID\r\n\t\t\t\t\t\t, CRD_IS_CARD_POSTED\r\n\t\t\t\t\t\t, CRD_SEQUENCE_NUMBER\r\n\t\t\t\t\t\t, CRD_LIFE_CYCLE\r\n\t\t\t\t\t\t, CRD_PIN_OFFSET\r\n\t\t\t\t\t\t, CRD_PIN_OFFSET_TS\r\n\t\t\t\t\t\t, CRD_IS_CORPORATE\r\n\t\t\t\t\t\t, CRD_CORPORATE_CIF\r\n\t\t\t\t\t\t, CRD_CORPORATE_NAME\r\n\t\t\t\t\t\t, CRD_KEY_ROTATION_NUMBER\r\n\t\t\t\t\t\t, CRD_EMBOSSING_NAME\r\n\t\t\t\t\t\t, CRD_PIN_GENERATED\r\n\t\t\t\t\t\t, isActive\r\n\t\t\t\t\t\t, isLatest\r\n\t\t\t\t\t\t, BNK_CODE\r\n\t\t\t\t\t\t, SOURCE_CODE\r\n\t\t\t\t\t\t, FILE_NAME\r\n\r\n\t\t\t\t\torder by insert_dttm DESC) AS SEQ_NO\r\n\t\tFROM BUSC.ATM_ISSCARD\r\n\r\n\t) AS TMP\r\n\tWHERE SEQ_NO = 1\r\n) AS SCDT2\r\nLEFT JOIN EDS.DATE_DIM\r\n\tON CAST(END_DATE AS INTEGER) = DATE_DIM.DATESK;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ATM_ACCOUNT",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ATM_ISSCARD",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "IF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'ATM_ACCOUNT' and table_schema = 'EDS' and table_type = 'BASE TABLE')\r\nBEGIN\r\n   DROP TABLE EDS.ATM_ACCOUNT;\r\nEND;\r\nIF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'ATM_ACCOUNT' and table_schema = 'EDS' and table_type = 'VIEW')\r\nBEGIN\r\n   DROP VIEW EDS.ATM_ACCOUNT;\r\nEND;\r\n\r\nCREATE TABLE EDS.ATM_ACCOUNT\r\nWITH\r\n(\r\n\tHEAP, DISTRIBUTION=HASH(ACN_ID)\r\n)\r\nAS\r\nSELECT ACN_ID\r\n\t, ACN_ATP_ID\r\n\t, ACN_ACCOUNT_NUMBER\r\n\t, ACN_APD_ID\r\n\t, ACN_STATUS\r\n\t, ACN_STATUS_DATE\r\n\t, ACN_ACCOUNT_NUMBER_MASKED\r\n\t, FileName\r\n\t, TABLE_NAME\r\n\t, ACN_DELINQUENCY\r\n\t, ACN_DELINQUENCY_DATE\r\n\t, ACN_CUR_ID\r\n\t, ACN_AMT_CODE_1\r\n\t, ACN_BALANCE_1\r\n\t, ACN_AMT_CODE_2\r\n\t, ACN_BALANCE_2\r\n\t, ACN_AMT_CODE_3\r\n\t, ACN_BALANCE_3\r\n\t, ACN_LAST_BATCH_UPDATE_DATE\r\n\t, ACN_CREDIT_LIMIT\r\n\t, ACN_TEMP_CREDIT_LIMIT\r\n\t, ACN_TEMP_CREDIT_LIMIT_DATE\r\n\t, ACN_GUARANTEE_AMOUNT\r\n\t, ACN_GUARANTEE_TYPE\r\n\t, ACN_GUARANTEE_EXPIRY_DATE\r\n\t, ACN_LAST_FEP_HOST_TRACE_NBR\r\n\t, ACN_LAST_HOST_FEP_TRACE_NBR\r\n\t, ACN_SPECIFIC_DATA\r\n\t, ACN_PART_NO\r\n\t, ACN_CUSTOM_DATA\r\n\t, ACN_STATUS_2\r\n\t, ACN_STATUS_2_DATE\r\n\t, ACN_LAST_SOURCE\r\n\t, ACN_LAST_TERMINAL_ID\r\n\t, ACN_FEP_HOST_SUM\r\n\t, ACN_HOST_FEP_SUM\r\n\t, ACN_PAN\r\n\t, ACN_LAST_BATCH_SESSION\r\n\t, ACN_FUNCTIONS\r\n\t, ACN_OVERRIDE_PERMISSION\r\n\t, ACN_ISS_ID\r\n\t, ACN_LIMIT_CONFIG\r\n\t, ACN_LAST_UPDATE_TS\r\n\t, ACN_ACCOUNT_NUMBER_EKY_ID\r\n\t, ACN_PAN_EKY_ID\r\n\r\n\t, CAST(Left(Right(FILE_NAME, 12), 8) AS DATE) AS SCD_START_DATE\r\n\t, COALESCE(DATE_DIM.Previous_Business_Day, CAST('99991231' AS DATE)) AS SCD_END_DATE\r\n\t, ISACTIVE\r\n\t, CASE WHEN DATE_DIM.Previous_Business_Day is null then 1 else 0 end as ISLATEST\r\n\t, BNK_CODE\r\n\t, SOURCE_CODE\r\n\t, FILE_NAME\r\n\t, insert_dttm\r\n\r\nFROM\r\n(\r\n\tSELECT ACN_ID\r\n\t\t, ACN_ATP_ID\r\n\t\t, ACN_ACCOUNT_NUMBER\r\n\t\t, ACN_APD_ID\r\n\t\t, ACN_STATUS\r\n\t\t, ACN_STATUS_DATE\r\n\t\t, ACN_ACCOUNT_NUMBER_MASKED\r\n\t\t, FileName\r\n\t\t, TABLE_NAME\r\n\t\t, ACN_DELINQUENCY\r\n\t\t, ACN_DELINQUENCY_DATE\r\n\t\t, ACN_CUR_ID\r\n\t\t, ACN_AMT_CODE_1\r\n\t\t, ACN_BALANCE_1\r\n\t\t, ACN_AMT_CODE_2\r\n\t\t, ACN_BALANCE_2\r\n\t\t, ACN_AMT_CODE_3\r\n\t\t, ACN_BALANCE_3\r\n\t\t, ACN_LAST_BATCH_UPDATE_DATE\r\n\t\t, ACN_CREDIT_LIMIT\r\n\t\t, ACN_TEMP_CREDIT_LIMIT\r\n\t\t, ACN_TEMP_CREDIT_LIMIT_DATE\r\n\t\t, ACN_GUARANTEE_AMOUNT\r\n\t\t, ACN_GUARANTEE_TYPE\r\n\t\t, ACN_GUARANTEE_EXPIRY_DATE\r\n\t\t, ACN_LAST_FEP_HOST_TRACE_NBR\r\n\t\t, ACN_LAST_HOST_FEP_TRACE_NBR\r\n\t\t, ACN_SPECIFIC_DATA\r\n\t\t, ACN_PART_NO\r\n\t\t, ACN_CUSTOM_DATA\r\n\t\t, ACN_STATUS_2\r\n\t\t, ACN_STATUS_2_DATE\r\n\t\t, ACN_LAST_SOURCE\r\n\t\t, ACN_LAST_TERMINAL_ID\r\n\t\t, ACN_FEP_HOST_SUM\r\n\t\t, ACN_HOST_FEP_SUM\r\n\t\t, ACN_PAN\r\n\t\t, ACN_LAST_BATCH_SESSION\r\n\t\t, ACN_FUNCTIONS\r\n\t\t, ACN_OVERRIDE_PERMISSION\r\n\t\t, ACN_ISS_ID\r\n\t\t, ACN_LIMIT_CONFIG\r\n\t\t, ACN_LAST_UPDATE_TS\r\n\t\t, ACN_ACCOUNT_NUMBER_EKY_ID\r\n\t\t, ACN_PAN_EKY_ID\r\n\t\t, isActive\r\n\t\t, isLatest\r\n\t\t, BNK_CODE\r\n\t\t, SOURCE_CODE\r\n\t\t, FILE_NAME\r\n\t\t, insert_dttm\r\n\t\t, CAST(Left(Right(FILE_NAME, 12), 8) AS DATE) START_DATE     \r\n\t\t, Max(Left(Right(FILE_NAME, 12), 8)) Over (PARTITION BY ACN_ID\r\n\t\t\tORDER BY Left(Right(FILE_NAME, 12), 8) ROWS BETWEEN 1 Following AND 1 Following) END_DATE                  \t\t\t\t\r\n\tFROM\r\n\t(\r\n\t\tSELECT ACN_ID\r\n\t\t\t, ACN_ATP_ID\r\n\t\t\t, ACN_ACCOUNT_NUMBER\r\n\t\t\t, ACN_APD_ID\r\n\t\t\t, ACN_STATUS\r\n\t\t\t, ACN_STATUS_DATE\r\n\t\t\t, ACN_ACCOUNT_NUMBER_MASKED\r\n\t\t\t, FileName\r\n\t\t\t, TABLE_NAME\r\n\t\t\t, ACN_DELINQUENCY\r\n\t\t\t, ACN_DELINQUENCY_DATE\r\n\t\t\t, ACN_CUR_ID\r\n\t\t\t, ACN_AMT_CODE_1\r\n\t\t\t, ACN_BALANCE_1\r\n\t\t\t, ACN_AMT_CODE_2\r\n\t\t\t, ACN_BALANCE_2\r\n\t\t\t, ACN_AMT_CODE_3\r\n\t\t\t, ACN_BALANCE_3\r\n\t\t\t, ACN_LAST_BATCH_UPDATE_DATE\r\n\t\t\t, ACN_CREDIT_LIMIT\r\n\t\t\t, ACN_TEMP_CREDIT_LIMIT\r\n\t\t\t, ACN_TEMP_CREDIT_LIMIT_DATE\r\n\t\t\t, ACN_GUARANTEE_AMOUNT\r\n\t\t\t, ACN_GUARANTEE_TYPE\r\n\t\t\t, ACN_GUARANTEE_EXPIRY_DATE\r\n\t\t\t, ACN_LAST_FEP_HOST_TRACE_NBR\r\n\t\t\t, ACN_LAST_HOST_FEP_TRACE_NBR\r\n\t\t\t, ACN_SPECIFIC_DATA\r\n\t\t\t, ACN_PART_NO\r\n\t\t\t, ACN_CUSTOM_DATA\r\n\t\t\t, ACN_STATUS_2\r\n\t\t\t, ACN_STATUS_2_DATE\r\n\t\t\t, ACN_LAST_SOURCE\r\n\t\t\t, ACN_LAST_TERMINAL_ID\r\n\t\t\t, ACN_FEP_HOST_SUM\r\n\t\t\t, ACN_HOST_FEP_SUM\r\n\t\t\t, ACN_PAN\r\n\t\t\t, ACN_LAST_BATCH_SESSION\r\n\t\t\t, ACN_FUNCTIONS\r\n\t\t\t, ACN_OVERRIDE_PERMISSION\r\n\t\t\t, ACN_ISS_ID\r\n\t\t\t, ACN_LIMIT_CONFIG\r\n\t\t\t, ACN_LAST_UPDATE_TS\r\n\t\t\t, ACN_ACCOUNT_NUMBER_EKY_ID\r\n\t\t\t, ACN_PAN_EKY_ID\r\n\t\t\t, isActive\r\n\t\t\t, isLatest\r\n\t\t\t, BNK_CODE\r\n\t\t\t, SOURCE_CODE\r\n\t\t\t, FILE_NAME\r\n\t\t\t, insert_dttm\r\n\r\n\t\t\t, row_number() \r\n\t\t\t\tover( partition by ACN_ID\r\n\t\t\t\t\t\t, ACN_ATP_ID\r\n\t\t\t\t\t\t, ACN_ACCOUNT_NUMBER\r\n\t\t\t\t\t\t, ACN_APD_ID\r\n\t\t\t\t\t\t, ACN_STATUS\r\n\t\t\t\t\t\t, ACN_STATUS_DATE\r\n\t\t\t\t\t\t, ACN_ACCOUNT_NUMBER_MASKED\r\n\t\t\t\t\t\t, FileName\r\n\t\t\t\t\t\t, TABLE_NAME\r\n\t\t\t\t\t\t, ACN_DELINQUENCY\r\n\t\t\t\t\t\t, ACN_DELINQUENCY_DATE\r\n\t\t\t\t\t\t, ACN_CUR_ID\r\n\t\t\t\t\t\t, ACN_AMT_CODE_1\r\n\t\t\t\t\t\t, ACN_BALANCE_1\r\n\t\t\t\t\t\t, ACN_AMT_CODE_2\r\n\t\t\t\t\t\t, ACN_BALANCE_2\r\n\t\t\t\t\t\t, ACN_AMT_CODE_3\r\n\t\t\t\t\t\t, ACN_BALANCE_3\r\n\t\t\t\t\t\t, ACN_LAST_BATCH_UPDATE_DATE\r\n\t\t\t\t\t\t, ACN_CREDIT_LIMIT\r\n\t\t\t\t\t\t, ACN_TEMP_CREDIT_LIMIT\r\n\t\t\t\t\t\t, ACN_TEMP_CREDIT_LIMIT_DATE\r\n\t\t\t\t\t\t, ACN_GUARANTEE_AMOUNT\r\n\t\t\t\t\t\t, ACN_GUARANTEE_TYPE\r\n\t\t\t\t\t\t, ACN_GUARANTEE_EXPIRY_DATE\r\n\t\t\t\t\t\t, ACN_LAST_FEP_HOST_TRACE_NBR\r\n\t\t\t\t\t\t, ACN_LAST_HOST_FEP_TRACE_NBR\r\n\t\t\t\t\t\t, ACN_SPECIFIC_DATA\r\n\t\t\t\t\t\t, ACN_PART_NO\r\n\t\t\t\t\t\t, ACN_CUSTOM_DATA\r\n\t\t\t\t\t\t, ACN_STATUS_2\r\n\t\t\t\t\t\t, ACN_STATUS_2_DATE\r\n\t\t\t\t\t\t, ACN_LAST_SOURCE\r\n\t\t\t\t\t\t, ACN_LAST_TERMINAL_ID\r\n\t\t\t\t\t\t, ACN_FEP_HOST_SUM\r\n\t\t\t\t\t\t, ACN_HOST_FEP_SUM\r\n\t\t\t\t\t\t, ACN_PAN\r\n\t\t\t\t\t\t, ACN_LAST_BATCH_SESSION\r\n\t\t\t\t\t\t, ACN_FUNCTIONS\r\n\t\t\t\t\t\t, ACN_OVERRIDE_PERMISSION\r\n\t\t\t\t\t\t, ACN_ISS_ID\r\n\t\t\t\t\t\t, ACN_LIMIT_CONFIG\r\n\t\t\t\t\t\t, ACN_LAST_UPDATE_TS\r\n\t\t\t\t\t\t, ACN_ACCOUNT_NUMBER_EKY_ID\r\n\t\t\t\t\t\t, ACN_PAN_EKY_ID\r\n\t\t\t\t\t\t, isActive\r\n\t\t\t\t\t\t, isLatest\r\n\t\t\t\t\t\t, BNK_CODE\r\n\t\t\t\t\t\t, SOURCE_CODE\r\n\t\t\t\t\t\t, FILE_NAME\r\n\r\n\t\t\t\t\torder by insert_dttm DESC) AS SEQ_NO\r\n\t\tFROM BUSC.ATM_ACCOUNT\r\n\r\n\t) AS TMP\r\n\tWHERE SEQ_NO = 1\r\n) AS SCDT2\r\nLEFT JOIN EDS.DATE_DIM\r\n\tON CAST(END_DATE AS INTEGER) = DATE_DIM.DATESK;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ATM_CASHBANKACCOUNT",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ATM_ACCOUNT",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "IF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'ATM_CASHBANKACCOUNT' and table_schema = 'EDS' and table_type = 'BASE TABLE')\r\nBEGIN\r\n   DROP TABLE EDS.ATM_CASHBANKACCOUNT;\r\nEND;\r\nIF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'ATM_CASHBANKACCOUNT' and table_schema = 'EDS' and table_type = 'VIEW')\r\nBEGIN\r\n   DROP VIEW EDS.ATM_CASHBANKACCOUNT;\r\nEND;\r\n\r\n\r\nCREATE TABLE EDS.ATM_CASHBANKACCOUNT\r\nWITH\r\n(\r\n\tHEAP, DISTRIBUTION=HASH(BAC_CLT_ID)\r\n)\r\nAS\r\nSELECT BAC_ID\r\n\t, BAC_UUID\r\n\t, BAC_CLT_ID\r\n\t, BAC_ACCOUNT_NUMBER\r\n\t, BAC_BAT_ID\r\n\t, BAC_CREATED_BY\r\n\t, BAC_CREATED_TS\r\n\t, BAC_UPDATED_BY\r\n\t, BAC_UPDATED_TS\r\n\t, BAC_STS_ID\r\n\t, BAC_AUDIT_LOG\r\n\t, BAC_CUR_ID\r\n\t, BAC_INS_ID\r\n\t, BAC_BRN_ID\r\n\t, BAC_ACCOUNT_NUMBER_MASKED\r\n\t, BAC_KEY_ROTATION_NUMBER\r\n\t, CAST(Left(Right(FILE_NAME, 12), 8) AS DATE) AS SCD_START_DATE\r\n\t, COALESCE(DATE_DIM.Previous_Business_Day, CAST('99991231' AS DATE)) AS SCD_END_DATE\r\n\t, ISACTIVE\r\n\t, CASE WHEN DATE_DIM.Previous_Business_Day is null then 1 else 0 end as ISLATEST\r\n\t, BNK_CODE\r\n\t, SOURCE_CODE\r\n\t, FILE_NAME\r\n\t, insert_dttm\r\n\r\nFROM\r\n(\r\n\tSELECT BAC_ID\r\n\t\t, BAC_UUID\r\n\t\t, BAC_CLT_ID\r\n\t\t, BAC_ACCOUNT_NUMBER\r\n\t\t, BAC_BAT_ID\r\n\t\t, BAC_CREATED_BY\r\n\t\t, BAC_CREATED_TS\r\n\t\t, BAC_UPDATED_BY\r\n\t\t, BAC_UPDATED_TS\r\n\t\t, BAC_STS_ID\r\n\t\t, BAC_AUDIT_LOG\r\n\t\t, BAC_CUR_ID\r\n\t\t, BAC_INS_ID\r\n\t\t, BAC_BRN_ID\r\n\t\t, BAC_ACCOUNT_NUMBER_MASKED\r\n\t\t, BAC_KEY_ROTATION_NUMBER\r\n\t\t, isActive\r\n\t\t, isLatest\r\n\t\t, BNK_CODE\r\n\t\t, SOURCE_CODE\r\n\t\t, FILE_NAME\r\n\t\t, insert_dttm\r\n\t\r\n\t\t, CAST(Left(Right(FILE_NAME, 12), 8) AS DATE) START_DATE     \r\n\t\t, Max(Left(Right(FILE_NAME, 12), 8)) Over (PARTITION BY BAC_ID\r\n\t\t\tORDER BY Left(Right(FILE_NAME, 12), 8) ROWS BETWEEN 1 Following AND 1 Following) END_DATE                  \t\t\t\t\r\n\tFROM\r\n\t(\r\n\t\tSELECT BAC_ID\r\n\t\t\t, BAC_UUID\r\n\t\t\t, BAC_CLT_ID\r\n\t\t\t, BAC_ACCOUNT_NUMBER\r\n\t\t\t, BAC_BAT_ID\r\n\t\t\t, BAC_CREATED_BY\r\n\t\t\t, BAC_CREATED_TS\r\n\t\t\t, BAC_UPDATED_BY\r\n\t\t\t, BAC_UPDATED_TS\r\n\t\t\t, BAC_STS_ID\r\n\t\t\t, BAC_AUDIT_LOG\r\n\t\t\t, BAC_CUR_ID\r\n\t\t\t, BAC_INS_ID\r\n\t\t\t, BAC_BRN_ID\r\n\t\t\t, BAC_ACCOUNT_NUMBER_MASKED\r\n\t\t\t, BAC_KEY_ROTATION_NUMBER\r\n\t\t\t, isActive\r\n\t\t\t, isLatest\r\n\t\t\t, BNK_CODE\r\n\t\t\t, SOURCE_CODE\r\n\t\t\t, FILE_NAME\r\n\t\t\t, insert_dttm\r\n\r\n\t\t\t, row_number() \r\n\t\t\t\tover( partition by BAC_ID\r\n\t\t\t\t\t\t, BAC_UUID\r\n\t\t\t\t\t\t, BAC_CLT_ID\r\n\t\t\t\t\t\t, BAC_ACCOUNT_NUMBER\r\n\t\t\t\t\t\t, BAC_BAT_ID\r\n\t\t\t\t\t\t, BAC_CREATED_BY\r\n\t\t\t\t\t\t, BAC_CREATED_TS\r\n\t\t\t\t\t\t, BAC_UPDATED_BY\r\n\t\t\t\t\t\t, BAC_UPDATED_TS\r\n\t\t\t\t\t\t, BAC_STS_ID\r\n\t\t\t\t\t\t, BAC_AUDIT_LOG\r\n\t\t\t\t\t\t, BAC_CUR_ID\r\n\t\t\t\t\t\t, BAC_INS_ID\r\n\t\t\t\t\t\t, BAC_BRN_ID\r\n\t\t\t\t\t\t, BAC_ACCOUNT_NUMBER_MASKED\r\n\t\t\t\t\t\t, BAC_KEY_ROTATION_NUMBER\r\n\t\t\t\t\t\t, isActive\r\n\t\t\t\t\t\t, isLatest\r\n\t\t\t\t\t\t, BNK_CODE\r\n\t\t\t\t\t\t, SOURCE_CODE\r\n\t\t\t\t\t\t, FILE_NAME\r\n\r\n\t\t\t\t\torder by insert_dttm DESC) AS SEQ_NO\r\n\t\tFROM BUSC.ATM_CASHBANKACCOUNT\r\n\r\n\t) AS TMP\r\n\tWHERE SEQ_NO = 1\r\n) AS SCDT2\r\nLEFT JOIN EDS.DATE_DIM\r\n\tON CAST(END_DATE AS INTEGER) = DATE_DIM.DATESK;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ATM_CLIENTCARDMAPPING",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ATM_CASHBANKACCOUNT",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "IF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'ATM_CLIENTCARDMAPPING' and table_schema = 'EDS' and table_type = 'BASE TABLE')\r\nBEGIN\r\n   DROP TABLE EDS.ATM_CLIENTCARDMAPPING;\r\nEND;\r\nIF EXISTS(SELECT table_name FROM INFORMATION_SCHEMA.tables where table_name = 'ATM_CLIENTCARDMAPPING' and table_schema = 'EDS' and table_type = 'VIEW')\r\nBEGIN\r\n   DROP VIEW EDS.ATM_CLIENTCARDMAPPING;\r\nEND;\r\n\r\nCREATE TABLE EDS.ATM_CLIENTCARDMAPPING\r\nWITH\r\n(\r\n\tHEAP, DISTRIBUTION=HASH(CCM_CLT_ID)\r\n)\r\nAS\r\nSELECT CCM_ID\r\n\t, CCM_CREATED_BY\r\n\t, CCM_AUDIT_LOG\r\n\t, CCM_CLT_ID\r\n\t, CCM_BAC_ID\r\n\t, CCM_CRD_ID\r\n\t, CCM_STS_ID\r\n\t, CCM_INS_ID\r\n\t, CCM_CREATED_TS\r\n\t, CCM_UPDATED_BY\r\n\t, CCM_UPDATED_TS\r\n\t, CCM_TYPE_DEFAULT\r\n\t, CCM_OVERALL_DEFAULT\r\n\t, CCM_UUID\r\n\r\n\t, CAST(Left(Right(FILE_NAME, 12), 8) AS DATE) AS SCD_START_DATE\r\n\t, COALESCE(DATE_DIM.Previous_Business_Day, CAST('99991231' AS DATE)) AS SCD_END_DATE\r\n\t, ISACTIVE\r\n\t, CASE WHEN DATE_DIM.Previous_Business_Day is null then 1 else 0 end as ISLATEST\r\n\t, BNK_CODE\r\n\t, SOURCE_CODE\r\n\t, FILE_NAME\r\n\t, insert_dttm\r\n\r\nFROM\r\n(\r\n\tSELECT CCM_ID\r\n\t\t, CCM_CREATED_BY\r\n\t\t, CCM_AUDIT_LOG\r\n\t\t, CCM_CLT_ID\r\n\t\t, CCM_BAC_ID\r\n\t\t, CCM_CRD_ID\r\n\t\t, CCM_STS_ID\r\n\t\t, CCM_INS_ID\r\n\t\t, CCM_CREATED_TS\r\n\t\t, CCM_UPDATED_BY\r\n\t\t, CCM_UPDATED_TS\r\n\t\t, CCM_TYPE_DEFAULT\r\n\t\t, CCM_OVERALL_DEFAULT\r\n\t\t, CCM_UUID\r\n\t\t, isActive\r\n\t\t, isLatest\r\n\t\t, BNK_CODE\r\n\t\t, SOURCE_CODE\r\n\t\t, FILE_NAME\r\n\t\t, insert_dttm\r\n\t\r\n\t\t, CAST(Left(Right(FILE_NAME, 12), 8) AS DATE) START_DATE     \r\n\t\t, Max(Left(Right(FILE_NAME, 12), 8)) Over (PARTITION BY CCM_ID\r\n\t\t\tORDER BY Left(Right(FILE_NAME, 12), 8) ROWS BETWEEN 1 Following AND 1 Following) END_DATE                  \t\t\t\t\r\n\tFROM\r\n\t(\r\n\t\tSELECT CCM_ID\r\n\t\t\t, CCM_CREATED_BY\r\n\t\t\t, CCM_AUDIT_LOG\r\n\t\t\t, CCM_CLT_ID\r\n\t\t\t, CCM_BAC_ID\r\n\t\t\t, CCM_CRD_ID\r\n\t\t\t, CCM_STS_ID\r\n\t\t\t, CCM_INS_ID\r\n\t\t\t, CCM_CREATED_TS\r\n\t\t\t, CCM_UPDATED_BY\r\n\t\t\t, CCM_UPDATED_TS\r\n\t\t\t, CCM_TYPE_DEFAULT\r\n\t\t\t, CCM_OVERALL_DEFAULT\r\n\t\t\t, CCM_UUID\r\n\t\t\t, isActive\r\n\t\t\t, isLatest\r\n\t\t\t, BNK_CODE\r\n\t\t\t, SOURCE_CODE\r\n\t\t\t, FILE_NAME\r\n\t\t\t, insert_dttm\r\n\r\n\t\t\t, row_number() \r\n\t\t\t\tover( partition by CCM_ID\r\n\t\t\t\t\t\t, CCM_CREATED_BY\r\n\t\t\t\t\t\t, CCM_AUDIT_LOG\r\n\t\t\t\t\t\t, CCM_CLT_ID\r\n\t\t\t\t\t\t, CCM_BAC_ID\r\n\t\t\t\t\t\t, CCM_CRD_ID\r\n\t\t\t\t\t\t, CCM_STS_ID\r\n\t\t\t\t\t\t, CCM_INS_ID\r\n\t\t\t\t\t\t, CCM_CREATED_TS\r\n\t\t\t\t\t\t, CCM_UPDATED_BY\r\n\t\t\t\t\t\t, CCM_UPDATED_TS\r\n\t\t\t\t\t\t, CCM_TYPE_DEFAULT\r\n\t\t\t\t\t\t, CCM_OVERALL_DEFAULT\r\n\t\t\t\t\t\t, CCM_UUID\r\n\t\t\t\t\t\t, isActive\r\n\t\t\t\t\t\t, isLatest\r\n\t\t\t\t\t\t, BNK_CODE\r\n\t\t\t\t\t\t, SOURCE_CODE\r\n\t\t\t\t\t\t, FILE_NAME\r\n\t\t\t\t\t\t, insert_dttm\r\n\t\t\t\t\torder by insert_dttm DESC) AS SEQ_NO\r\n\t\tFROM BUSC.ATM_CLIENTCARDMAPPING\r\n\r\n\t) AS TMP\r\n\tWHERE SEQ_NO = 1\r\n) AS SCDT2\r\nLEFT JOIN EDS.DATE_DIM\r\n\tON CAST(END_DATE AS INTEGER) = DATE_DIM.DATESK;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-09-30T10:06:22Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

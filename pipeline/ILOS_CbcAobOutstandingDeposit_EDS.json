@@ -1,0 +1,1037 @@
+{
+	"name": "ILOS_CbcAobOutstandingDeposit_EDS",
+	"properties": {
+		"description": "Sources data from EDS tables",
+		"activities": [
+			{
+				"name": "ILOS_CBCAOBOUTSTANDINGDEPOSIT",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "SET_BANK_ID",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": {
+							"value": "@concat('WITH Rolling_Window AS\n(\n    SELECT \n    fulldate,\n    LastDayOfMonth,\n    DEPOSITS_DATE\n    FROM eds.DATE_DIM\n    INNER JOIN eds.EDS_CTL\n    ON LastDayOfMonth <= DEPOSITS_DATE \n    where business_day_flag=''Y'' and month_end=''Y''\n\tAND fulldate between CAST(''',variables('v_start_date'),''' AS DATE) and CAST(''',variables('v_end_date'),''' AS DATE)\n)\n,all_cif_ytd AS\n(\n\tSELECT\n\t\tCONCAT(CRM_ACCOUNTS.ORGKEY,format(RW.LastDayOfMonth,''MMddyyyy'')) AS Id\n\t\t,EDF.CUST_ID\n\t\t,CRM_ACCOUNTS.ORGKEY\tAS\tCif\n\t\t,CRM_ACCOUNTS.BANK_ID \n\t\t,sum(case when EDF.ACCT_CRNCY_CODE = ''PHP'' then coalesce(EDF.YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP,0) else 0 end) AS\tytdphp\n\t\t,sum(case when EDF.ACCT_CRNCY_CODE <> ''PHP'' then coalesce(EDF.YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP,0) else 0 end) AS\tytdnonphp\n\t\t,format(RW.LastDayOfMonth,''MM/dd/yyyy'') Date\n\t    ,RW.FullDate\n\t\t,CRM_ACCOUNTS.STRUSERFIELD8\n\tFROM Rolling_Window AS RW\n\tINNER JOIN EDS.CUSTOMER_DIM AS CRM_ACCOUNTS\n\t\tON RW.FullDate BETWEEN CRM_ACCOUNTS.SCD_Start_Date AND CRM_ACCOUNTS.SCD_END_DATE\n\tINNER JOIN EDS.DEPOSIT_FACT EDF\n\t\tON RW.FullDate = EDF.AS_OF_DATE\n\t\tAND EDF.del_flg=''N''\n\t\tAND EDF.GAM_BANK_ID=''',variables('v_bank_id'),'''\n\t\tAND EDF.GAM_SCHM_TYPE IN (''CAA'',''SBA'')\n\t\tAND CRM_ACCOUNTS.CORE_CUST_ID = EDF.CUST_ID\n\t\tAND CRM_ACCOUNTS.BANK_ID = EDF.GAM_BANK_ID\n\n\tGROUP BY\n\t\tCONCAT(CRM_ACCOUNTS.ORGKEY,format(RW.LastDayOfMonth,''MMddyyyy''))\n\t\t,EDF.CUST_ID\n\t\t,CRM_ACCOUNTS.ORGKEY\n\t\t,CRM_ACCOUNTS.BANK_ID \n        ,format(RW.LastDayOfMonth,''MM/dd/yyyy'')\n\t\t,RW.FullDate\n\t\t,CRM_ACCOUNTS.STRUSERFIELD8\n)\t\n\n,final_df as\n(\nSELECT\n\t ACY.Id\n\t,ACY.Cif\n\t,max(coalesce(ACY.ytdphp,0)) AS BorrowerPhpCasaAdbCurrentYear\n\t,max(coalesce(ACY.ytdnonphp,0)) AS [BorrowerFcduCasaAdbCurrentYear (PHP)]\n\t,''PHP'' AS CurrencyForBorrowerFcduCasaAdb \n\t,ACY.[Date] AS [Date]\n\t,sum(case when ACY.Cif <> CG_REL.ORGKEY then coalesce(ACY_REL.ytdphp,0) else 0 end)  AS RelatedAccountPhpCasaAdbCurrentYear\n\t,sum(case when ACY.Cif <> CG_REL.ORGKEY then coalesce(ACY_REL.ytdnonphp,0) else 0 end) AS RelatedAccountFcduCasaAdbCurrentYearOriginalCurrency\n\t,''PHP'' AS CurrencyForRelatedAccountFcduCasaAdb\n\t,1 ordr\nFROM all_cif_ytd ACY\nLEFT JOIN EDS.CRM_GROUPHOUSEHOLD CG\n\tON  ACY.Cif = CG.ORGKEY\n\tAND ACY.BANK_ID = CG.BANK_ID\n\tAND ACY.FullDate BETWEEN CG.SCD_START_DATE AND CG.SCD_END_DATE\nLEFT JOIN EDS.CRM_GROUPHOUSEHOLD CG_REL\n\tON  CG_REL.GROUP_ID = CG.GROUP_ID\n\tAND CG_REL.BANK_ID = CG.BANK_ID\n\tAND ACY.FullDate BETWEEN CG_REL.SCD_START_DATE AND CG_REL.SCD_END_DATE\nLEFT JOIN all_cif_ytd ACY_REL\n\tON  ACY_REL.Cif = CG_REL.ORGKEY\n\tAND ACY_REL.BANK_ID = CG_REL.BANK_ID\n\tAND ACY_REL.FullDate = ACY.FullDate\nWHERE ACY.STRUSERFIELD8 IS NOT NULL\n\t--AND ACY.Cif IN (''R00006350'',''R00024392'',''R00096203'',''R00183040'')\nGROUP BY\n\t ACY.Id\n\t,ACY.Cif\n\t,ACY.[Date]\n\nUNION ALL\n\nSELECT\n\t ''#~#''\n\t,null\n\t,null\n\t,null\n\t,null\n\t,null\n\t,null\n\t,null\n\t,null\n\t,2 ordr\n)\nSELECT\n\t Id\n\t,Cif\n\t,CAST(BorrowerPhpCasaAdbCurrentYear AS NUMERIC(38,2)) AS BorrowerPhpCasaAdbCurrentYear\n\t,CAST(RelatedAccountPhpCasaAdbCurrentYear AS NUMERIC(38,2)) AS RelatedAccountPhpCasaAdbCurrentYear\n\t,CAST([BorrowerFcduCasaAdbCurrentYear (PHP)] AS NUMERIC(38,2)) AS BorrowerFcduCasaAdbCurrentYearOriginalCurrency\n\t,CAST(RelatedAccountFcduCasaAdbCurrentYearOriginalCurrency AS NUMERIC(38,2)) AS RelatedAccountFcduCasaAdbCurrentYearOriginalCurrency\n\t,[Date]\n\t,CurrencyForBorrowerFcduCasaAdb \n\t,CurrencyForRelatedAccountFcduCasaAdb \nFROM final_df\nORDER BY ordr,cast([Date] as date) ASC\n\t\n')",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "DelimitedTextSink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"formatSettings": {
+							"type": "DelimitedTextWriteSettings",
+							"quoteAllText": true,
+							"fileExtension": ".txt"
+						}
+					},
+					"enableStaging": false,
+					"translator": {
+						"type": "TabularTranslator",
+						"typeConversion": true,
+						"typeConversionSettings": {
+							"allowDataTruncation": true,
+							"treatBooleanAsNumber": false
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_EDS",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "-"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "ILOS_csv_gen",
+						"type": "DatasetReference",
+						"parameters": {
+							"path": {
+								"value": "@pipeline().parameters.path_dec",
+								"type": "Expression"
+							},
+							"filename": {
+								"value": "@pipeline().parameters.filename",
+								"type": "Expression"
+							}
+						}
+					}
+				]
+			},
+			{
+				"name": "START_TASK",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "OM_SRC_CHECK",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_START]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "ILOS",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@variables('v_end_date')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_SUCCESSFUL",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CopyFile_ADLS_to_SFTP",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "ILOS",
+							"type": "String"
+						},
+						"status": {
+							"value": "SUCCESSFUL",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_FAILED",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "PGP Encrypt",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "ILOS",
+							"type": "String"
+						},
+						"status": {
+							"value": "FAILED",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.end_date,'9999-12-31')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_start_date",
+								"value": {
+									"value": "@pipeline().parameters.start_date",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_end_date",
+								"value": {
+									"value": "@pipeline().parameters.end_date",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "SELECT\n\tPREVIOUS_MONTH_LAST_BUS_DAY fulldate\nFROM\n    EDS.DATE_DIM DD\nWHERE \n\tDD.DATESK=convert(varchar(8),GETDATE(),112)\n",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_start_date",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_end_date",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_GET",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Set v_error_desc_get",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "ILOS",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@variables('v_end_date')",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "SP_LOG_TASK_ERROR_DTL_GET",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": {
+						"value": "@variables('v_error_desc')",
+						"type": "Expression"
+					},
+					"errorCode": "500"
+				}
+			},
+			{
+				"name": "Set v_error_desc_get",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "PGP Encrypt",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_error_desc",
+					"value": {
+						"value": "@activity('PGP Encrypt').Error.message",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "SP_LOG_COPY_ACTIVITY_DTL",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CopyFile_ADLS_to_SFTP",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_COPY_ACTIVITY_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "ILOS",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@variables('v_end_date')",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"dataread": {
+							"value": {
+								"value": "@activity('CopyFile_ADLS_to_SFTP').output.dataRead",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"datawritten": {
+							"value": {
+								"value": "@activity('CopyFile_ADLS_to_SFTP').output.dataWritten",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"sourcepeakconnections": {
+							"value": {
+								"value": "@activity('CopyFile_ADLS_to_SFTP').output.sourcePeakConnections",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowsread": {
+							"value": null,
+							"type": "String"
+						},
+						"rowscopied": {
+							"value": null,
+							"type": "String"
+						},
+						"rowsskipped": {
+							"value": null,
+							"type": "String"
+						},
+						"copyduration": {
+							"value": {
+								"value": "@activity('CopyFile_ADLS_to_SFTP').output.copyDuration",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"throughput": {
+							"value": {
+								"value": "@activity('CopyFile_ADLS_to_SFTP').output.throughput",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"redirectrowpath": {
+							"value": null,
+							"type": "String"
+						},
+						"logfilepath": {
+							"value": null,
+							"type": "String"
+						},
+						"filesread": {
+							"value": null,
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "OM_SRC_CHECK",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@replace(substring(variables('v_end_date'),0,10),'-','')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SET_BANK_ID",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "START_TASK",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_bank_id",
+					"value": {
+						"value": "@pipeline().parameters.bank_id",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "PGP Encrypt",
+				"type": "AzureFunctionActivity",
+				"dependsOn": [
+					{
+						"activity": "ILOS_CBCAOBOUTSTANDINGDEPOSIT",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"functionName": "PGPEncrypt",
+					"body": {
+						"value": "{\"filePath\":\"data360/@{pipeline().parameters.path_dec}/@{pipeline().parameters.filename}\",\"outputPath\":\"data360/@{pipeline().parameters.path_enc}/@{pipeline().parameters.filename}.gpg\"}",
+						"type": "Expression"
+					},
+					"method": "POST"
+				},
+				"linkedServiceName": {
+					"referenceName": "PGPFunction",
+					"type": "LinkedServiceReference"
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_GET_CA",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Set v_error_desc_get_ca",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "ILOS",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@variables('v_end_date')",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_CA",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "SP_LOG_TASK_ERROR_DTL_GET_CA",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": {
+						"value": "@variables('v_error_desc')",
+						"type": "Expression"
+					},
+					"errorCode": "500"
+				}
+			},
+			{
+				"name": "Set v_error_desc_get_ca",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "ILOS_CBCAOBOUTSTANDINGDEPOSIT",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_error_desc",
+					"value": {
+						"value": "@activity('ILOS_CBCAOBOUTSTANDINGDEPOSIT').Error.message",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "END_TASK_FAILED_CA",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "ILOS_CBCAOBOUTSTANDINGDEPOSIT",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "ILOS",
+							"type": "String"
+						},
+						"status": {
+							"value": "FAILED",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "CopyFile_ADLS_to_SFTP",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "PGP Encrypt",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "BinarySource",
+						"storeSettings": {
+							"type": "AzureBlobFSReadSettings",
+							"recursive": true,
+							"wildcardFolderPath": {
+								"value": "@pipeline().parameters.path_enc",
+								"type": "Expression"
+							},
+							"wildcardFileName": {
+								"value": "@{pipeline().parameters.filename}.gpg",
+								"type": "Expression"
+							},
+							"deleteFilesAfterCompletion": false
+						},
+						"formatSettings": {
+							"type": "BinaryReadSettings"
+						}
+					},
+					"sink": {
+						"type": "BinarySink",
+						"storeSettings": {
+							"type": "SftpWriteSettings",
+							"operationTimeout": "01:00:00",
+							"useTempFileRename": true
+						}
+					},
+					"enableStaging": false
+				},
+				"inputs": [
+					{
+						"referenceName": "ADLS_ILOS",
+						"type": "DatasetReference",
+						"parameters": {
+							"path": "@pipeline().parameters.path_enc",
+							"filename": "@{pipeline().parameters.filename}.gpg"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SFTP_ILOS_OnPrem",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filepath": "@pipeline().parameters.path_sftp",
+							"Filename": "@{pipeline().parameters.filename}.gpg"
+						}
+					}
+				]
+			},
+			{
+				"name": "END_TASK_FAILED_SFTP",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CopyFile_ADLS_to_SFTP",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "ILOS",
+							"type": "String"
+						},
+						"status": {
+							"value": "FAILED",
+							"type": "String"
+						}
+					}
+				}
+			}
+		],
+		"parameters": {
+			"tables": {
+				"type": "string",
+				"defaultValue": "ILOS_CBCAOBOUTSTANDINGDEPOSIT"
+			},
+			"start_date": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"end_date": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"bank_id": {
+				"type": "string",
+				"defaultValue": "CBC01"
+			},
+			"path_dec": {
+				"type": "string",
+				"defaultValue": "ILOS/DEP/decrypted"
+			},
+			"filename": {
+				"type": "string",
+				"defaultValue": "cbcaoboutstandingdeposit.csv"
+			},
+			"path_enc": {
+				"type": "string",
+				"defaultValue": "ILOS/DEP/encrypted"
+			},
+			"path_sftp": {
+				"type": "string",
+				"defaultValue": "System/Handoff"
+			}
+		},
+		"variables": {
+			"v_start_date": {
+				"type": "String"
+			},
+			"v_end_date": {
+				"type": "String"
+			},
+			"v_error_desc": {
+				"type": "String"
+			},
+			"v_bank_id": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-07-23T08:58:26Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

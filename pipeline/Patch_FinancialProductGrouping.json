@@ -1,0 +1,59 @@
+{
+	"name": "Patch_FinancialProductGrouping",
+	"properties": {
+		"activities": [
+			{
+				"name": "ALTER SP_FinancialProductGrouping_DID",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SET ANSI_NULLS ON\r\nGO\r\nSET QUOTED_IDENTIFIER ON\r\nGO\r\n\r\nALTER PROC [BNKM].[SP_FinancialProductGrouping_DID] AS\r\nBEGIN\r\n\r\n\r\nWITH TEMP_BNKM_FinancialProductGrouping AS\r\n(\r\n\tSELECT DISTINCT\r\n\t\tBDP.BANK_CODE AS FinancialInstitutionId\r\n\t\t,BDP.SOURCE_CODE AS SourceCode\r\n\t\t,BDP.PRODUCT_GROUP AS ProductGrouping\r\n\t\t,BDP.PRODUCT_TYPE AS FinancialProductId\r\n\t\t,BDP.PRODUCT_DESCRIPTION AS FinancialProductName\r\n\t\t,BDP.INSERT_DTTM AS PeriodStartTimestamp\r\n\t\t,'9999-12-31' AS PeriodEndTimestamp\r\n\t\t,'DID' AS SourceSystemCode\r\n\t\t,0 AS TaskRunId\r\n\t\t,0 AS WorkFlowId\r\n\t\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\n\t\t--,'INSERT' AS RECORD_STATUS\r\n\tFROM BUSC.DID_PRODUCTGROUPING BDP\r\n\tWHERE ISLATEST = '1' --AND BDP.PRODUCT_TYPE = 'FGUA'\r\n\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_FinancialProductGrouping FROM TEMP_BNKM_FinancialProductGrouping;\r\n--select count(1) from  #TEMP_BNKM_FinancialProductGrouping\r\n\r\n\r\nWITH TEMP_BNKM_FinancialProductGrouping_SRC AS\r\n(\r\n\tSELECT\r\n\t\tHASHBYTES('MD5',CONCAT(\r\n\t\t\tCONVERT(VARCHAR,FinancialProductId)\r\n\t\t\t,FinancialProductName\r\n\t\t\t,FinancialInstitutionId\r\n\t\t\t,SourceCode\r\n\t\t\t,ProductGrouping\r\n\t\t\t--,PeriodStartTimestamp\r\n\t\t\t--,PeriodEndTimestamp\r\n\t\t\t)) AS HASHROW\r\n\t\t\t,FinancialProductId ,SourceCode ,FinancialInstitutionId --,RECORD_STATUS\r\n\tFROM #TEMP_BNKM_FinancialProductGrouping --WHERE RECORD_STATUS = 'UPDATE'\r\n)\r\n\r\n\r\n,TEMP_BNKM_FinancialProductGrouping_TGT AS\r\n(\r\n\tSELECT\r\n\t\tHASHBYTES('MD5',CONCAT(\r\n\t\t\tCONVERT(VARCHAR,FinancialProductId)\r\n\t\t\t,FinancialProductName\r\n\t\t\t,FinancialInstitutionId\r\n\t\t\t,SourceCode\r\n\t\t\t,ProductGrouping\r\n\t\t\t--,PeriodStartTimestamp\r\n\t\t\t--,PeriodEndTimestamp\r\n\t\t\t)) AS HASHROW\r\n\t\t\t,FinancialProductId ,SourceCode ,FinancialInstitutionId\r\n\tFROM BNKM.FinancialProductGrouping WHERE SourceSystemCode = 'DID'\r\n),\r\n\r\nTEMP_BNKM_FinancialProductGrouping_DELTA AS\r\n(\r\n\tSELECT\t\r\n\t\tSRC.HASHROW AS SRC_HR\r\n\t\t,TGT.HASHROW AS TGT_HR\r\n\t\t,ISNULL(SRC.FinancialProductId,TGT.FinancialProductId) AS FinancialProductId\r\n\t\t,ISNULL(SRC.SourceCode,TGT.SourceCode) AS SourceCode\r\n\t\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n\t\t,CASE\r\n\t\t\tWHEN TGT.FinancialProductId IS NULL AND TGT.SourceCode IS NULL AND TGT.FinancialInstitutionId IS NULL THEN 'INSERT'\r\n\t\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\t\t\tELSE NULL \r\n\t\tEND AS RECORD_STATUS\r\n\tFROM TEMP_BNKM_FinancialProductGrouping_SRC SRC\r\n\tLEFT JOIN TEMP_BNKM_FinancialProductGrouping_TGT TGT\r\n\t ON SRC.FinancialProductId = TGT.FinancialProductId\r\n\t AND SRC.SourceCode = TGT.SourceCode\r\n\t AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\n\tWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_FinancialProductGrouping_DELTA FROM TEMP_BNKM_FinancialProductGrouping_DELTA;\r\n\r\n----UPDATE RECORDS to BNKM\r\nUPDATE TGT \r\nSET\r\nPeriodEndTimestamp = DATEADD(DAY,-1,CONVERT(DATE,CONVERT(VARCHAR,SRC.PeriodStartTimestamp)))\r\nFROM BNKM.FinancialProductGrouping TGT\r\nJOIN #TEMP_BNKM_FinancialProductGrouping_DELTA DELTA ON DELTA.FinancialProductId = TGT.FinancialProductId AND DELTA.SourceCode = TGT.SourceCode AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId AND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_FinancialProductGrouping SRC ON SRC.FinancialProductId = TGT.FinancialProductId AND SRC.SourceCode = TGT.SourceCode AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId \r\nWHERE TGT.PeriodEndTimestamp in ('9999-12-31')\r\n\r\n\r\n-------------INSERT RECORDS TO BNKM\r\nINSERT INTO BNKM.FinancialProductGrouping ( \r\nFinancialInstitutionId\r\n,SourceCode\r\n,ProductGrouping\r\n,FinancialProductId\r\n,FinancialProductName\r\n,PeriodStartTimestamp\r\n,PeriodEndTimestamp\r\n,SourceSystemCode\r\n,TaskRunId\r\n,WorkFlowId\r\n,InsertDttm)\r\n\r\nSELECT \r\n SRC.FinancialInstitutionId AS FinancialInstitutionId\r\n,SRC.SourceCode AS SourceCode\r\n,SRC.ProductGrouping AS ProductGrouping\r\n,SRC.FinancialProductId AS FinancialProductId\r\n,SRC.FinancialProductName AS FinancialProductName\r\n,SRC.PeriodStartTimestamp AS PeriodStartTimestamp\r\n,SRC.PeriodEndTimestamp AS PeriodEndTimestamp\r\n,'DID' AS SourceSystemCode\r\n,0 AS TaskRunId\r\n,0 AS WorkFlowId \r\n,SRC.InsertDttm AS InsertDttm\r\nFROM #TEMP_BNKM_FinancialProductGrouping SRC\r\nJOIN #TEMP_BNKM_FinancialProductGrouping_DELTA DELTA ON   DELTA.FinancialProductId = SRC.FinancialProductId AND DELTA.SourceCode = SRC.SourceCode AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\r\nAND DELTA.RECORD_STATUS IN ('INSERT','UPDATE')\r\n\r\n\r\nDROP TABLE #TEMP_BNKM_FinancialProductGrouping;\r\nDROP TABLE #TEMP_BNKM_FinancialProductGrouping_DELTA;\r\n\r\nEND\r\nGO"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Execute Patch",
+				"type": "ExecutePipeline",
+				"dependsOn": [],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Patch",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"table": "BNKM.FinancialProductGrouping",
+						"col": "PeriodEndTimestamp"
+					}
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-02-07T05:19:47Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

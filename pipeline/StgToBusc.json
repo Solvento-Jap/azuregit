@@ -1,0 +1,386 @@
+{
+	"name": "StgToBusc",
+	"properties": {
+		"activities": [
+			{
+				"name": "StgToBusc_CRM",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "START_STREAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "StgToBusc_CRM",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "StgToBusc_DEP",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "StgToBusc_CRM",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "StgToBusc_DEP_CA_part2",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "START_STREAM",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "pipeline_runid",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().RunId",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "stream_name",
+									"type": "String",
+									"value": {
+										"value": "@variables('vSTREAM_NAME')",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "SET IDENTITY_INSERT  [OM].[OM_STREAM_QUEUE] ON;\nINSERT INTO [OM].[OM_STREAM_QUEUE] (STREAM_QUEUE_ID,STREAM_ID,PIPELINE_RUNID,DATA_LAYER,STATUS_ID,STREAM_DTTM,INSERT_DTTM,END_DTTM)\nSELECT  ROW_NUMBER() OVER(ORDER BY (SELECT NULL))+ (SELECT ISNULL(MAX(STREAM_ID),0) FROM [OM].[OM_STREAM_QUEUE]),(SELECT STREAM_ID FROM OM.OM_STREAMS WHERE STREAM_NAME=@stream_name ) ,@pipeline_runid,(SELECT DATA_LAYER FROM OM.OM_STREAMS WHERE STREAM_NAME=@stream_name ),(SELECT STATUS_ID FROM OM.OM_STATUS WHERE STATUS = 'RUNNING'), NULL,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime),NULL\nSET IDENTITY_INSERT  [OM].[OM_STREAM_QUEUE] OFF;"
+						}
+					]
+				}
+			},
+			{
+				"name": "END_STREAM",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "StgToBusc_TRY",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "pipeline_runid",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().RunId",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "UPDATE [OM].[OM_STREAM_QUEUE]  SET STATUS_ID = (SELECT STATUS_ID FROM OM.OM_STATUS WHERE STATUS = 'SUCCESSFUL'), END_DTTM = CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) WHERE PIPELINE_RUNID = @pipeline_runid"
+						}
+					]
+				}
+			},
+			{
+				"name": "StgToBusc_ATM",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "StgToBusc_DEP",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "StgToBusc_ATM",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "StgToBusc_BOB",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "StgToBusc_ATM",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "StgToBusc_BOB",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "StgToBusc_CCD",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "StgToBusc_BOB",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "StgToBusc_CCD",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "StgToBusc_LNS",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "StgToBusc_CCD",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "StgToBusc_LNS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "StgToBusc_MBK",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "StgToBusc_LNS",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "StgToBusc_MBK",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "StgToBusc_RIB",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "StgToBusc_MBK",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "StgToBusc_RIB",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "StgToBusc_SEC",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "StgToBusc_RIB",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "StgToBusc_SEC",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "StgToBusc_SED",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "StgToBusc_SEC",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "StgToBusc_SED",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "StgToBusc_TRU",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "StgToBusc_SED",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "StgToBusc_TRU",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "StgToBusc_TRY",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "StgToBusc_TRU",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "StgToBusc_TRY",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			}
+		],
+		"variables": {
+			"vSTREAM_NAME": {
+				"type": "String",
+				"defaultValue": "dev_StgToBusc"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-04-02T13:19:33Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

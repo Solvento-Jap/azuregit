@@ -1,0 +1,112 @@
+{
+	"name": "Send_Email_Query",
+	"properties": {
+		"activities": [
+			{
+				"name": "Logic_App_Email",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "CreateHTMLBody",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"method": "POST",
+					"url": {
+						"value": "https://prod-23.southeastasia.logic.azure.com:443/workflows/ef3f59e71d3c4e77b4fd9e5a6cc07b31/triggers/When_a_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_a_HTTP_request_is_received%2Frun&sv=1.0&sig=-Ltp4UouW338vPcAhcJyAFdEOQaUaf1LLVZf1YlgQOs",
+						"type": "Expression"
+					},
+					"connectVia": {
+						"referenceName": "AutoResolveIntegrationRuntime",
+						"type": "IntegrationRuntimeReference"
+					},
+					"body": {
+						"value": "{\n    \"Eml_Sender\" : \"@{pipeline().parameters.Eml_Sender}\",\n    \"Eml_Recipient\" : \"@{pipeline().parameters.Eml_Recipient}\",\n    \"Eml_Subject\" : \"@{pipeline().parameters.Env} Dynamic Query Email Test\",\n    \"MessageStatus\" : \"@{activity('CreateHTMLBody').output.resultsets[0].rows[0].body}\"\n}",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "CreateHTMLBody",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "TEMP_TABLE",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().RunId",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "SOURCE_SQL",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.Query",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "DECLARE @SQL             NVARCHAR(MAX);\r\nDECLARE @BODY            NVARCHAR(MAX);\r\nDECLARE @HEADER          NVARCHAR(MAX);\r\nDECLARE @STYLE           NVARCHAR(MAX);\r\nDECLARE @COLUMN_HTML     NVARCHAR(MAX);\r\nDECLARE @FULL_TABLE_NAME NVARCHAR(300);\r\n\r\n\r\nSET @FULL_TABLE_NAME = N'D360.' + QUOTENAME(@TEMP_TABLE);\r\n\r\n\r\n-- HTML STYLE - define the style for the HTML table\r\nSET @STYLE = N'\r\n<style>\r\n    table {\r\n        border-collapse: collapse;\r\n        font-family: Aptos;\r\n        font-size: 11pt;\r\n    }\r\n\r\n    th, td {\r\n        text-align: left;\r\n        padding: 5px;\r\n        border: 1px solid #BFBFBF;\r\n    }\r\n\r\n    th {\r\n        font-weight: bold;\r\n        background-color: #E7E6E6;\r\n    }\r\n\r\n    tr:nth-child(2n) {\r\n        background-color: #D6EEEE;\r\n    }\r\n</style>\r\n';\r\n\r\n-- Drop the temp table if it exists\r\nSET @SQL = N'\r\nIF OBJECT_ID(''' + @FULL_TABLE_NAME + N''') IS NOT NULL\r\nBEGIN\r\n    DROP TABLE ' + @FULL_TABLE_NAME + N';\r\nEND;\r\n';\r\n\r\nEXEC sp_executesql @SQL;\r\n\r\n\r\n-- create the query as a table\r\nSET @SQL = N'\r\nCREATE TABLE ' + @FULL_TABLE_NAME + N'\r\nWITH\r\n(\r\n    DISTRIBUTION = ROUND_ROBIN,\r\n    HEAP\r\n)\r\nAS\r\n' + @SOURCE_SQL + N';\r\n';\r\n\r\nEXEC sp_executesql @SQL;\r\n\r\n\r\n-- get the columns of the temp table into another temp table for ease of use\r\nIF OBJECT_ID('D360.TEMP_COLUMNS') IS NOT NULL\r\n    DROP TABLE D360.TEMP_COLUMNS;\r\n\r\nCREATE TABLE D360.TEMP_COLUMNS\r\n(\r\n    COLUMN_INDEX INT,\r\n    COLUMN_NAME  NVARCHAR(128)\r\n)\r\nWITH\r\n(\r\n    DISTRIBUTION = ROUND_ROBIN,\r\n    HEAP\r\n);\r\n\r\nINSERT INTO D360.TEMP_COLUMNS\r\n(\r\n    COLUMN_INDEX,\r\n    COLUMN_NAME\r\n)\r\nSELECT\r\n    ROW_NUMBER() OVER (ORDER BY ORDINAL_POSITION),\r\n    COLUMN_NAME\r\nFROM INFORMATION_SCHEMA.COLUMNS\r\nWHERE TABLE_SCHEMA = 'D360'\r\n  AND TABLE_NAME = @TEMP_TABLE;\r\n\r\n\r\n-- create the first row of the HTML table with the column names\r\n\r\nSELECT @HEADER =\r\n    N'<table><tr>' +\r\n    STRING_AGG(\r\n        CAST(\r\n            N'<th>' +\r\n            REPLACE(\r\n                REPLACE(\r\n                    REPLACE(COLUMN_NAME, N'&', N'&amp;'),\r\n                    N'<', N'&lt;'\r\n                ),\r\n                N'>', N'&gt;'\r\n            ) +\r\n            N'</th>'\r\n            AS NVARCHAR(MAX)\r\n        ),\r\n        N''\r\n    ) WITHIN GROUP (ORDER BY COLUMN_INDEX) +\r\n    N'</tr>'\r\nFROM D360.TEMP_COLUMNS;\r\n\r\n\r\n-- create the HTML expression for all columns in the temp table\r\nSELECT @COLUMN_HTML =\r\n    STRING_AGG(\r\n        CAST(\r\n            N'''<td>'' + ' +\r\n            N'ISNULL(CONVERT(NVARCHAR(MAX), ' +\r\n            QUOTENAME(COLUMN_NAME) +\r\n            N'), '''') + ' +\r\n            N'''</td>'''\r\n            AS NVARCHAR(MAX)\r\n        ),\r\n        N' + '\r\n    ) WITHIN GROUP (ORDER BY COLUMN_INDEX)\r\nFROM D360.TEMP_COLUMNS;\r\n\r\n\r\n\r\n-- genreate the HTML table body with all rows from the temp table\r\nSET @SQL = N'\r\nSELECT @BODY_OUT =\r\n    STRING_AGG(\r\n        CAST(\r\n            ''<tr>'' +\r\n            ' + @COLUMN_HTML + N' +\r\n            ''</tr>''\r\n            AS NVARCHAR(MAX)\r\n        ),\r\n        ''''\r\n    )\r\nFROM ' + @FULL_TABLE_NAME + N';\r\n';\r\n\r\n\r\nEXEC sp_executesql\r\n    @SQL,\r\n    N'@BODY_OUT NVARCHAR(MAX) OUTPUT',\r\n    @BODY_OUT = @BODY OUTPUT;\r\n\r\n\r\n-- build the final HTML code\r\nSET @BODY =\r\n    @STYLE +\r\n    ISNULL(@HEADER, N'<table>') +\r\n    ISNULL(@BODY, N'') +\r\n    N'</table>';\r\n\r\nSELECT @BODY AS body;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"parameters": {
+			"Query": {
+				"type": "string",
+				"defaultValue": "    SELECT SOURCE,[DATE]     FROM(         SELECT                     CRM_DATE, DEPOSITS_DATE,LOANS_DATE,GLD_DATE,             CCD_DATE,DID_DATE,ATM_DATE,TRY_DATE,             MBK_DATE,RIB_DATE,BOB_DATE,TRU_DATE,             SEC_DATE,SED_DATE,DEPOSITS_DATE_P2         FROM EDS.EDS_CTL     )SRC     UNPIVOT(         [DATE] FOR SOURCE IN(             CRM_DATE, DEPOSITS_DATE,LOANS_DATE,GLD_DATE,             CCD_DATE,DID_DATE,ATM_DATE,TRY_DATE,             MBK_DATE,RIB_DATE,BOB_DATE,TRU_DATE,             SEC_DATE,SED_DATE,DEPOSITS_DATE_P2         )     )U"
+			},
+			"Eml_Sender": {
+				"type": "string",
+				"defaultValue": "donotreply@advisory.chinabank.ph"
+			},
+			"Eml_Recipient": {
+				"type": "string",
+				"defaultValue": "jayar.gavina@solventoph.com, arland.bindoy@solventoph.com, japeth.hernandez@solventoph.com, jolenizo@chinabank.ph, japescultura@chinabank.ph"
+			},
+			"Env": {
+				"type": "string",
+				"defaultValue": "[D360-DEV]"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-08-13T01:53:02Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,111 @@
+{
+	"name": "ADHOC_MTD_YTD",
+	"properties": {
+		"activities": [
+			{
+				"name": "DEPO_YTD_ALLDATES",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "DROP TABLE D360.DEPO_YTD_ALLDATES;\n\nCREATE TABLE D360.DEPO_YTD_ALLDATES\nWITH\n(\n    DISTRIBUTION = HASH(GAM_ACID)\n,    HEAP\n)\nAS\n\tSELECT FULLDATE\n\t\t, Previous_Business_Day\n\t\t, Business_Day_Flag\n\t\t, DAYOFYEAR\n\t\t, LastDayOfMonth\n\t\t, Day\n--\t\t, case when month_end = 'Y' then DATEDIFF(day, fulldate, LastDayOfMonth) else 0 end month_end_diff\n\t\t, DATEDIFF(day, fulldate, LastDayOfMonth) month_end_diff\n\t\t, YEAR\n\t\t, MONTH\n\t\t, CUST_ID\n\t\t, GAM_ACID\n\t\t, ACCT_CRNCY_CODE\n\t\t, GAM_BANK_ID\n\t\t, GAM_SCHM_TYPE\n\t\t, MONTH_END\n\tFROM EDS.DATE_DIM\n\tJOIN EDS.DEPOSIT_FACT\n\t\tON 1 = 1\n\t\tAND SUBSTRING(GAM_SCHM_CODE, 1, 2) <> '09'\n\t\tAND GAM_BANK_ID = 'CBC01'\n\t\tAND (AS_OF_DATE = '2024-10-31' OR (DEP_ACCOUNT_STATUS = 'C' and  AS_OF_DATE < '2024-10-31'))\n\tWHERE FULLDATE BETWEEN CAST ('20231229' AS DATE) AND CAST ('20241031' AS DATE);\n--\tWHERE FULLDATE = '2024-10-31'\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DEPO_BALANCE_ONLY",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DEPO_YTD_ALLDATES",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "DROP TABLE D360.DEPO_BALANCE_ONLY;\n\nCREATE TABLE D360.DEPO_BALANCE_ONLY\nWITH\n(\n    DISTRIBUTION = HASH(GAM_ACID)\n,    HEAP\n)\nAS\nSELECT AS_OF_DATE\n    ,CUST_ID\n    ,GAM_ACID\n    ,ACCT_CRNCY_CODE\n    ,GAM_BANK_ID\n    ,GAM_SCHM_TYPE\n    ,GAM_SCHM_CODE\n    ,OUTSTANDING_BALANCE\n    ,OUTSTANDING_BALANCE_PHP\n\t,ACCUMULATED_CURRBAL\n    ,DEP_ACCOUNT_STATUS\nFROM EDS.DEPOSIT_FACT\nWHERE GAM_BANK_ID = 'CBC01'\n\tAND SUBSTRING(GAM_SCHM_CODE, 1, 2) <> '09'\n\tAND DEL_FLG = 'N'\n\tAND DEP_ACCOUNT_STATUS <> 'C'\n\tAND AS_OF_DATE <= '2024-10-31'\n-- where ACCT_CRNCY_CODE <> 'PHP'\n;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DEPOSIT_MTD_YTD_UAT",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DEPO_BALANCE_ONLY",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "DROP TABLE EDS.DEPOSIT_MTD_YTD_UAT;\n\nCREATE TABLE EDS.DEPOSIT_MTD_YTD_UAT\nWITH\n(\n    DISTRIBUTION = HASH(GAM_ACID)\n,    HEAP\n)\nAS\nSELECT\n      TMP.FULLDATE\n    , TMP.Previous_Business_Day\n    , TMP.CUST_ID\n    , TMP.GAM_ACID\n    , TMP.ACCT_CRNCY_CODE\n    , TMP.GAM_BANK_ID\n    , TMP.GAM_SCHM_TYPE\n    , (CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE ELSE CURRENT_PBD.OUTSTANDING_BALANCE END) AS CURRENT_OUTSTANDING_BALANCE\n    , (CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE_PHP ELSE CURRENT_PBD.OUTSTANDING_BALANCE_PHP END) AS CURRENT_OUTSTANDING_BALANCE_PHP\n--    , CURRENT_PBD.OUTSTANDING_BALANCE AS PREVIOUS_OUTSTANDING_BALANCE\n--    , CURRENT_PBD.OUTSTANDING_BALANCE_PHP AS PREVIOUS_OUTSTANDING_BALANCE_PHP\n    , SUM(CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE ELSE CURRENT_PBD.OUTSTANDING_BALANCE END)\n        OVER(PARTITION BY YEAR, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW ) AS TOTAL_CURRENT_OUTSTANDING_BALANCE\n    , SUM(CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE_PHP ELSE CURRENT_PBD.OUTSTANDING_BALANCE_PHP END)\n        OVER(PARTITION BY YEAR, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW ) AS TOTAL_CURRENT_OUTSTANDING_BALANCE_PHP\n\t, COALESCE(DEP_YTD.ACCUMULATED_CURRBAL, CURRENT_BD.ACCUMULATED_CURRBAL)\tAS ACCUMULATED_CURRBAL\n    , CAST(DAYOFYEAR AS SMALLINT) DAYOFYEAR\n    , LastDayOfMonth\n    , CAST(Day AS SMALLINT) Day\n\t, month_end_diff\n    , (\n--\t\tCASE \n--\t\t\tWHEN TMP.ACCT_CRNCY_CODE <> 'PHP' THEN \n\t\t\t\t(\n\t\t\t\t\tSUM(CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE ELSE CURRENT_PBD.OUTSTANDING_BALANCE END)\n\t\t\t\t\t\tOVER(PARTITION BY YEAR, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) \n\t\t\t\t\t+ case when month_end = 'Y' then month_end_diff * CURRENT_BD.OUTSTANDING_BALANCE else 0 end\n\t\t\t\t) / (DAYOFYEAR + case when month_end = 'Y' then month_end_diff else 0 end)\n--\t\t\tELSE COALESCE(DEP_YTD.ACCUMULATED_CURRBAL, CURRENT_BD.ACCUMULATED_CURRBAL) / DAYOFYEAR\n--\t\tEND\n\t) AS YTD_BALANCE\n\t\n    , (\n--\t\tCASE \n--\t\t\tWHEN TMP.ACCT_CRNCY_CODE <> 'PHP' THEN\n\t\t\t\t(\n\t\t\t\t\tSUM(CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE_PHP ELSE CURRENT_PBD.OUTSTANDING_BALANCE_PHP END)\n\t\t\t\t\t\tOVER(PARTITION BY YEAR, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW )\n\t\t\t\t\t+ case when month_end = 'Y' then month_end_diff * CURRENT_BD.OUTSTANDING_BALANCE_PHP else 0 end\n\t\t\t\t) / (DAYOFYEAR + case when month_end = 'Y' then month_end_diff else 0 end)\n--\t\t\tELSE COALESCE(DEP_YTD.ACCUMULATED_CURRBAL, CURRENT_BD.ACCUMULATED_CURRBAL) / DAYOFYEAR\n--\t\tEND\n\t) AS YTD_BALANCE_PHP\n\t\n    , ((SUM(CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE ELSE CURRENT_PBD.OUTSTANDING_BALANCE END)\n\tOVER(PARTITION BY YEAR, MONTH, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW ) \n\t+ case when month_end = 'Y' then month_end_diff else 0 end * CURRENT_BD.OUTSTANDING_BALANCE) \n\t/ (DAY + case when month_end = 'Y' then month_end_diff else 0 end)\n\t) AS MTD_BALANCE\n\t\n    , ((SUM(CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE_PHP ELSE CURRENT_PBD.OUTSTANDING_BALANCE_PHP END)\n\tOVER(PARTITION BY YEAR, MONTH, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW )\n\t+ case when month_end = 'Y' then month_end_diff * CURRENT_BD.OUTSTANDING_BALANCE_PHP else 0 end) \n\t/ (DAY + case when month_end = 'Y' then month_end_diff else 0 end)\n\t) AS MTD_BALANCE_PHP\t\n    , TMP.MONTH_END\n\t, CURRENT_BD.DEP_ACCOUNT_STATUS\nFROM D360.DEPO_YTD_ALLDATES TMP\nLEFT JOIN D360.DEPO_BALANCE_ONLY CURRENT_BD\n    ON TMP.GAM_ACID = CURRENT_BD.GAM_ACID\n    AND TMP.FULLDATE = CURRENT_BD.AS_OF_DATE\n\t\nLEFT JOIN D360.DEPO_BALANCE_ONLY CURRENT_PBD\n    ON TMP.GAM_ACID = CURRENT_PBD.GAM_ACID \n    AND TMP.Previous_Business_Day = CURRENT_PBD.AS_OF_DATE\n\t\nLEFT JOIN D360.DEP_BUSC_ACCUMULATED_CURRBAL_YTD DEP_YTD\n\tON TMP.GAM_ACID = DEP_YTD.ACID\n\tAND TMP.GAM_BANK_ID = DEP_YTD.BANK_ID\n\tAND TMP.FULLDATE = DEP_YTD.CURRENT_EOD_DATE;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-11-14T08:50:05Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

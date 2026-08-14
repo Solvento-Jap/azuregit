@@ -1,0 +1,338 @@
+{
+	"name": "Send_Email_Manifest",
+	"properties": {
+		"activities": [
+			{
+				"name": "Logic_App_Email",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "Set Eml Recipient",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"method": "POST",
+					"url": {
+						"value": "https://prod-23.southeastasia.logic.azure.com:443/workflows/ef3f59e71d3c4e77b4fd9e5a6cc07b31/triggers/When_a_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_a_HTTP_request_is_received%2Frun&sv=1.0&sig=-Ltp4UouW338vPcAhcJyAFdEOQaUaf1LLVZf1YlgQOs",
+						"type": "Expression"
+					},
+					"connectVia": {
+						"referenceName": "AutoResolveIntegrationRuntime",
+						"type": "IntegrationRuntimeReference"
+					},
+					"body": {
+						"value": "{\n    \"Eml_Sender\" : \"@{variables('V_eml_sender_set')}\",\n    \"Eml_Recipient\" : \"@{variables('V_eml_recipient_set')}\",\n    \"Eml_Subject\" : \"@{variables('V_subject_src_sys')}\",\n    \"MessageStatus\" : \"@{variables('V_job_summary_details')}\"\n}",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Set Job Summary Details",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Get Job Summary Details",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "V_job_summary_details",
+					"value": {
+						"value": "@activity('Get Job Summary Details').output.resultsets[0].rows[0].body",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Get Job Summary Details",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Set ENV",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "run_datetime",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.RunDateTime",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "datetoprocess",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.ProcessDate",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "src_sys",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "pipelinename",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.PipelineName",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "end_datetime",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.EndDateTime",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "syn_workspace",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().DataFactory",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "ENV",
+									"type": "String",
+									"value": {
+										"value": "@variables('V_ENV_set')",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "BatchNo",
+									"type": "Int32",
+									"value": {
+										"value": "@pipeline().parameters.BatchNo",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "\nDECLARE @intro nvarchar(max)\nDECLARE @tr_style nvarchar(max)\nDECLARE @header nvarchar(max)\nDECLARE @body nvarchar(max)\nDECLARE @err_header nvarchar(max)\nDECLARE @err_body nvarchar(max)\nDECLARE @err_hash_header nvarchar(max)\nDECLARE @err_hash_body nvarchar(max)\nDECLARE @err_rw_header nvarchar(max)\nDECLARE @err_rw_body nvarchar(max)\n\nset @intro = (SELECT CONCAT('<p><b>Environment: ',@ENV,' - [',@syn_workspace,']','</b></p><p><b>Workflow Name: ',@pipelinename,'</b></p><p><b>Process Date: ',CONVERT(VARCHAR,@datetoprocess,23),'</b></p><p><b>Start DateTime: ',CONVERT(VARCHAR,@run_datetime,120),'</b></p><p><b>End DateTime: ',CONVERT(VARCHAR,@end_datetime,120),'</b></p>'))\n\nset @tr_style = '<style>table {border-collapse: collapse;width: 100%; font-family: Aptos; font-size: 11pt;}th, td {text-align: left;padding: 2px;border: 1px solid #BFBFBF;} tr:nth-child(2n) {background-color: #D6EEEE;}  .failed { background-color: #F8CBAD; }  .notexecuted { background-color: #F8CBAD; } .disabled { background-color: #DDEBF7; }  .successful { background-color: #C6E0B4; } .running { background-color: #FFE699; }</style>'\n\n/***Error Details***/\nSET @err_header = '<p><b>Execution Error Details:</b></p><table><tr><th>Task Name</th><th>Error Description</th><th>Run DateTime</th></tr>'\n\nSET @err_body = (SELECT CONCAT(STRING_AGG('<tr><td>'+CAST(OTED.TASK_NAME AS NVARCHAR(MAX))+'</td><td>'+CAST(REPLACE(REPLACE(REPLACE(REPLACE(ERROR_DESC,'[',''),']',''),',',' '),'\"','')  AS NVARCHAR(MAX))+'</td><td>'+CAST(REPLACE(CONVERT(VARCHAR,OTED.CREATE_DATETIME,126),'T',' ') AS NVARCHAR(MAX))+'</td></tr>','') WITHIN GROUP (ORDER BY OTED.CREATE_DATETIME),'</table>')\nFROM OM.OM_TASK_ERROR_DTL OTED\nWHERE PROCESS_DATE = @datetoprocess\n     AND OTED.CREATE_DATETIME >= @run_datetime\n\t AND OTED.TASK_NAME LIKE '%_EDS_FMS_%')\n\nSELECT CONCAT(@intro,@tr_style,@err_header,@err_body) as body;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Set Eml_Subject_Source_Code",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Set Job Summary Details",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "V_subject_src_sys",
+					"value": {
+						"value": "@concat(coalesce(pipeline().parameters.ENV,variables('V_ENV_set')),' - ',coalesce(pipeline().parameters.Eml_Subject,variables('V_eml_subject')),' ',pipeline().parameters.PipelineName,' - ',replace(pipeline().parameters.ProcessDate,'T00:00:00',''))",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Set Eml Sender",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Set Eml_Subject_Source_Code",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "V_eml_sender_set",
+					"value": {
+						"value": "@coalesce(pipeline().parameters.Eml_Sender,variables('V_eml_sender'))",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Set Eml Recipient",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Set Eml Sender",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "V_eml_recipient_set",
+					"value": {
+						"value": "@coalesce(pipeline().parameters.Eml_Recipient,variables('V_eml_recipient'))",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Set ENV",
+				"type": "SetVariable",
+				"dependsOn": [],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "V_ENV_set",
+					"value": {
+						"value": "@concat(coalesce(pipeline().parameters.ENV,variables('V_ENV')))",
+						"type": "Expression"
+					}
+				}
+			}
+		],
+		"parameters": {
+			"src_sys": {
+				"type": "string"
+			},
+			"PipelineName": {
+				"type": "string"
+			},
+			"ProcessDate": {
+				"type": "string"
+			},
+			"RunDateTime": {
+				"type": "string"
+			},
+			"Eml_Sender": {
+				"type": "string",
+				"defaultValue": "donotreply@advisory.chinabank.ph"
+			},
+			"Eml_Recipient": {
+				"type": "string",
+				"defaultValue": "mafarcon@chinabank.ph,wobautista@chinabank.ph,maccortez@chinabank.ph,gmtflores@chinabank.ph,jmmamangon@chinabank.ph,rsblabay@chinabank.ph,jayar.gavina@solventoph.com,tommy.dizon@solventoph.com,japeth.hernandez@solventoph.com,jccgomez@chinabank.ph,mrcdizon@chinabank.ph,japescultura@chinabank.ph,jolenizo@chinabank.ph,KJMPALO@chinabank.ph,JJSKAK@chinabank.ph,KRBRIVERA@chinabank.ph,JJPSALIPANDE@chinabank.ph,MEPIQUERO@chinabank.ph,RSDELAMBOTIQUE@chinabank.ph,MJMBANARIA@chinabank.ph,AEAGELI@chinabank.ph,JMSIBAG@chinabank.ph,JRFVIZCARRA@chinabank.ph,LDPBUNANIG@chinabank.ph,CECANONG@chinabank.ph,NSTALBINO@chinabank.ph,LQDEOGRACIAS@chinabank.ph"
+			},
+			"Eml_Subject": {
+				"type": "string",
+				"defaultValue": "Execution Details for"
+			},
+			"EndDateTime": {
+				"type": "string"
+			},
+			"ENV": {
+				"type": "string",
+				"defaultValue": "[D360-DEV]"
+			},
+			"BatchNo": {
+				"type": "string",
+				"defaultValue": "1"
+			}
+		},
+		"variables": {
+			"V_job_summary_details": {
+				"type": "String"
+			},
+			"V_subject_src_sys": {
+				"type": "String"
+			},
+			"V_eml_sender": {
+				"type": "String",
+				"defaultValue": "donotreply@advisory.chinabank.ph"
+			},
+			"V_eml_recipient": {
+				"type": "String",
+				"defaultValue": "mafarcon@chinabank.ph,wobautista@chinabank.ph,maccortez@chinabank.ph,gmtflores@chinabank.ph,jmmamangon@chinabank.ph,rsblabay@chinabank.ph,jayar.gavina@solventoph.com,tommy.dizon@solventoph.com,japeth.hernandez@solventoph.com,jccgomez@chinabank.ph,mrcdizon@chinabank.ph,japescultura@chinabank.ph,jolenizo@chinabank.ph,KJMPALO@chinabank.ph,JJSKAK@chinabank.ph,KRBRIVERA@chinabank.ph,JJPSALIPANDE@chinabank.ph,MEPIQUERO@chinabank.ph,RSDELAMBOTIQUE@chinabank.ph,MJMBANARIA@chinabank.ph,AEAGELI@chinabank.ph,JMSIBAG@chinabank.ph,JRFVIZCARRA@chinabank.ph,LDPBUNANIG@chinabank.ph,CECANONG@chinabank.ph,NSTALBINO@chinabank.ph,LQDEOGRACIAS@chinabank.ph"
+			},
+			"V_eml_subject": {
+				"type": "String",
+				"defaultValue": "Execution Details for"
+			},
+			"V_eml_sender_set": {
+				"type": "String"
+			},
+			"V_eml_recipient_set": {
+				"type": "String"
+			},
+			"V_ENV": {
+				"type": "String",
+				"defaultValue": "[D360-DEV]"
+			},
+			"V_ENV_set": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-08-12T02:33:22Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

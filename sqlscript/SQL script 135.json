@@ -1,0 +1,20 @@
+{
+	"name": "SQL script 135",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nCREATE PROC [syn].[GLOBALCIFGENERATE] AS\nBEGIN\n\nTRUNCATE TABLE  SYN.GLOBAL_CIF_TABLE;\n\nWITH GETCIF\nAS\n(SELECT MAX(GLOBALCIF) GLOBALCIF,[GROUP] FROM  SYN.GlobalMatchResults\nGROUP BY [GROUP]) \n,\nSTATUS \nAS\n(SELECT COUNT( GLOBALCIF) COUNTCIF, [GROUP] FROM syn.GlobalMatchResults WHERE TAG = 'Y' \nGROUP BY [GROUP] )\n\n\n--CYCLE2 ADD NEW RECORD\n\n--INSERT INTO SYN.GLOBAL_CIF_TABLE ([Entity]\n--,[GLOBAL_CIF]\n--,[ACCOUNTID_Cust_NBR]\n--,[insert_dttm])\nSELECT \ncase when accountid_cust_nbr like 'CBSec_%' then 'CBC11' \n     when accountid_cust_nbr like 'CBC_%' then 'CBC01'\n     when accountid_cust_nbr like 'CBS_%' then 'CBC02'\n     else null\n     end entity,\nB.GLOBALCIF, \naccountid_cust_nbr,\ndateadd(hour,8,getdate()) \nFROM SYN.GlobalMatchResults A\nJOIN GETCIF B ON A.[GROUP] = B.[GROUP]\nLEFT JOIN STATUS C ON A.[GROUP] = C.[GROUP]\nWHERE TAG = 'Y' AND C.COUNTCIF > 0 AND (B.GLOBALCIF IS NOT NULL AND B.GLOBALCIF <> '');\n\n\nWITH STATUS \nAS\n(SELECT COUNT( GLOBALCIF) COUNTCIF, [GROUP] FROM syn.GlobalMatchResults WHERE TAG = 'Y' \nGROUP BY [GROUP] )\n\n--CYCLE1 RECORD\ninsert into syn.GLOBAL_CIF_TABLE ([Entity]\n,[GLOBAL_CIF]\n,[ACCOUNTID_Cust_NBR]\n,[insert_dttm])\nselect  \ncase when accountid_cust_nbr like 'CBSec_%' then 'CBC11' \n     when accountid_cust_nbr like 'CBC_%' then 'CBC01'\n     when accountid_cust_nbr like 'CBS_%' then 'CBC02'\n     else null\n     end entity,\nconcat('Global_CIF_',RIGHT('0000000000000000'+convert(varchar,dense_rank() over(order by A.[GROUP])+\n    (SELECT CONVERT(NUMERIC,MAX(RIGHT(GLOBALCIF,16))) FROM syn.GlobalMatchResults)),16)) globalcif,\naccountid_cust_nbr,\ndateadd(hour,8,getdate()) \nFROM syn.GlobalMatchResults A\nLEFT JOIN STATUS B ON A.[GROUP] = B.[GROUP]\nWHERE \ntag = 'Y' AND B.COUNTCIF > 0 AND (A.GLOBALCIF IS NULL OR A.GLOBALCIF = '') ;\n\nEND\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

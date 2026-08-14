@@ -1,0 +1,111 @@
+{
+	"name": "StgTo_EDS_DEP_STOPPAYMENTADDTNLTABLE",
+	"properties": {
+		"activities": [
+			{
+				"name": "DEP_STOPPAYMENTADDTNLTABLE_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": {
+							"value": "@concat('SELECT COUNT(1) CNT FROM D360.STG_EDS_',pipeline().parameters.tables,' WHERE H = ''D''')",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": {
+								"value": "@concat('STG_EDS_',pipeline().parameters.tables)",
+								"type": "Expression"
+							}
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "DEP_STOPPAYMENTADDTNLTABLE_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('DEP_STOPPAYMENTADDTNLTABLE_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "DEP_STOPPAYMENTADDTNLTABLE",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"type": "NonQuery",
+										"text": "DELETE FROM EDS.DEP_STOPPAYMENTADDTNLTABLE WHERE AS_OF_DATE = (SELECT TOP 1 CONVERT(DATE,LEFT(RIGHT(FILE_NAME, 12), 8)) FROM D360.STG_EDS_DEP_STOPPAYMENTADDTNLTABLE);\n\nINSERT INTO EDS.DEP_STOPPAYMENTADDTNLTABLE\n(\n    AS_OF_DATE\n    ,acid\n    ,begin_chq_num\n    ,rec_type\n    ,sp_srl_num\n    ,bank_id\n    ,valid_from\n    ,valid_to\n    ,instruction_mode\n    ,auto_renewal\n    ,num_of_renewals\n    ,is_expired\n    ,entity_cre_flg\n    ,del_flg\n    ,rcre_user_id\n    ,rcre_time\n    ,lchg_user_id\n    ,lchg_time\n    ,ts_cnt\n    ,link_srl_num\n    ,link_begin_chq_num\n    ,link_end_chq_num\n    ,chrg_coll_flg\n    ,BNK_CODE\n    ,SOURCE_CODE\n    ,FILE_NAME\n    ,insert_dttm\n)\n\nSELECT \n    CONVERT(DATE,LEFT(RIGHT(FILE_NAME, 12), 8)) AS AS_OF_DATE\n    ,acid\n    ,begin_chq_num\n    ,rec_type\n    ,sp_srl_num\n    ,bank_id\n    ,valid_from\n    ,valid_to\n    ,instruction_mode\n    ,auto_renewal\n    ,num_of_renewals\n    ,is_expired\n    ,entity_cre_flg\n    ,del_flg\n    ,rcre_user_id\n    ,rcre_time\n    ,lchg_user_id\n    ,lchg_time\n    ,ts_cnt\n    ,link_srl_num\n    ,link_begin_chq_num\n    ,link_end_chq_num\n    ,chrg_coll_flg\n    ,left(FILE_NAME, 5) as BNK_CODE\n    ,substring(FILE_NAME,7,3) as SOURCE_CODE\n    ,FILE_NAME\n    ,convert(datetime2,insert_dttm) as insert_dttm\nFROM D360.STG_EDS_DEP_STOPPAYMENTADDTNLTABLE\nWHERE H = 'D'\n    AND CONVERT(DATE,LEFT(RIGHT(FILE_NAME, 12), 8)) >= CAST(RCRE_TIME AS DATE)\n\n"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"tables": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-06-16T04:31:20Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

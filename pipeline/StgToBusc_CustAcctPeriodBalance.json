@@ -1,0 +1,476 @@
+{
+	"name": "StgToBusc_CustAcctPeriodBalance",
+	"properties": {
+		"activities": [
+			{
+				"name": "LNS_EODACCTBAL_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT COUNT(1) CNT FROM D360.STG_LNS_EODACCTBAL WHERE H = 'D'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_LNS_EODACCTBAL"
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition2",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "LNS_EODACCTBAL_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('LNS_EODACCTBAL_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE_copy1",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "LNS_EODACCTBAL",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": "SELECT STG.[ACID]\n,convert(date,STG.[EOD_DATE]) as EOD_DATE\n,convert(numeric(22,0),ISNULL(NULLIF(REPLACE([TRAN_DATE_BAL],' ',''),''),0)) as TRAN_DATE_BAL\n,convert(numeric(22,0),ISNULL(NULLIF(REPLACE([TRAN_DATE_TOT_TRAN],' ',''),''),0)) as TRAN_DATE_TOT_TRAN\n,convert(numeric(22,0),ISNULL(NULLIF(REPLACE([VALUE_DATE_BAL],' ',''),''),0)) as VALUE_DATE_BAL\n,convert(numeric(22,0),ISNULL(NULLIF(REPLACE([VALUE_DATE_TOT_TRAN],' ',''),''),0)) as VALUE_DATE_TOT_TRAN\n,convert(date,STG.[END_EOD_DATE]) as END_EOD_DATE\n,[LCHG_USER_ID]\n,convert(datetime2, stuff(stuff(stuff(LCHG_TIME, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) as LCHG_TIME\n,[RCRE_USER_ID]\n,convert(datetime2, stuff(stuff(stuff(RCRE_TIME, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) as RCRE_TIME\n,convert(numeric(22,0),ISNULL(NULLIF(REPLACE([TS_CNT],' ',''),''),0)) as TS_CNT\n,[EAB_CRNCY_CODE]\n,STG.[BANK_ID]\n,1 as isActive\n,1 as isLatest\n,left(FILE_NAME, 5) as [BNK_CODE]\n,substring(FILE_NAME,7,3) as [SOURCE_CODE]\n,[FILE_NAME]\n,convert(date,[insert_dttm]) as insert_dttm\n FROM [BUSC].[LNS_EODACCTBAL_DELTA] DELTA\n LEFT JOIN [D360].[STG_LNS_EODACCTBAL] STG ON DELTA.ACID = STG.ACID AND DELTA.BANK_ID = STG.BANK_ID AND DELTA.EOD_DATE = STG.EOD_DATE\n where H = 'D'  AND  STG.END_EOD_DATE = '20991231'\n",
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									},
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									}
+								},
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "ACID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "EOD_DATE",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "EOD_DATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "TRAN_DATE_BAL",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "TRAN_DATE_BAL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "TRAN_DATE_TOT_TRAN",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "TRAN_DATE_TOT_TRAN",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "VALUE_DATE_BAL",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "VALUE_DATE_BAL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "VALUE_DATE_TOT_TRAN",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "VALUE_DATE_TOT_TRAN",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "END_EOD_DATE",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "END_EOD_DATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "LCHG_USER_ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "LCHG_USER_ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "LCHG_TIME",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "LCHG_TIME",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "RCRE_USER_ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "RCRE_USER_ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "RCRE_TIME",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "RCRE_TIME",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "TS_CNT",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "TS_CNT",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "EAB_CRNCY_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "EAB_CRNCY_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BANK_ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BANK_ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "isActive",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "isActive",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "isLatest",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "isLatest",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "BNK_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BNK_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SOURCE_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SOURCE_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FILE_NAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_LNS_EODACCTBAL"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_TGT",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "LNS_EODACCTBAL"
+									}
+								}
+							]
+						},
+						{
+							"name": "ErrorExecutionLog_copy9",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "LNS_EODACCTBAL",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@pipeline().TriggerTime",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": {
+											"value": "@activity('LNS_EODACCTBAL').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": {
+											"value": "@activity('LNS_EODACCTBAL').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "@concat('FAILED - ',activity('LNS_EODACCTBAL').error.message)",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "SuccessExecutionLog_copy9",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "LNS_EODACCTBAL",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@addHours(pipeline().TriggerTime,+8)",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "SUCCESS",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-06-01T09:45:03Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

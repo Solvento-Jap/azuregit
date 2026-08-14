@@ -1,0 +1,20 @@
+{
+	"name": "bnkm_CustomerAccountBalance_ccd",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "CREATE PROCEDURE BNKM.SP_CUSTOMERACCOUNTBALANCE_SEC\nAS\nBEGIN\n--GET DELTA FROM BUSC\n\nWITH TEMP_BNKM_CustomerAccountBalance\nAS(\n\tSELECT\n\tBSP.ID\n\t,BSP.REFDATE\n\t,BSP.ENDSHARES\n\t,BSPD.RECORD_STATUS\n\t,BSP.INSERT_DTTM\n\t,BSP.BNK_CODE\n\tFROM BUSC.SEC_PORTFOLIO_DELTA BSPD\n\tLEFT JOIN BUSC.SEC_PORTFOLIO BSP ON BSP.ID = BSPD.ID AND BSP.ISLATEST = '1'\n)\n\nSELECT * INTO #TEMP_BNKM_CustomerAccountBalance FROM TEMP_BNKM_CustomerAccountBalance;\n\n--CHECK IF THERE IS DELTA\n\nWITH TEMP_BNKM_CustomerAccountBalance_SRC\nAS(\n\tSELECT\n\tHASHBYTES('MD5',CONCAT(\n\t\tID,\n\t\tREFDATE,\n\t\tENDSHARES\n\n\t)) HASHROW, ID, RECORD_STATUS\n\tFROM #TEMP_BNKM_CustomerAccountBalance WHERE RECORD_STATUS = 'UPDATE'\n),\n\nTEMP_BNKM_CustomerAccountBalance_TGT\nAS(\n\tSELECT\n\tHASHBYTES('MD5', CONCAT(\n\t\tCustomerAccountId\n\t\t,[Timestamp]\n\t\t,BalanceAmount\n\n\t)) HASHROW, CustomerAccountId\n\tFROM BNKM.CustomerAccountBalance\n),\n\nTEMP_BNKM_CustomerAccountBalance_DELTA\nAS(\n\tSELECT\n\tSRC.HASHROW AS SRC_HR\n\t,TGT.HASHROW AS TGT_HR\n\t,ISNULL(SRC.ID, TGT.CustomerAccountId) as CustomerAccountId\n\t,CASE\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n\t\tELSE NULL END AS RECORD_STATUS\n\n\tFROM TEMP_BNKM_CustomerAccountBalance_SRC SRC\n\tFULL OUTER JOIN TEMP_BNKM_CustomerAccountBalance_TGT TGT\n\tON SRC.ID = TGT.CustomerAccountId\n\tWHERE SRC.HASHROW <> TGT.HASHROW\n)\n\nSELECT * INTO #TEMP_BNKM_CustomerAccountBalance_DELTA FROM TEMP_BNKM_CustomerAccountBalance_DELTA;\n\nUPDATE TGT\nSET\n[CustomerAccountId] = SRC.ID\n,[BalanceTypeId] = 'Securities Portfolio'\n,[Timestamp] = SRC.REFDATE\n,[BalanceAmount] = SRC.ENDSHARES\n,[IsoCurrencyCode] = 'PHP'\n,[SourceSystemCode] = 'SEC'\n,[FinancialInstitutionId] = SRC.BNK_CODE\n,[WorkFlowId] = 0\n,[TaskRunId] = 0\n,[InsertDttm] = SRC.Insert_dttm\nFROM BNKM.CustomerAccountBalance TGT\nJOIN #TEMP_BNKM_CustomerAccountBalance_DELTA DELTA ON DELTA.CustomerAccountId = TGT.CustomerAccountId AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_CustomerAccountBalance SRC ON SRC.ID = TGT.CustomerAccountId;\n\n\n--INSERT REORDS TO BNKM\nINSERT INTO BNKM.CustomerAccountBalance\n(\n[CustomerAccountId]\n,[BalanceTypeId]\n,[Timestamp]\n,[BalanceAmount]\n,[IsoCurrencyCode]\n,[SOURCESYSTEMCODE]\n,[FINANCIALINSTITUTIONID]\n,[WORKFLOWID]\n,[TASKRUNID]\n,[INSERTDTTM]\n)\n\nSELECT\nID AS [CustomerAccountId]\n,'Securities Portfolio' AS [BalanceTypeId]\n,REFDATE AS [Timestamp]\n,ENDSHARES AS [BalanceAmount]\n,'PHP' AS [IsoCurrencyCode]\n,'SEC' AS [SOURCESYSTEMCODE]\n,BNK_CODE AS [FINANCIALINSTITUTIONID]\n,0 AS [WORKFLOWID]\n,0 AS [TASKRUNID]\n,INSERT_DTTM AS [INSERTDTTM]\nFROM #TEMP_BNKM_CustomerAccountBalance\nWHERE RECORD_STATUS = 'INSERT'\n\nDROP TABLE #TEMP_BNKM_CustomerAccountBalance;\nDROP TABLE #TEMP_BNKM_CustomerAccountBalance_DELTA;\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

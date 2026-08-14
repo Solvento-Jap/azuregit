@@ -1,0 +1,20 @@
+{
+	"name": "Ryan_hashlogs_testing_RLS",
+	"properties": {
+		"folder": {
+			"name": "Ryan"
+		},
+		"content": {
+			"query": "select * from d360.STG_RLS_RefRowLevelSecurity order by file_name\n\nselect * from d360.HASH_LOG_TBL\n\nCREATE PROCEDURE d360.SP_hash_log_RLS\nAS\nBEGIN\n\nwith hashlogs_src as (\nselect file_name\n,CONVERT(DATE,LEFT(RIGHT(FILE_NAME,12),8)) AS Date\n,GETDATE() AS INSERT_DTTM\n,'COUNT' AS METRICS\n,USERID AS SOURCE\nfrom d360.STG_RLS_RefRowLevelSecurity\nWHERE H = 'F'\n )\n\n,  hashlogs_tgt as (\nselect file_name\n,CONVERT(DATE,LEFT(RIGHT(FILE_NAME,12),8)) AS Date\n,GETDATE() AS INSERT_DTTM\n,'COUNT' AS METRICS\n,count(1) AS TARGET\nfrom d360.STG_RLS_RefRowLevelSecurity\nWHERE H = 'D'\nGROUP BY FILE_NAME )\n\n, hashlogs_final as (\nselect convert(varchar(50),a.file_name) file_name, a.Date, convert(date,a.INSERT_DTTM) INSERT_DTTM, a.METRICS, convert(int,a.SOURCE) SOURCE,convert(int,B.TARGET) TARGET FROM hashlogs_src A\nJOIN hashlogs_tgt B ON A.FILE_NAME = B.FILE_NAME)\n\nSELECT * INTO #TEMP_Hashlogs_final from hashlogs_final;\n\n----UPDATE A\nUPDATE A SET\nA.Source = B.Source\n,A.Target = B.Target\n,A.INSERT_DTTM = B.INSERT_DTTM\nFROM d360.HASH_LOG_TBL A\nJOIN #TEMP_Hashlogs_final B ON A.FILE_NAME = B.FILE_NAME\n\n----INSERT\nINSERT INTO d360.HASH_LOG_TBL\nSELECT * FROM #TEMP_Hashlogs_final A WHERE NOT EXISTS (SELECT * FROM d360.HASH_LOG_TBL B\n        WHERE A.file_name = B.file_name)\n\nEND\n\n\n\n---------------------------\n\nselect * from d360.HASH_LOG_TBL where file_name like '%RLS%'\n--update d360.HASH_LOG_TBL set source = 99, target = 99 where file_name like '%RLS%'\n\n\n\nMERGE d360.HASH_LOG_TBL AS Target\nUSING hashlogs_final AS Source\nON Source.file_name = Target.file_name\n    \n-- For Inserts\nWHEN NOT MATCHED BY Target THEN\n    INSERT (file_name,Date, INSERT_DTTM,METRICS, SOURCE, TARGET) \n    VALUES (Source.file_name,Source.Date, Source.INSERT_DTTM, Source.METRICS, Source.SOURCE, Source.TARGET)\n    \n-- For Updates\nWHEN MATCHED THEN UPDATE SET\n    Target.SOURCE\t= Source.SOURCE,\n    Target.TARGET\t= Source.TARGET,\n    Target.INSERT_DTTM = Source.INSERT_DTTM;\n\n\n    \n    \n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

@@ -1,0 +1,154 @@
+{
+	"name": "StgToBuscDelta_DEP_DEPOSITS_FACT",
+	"properties": {
+		"description": "GAM_EAB_YTD",
+		"activities": [
+			{
+				"name": "DEP_GAM_EAB_YTDAGGBAL",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlPoolSource",
+						"sqlReaderQuery": "select * from BUSC.DELTA_REF_TBL where source_code = 'DEP' and tablename in ('DEP_EODACCOUNTBALANCE','DEP_GENERALACCOUNTMASTER', 'DEP_YTDDEPAGGRBALANCES')",
+						"queryTimeout": "02:00:00"
+					},
+					"dataset": {
+						"referenceName": "SqlPool_TableList",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "ForEach3",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DEP_GAM_EAB_YTDAGGBAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('DEP_GAM_EAB_YTDAGGBAL').output.value",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "LU_VALIDATE_3",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT COUNT(1) CNT FROM d360.STG_',item().tablename, 'FULL WHERE H = ''D''')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": " "
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "update_EOD",
+							"type": "Script",
+							"dependsOn": [
+								{
+									"activity": "LU_VALIDATE_3",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"parameters": [
+											{
+												"name": "tablename",
+												"type": "String",
+												"value": {
+													"value": "@item().tablename",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											},
+											{
+												"name": "targetname",
+												"type": "String",
+												"value": {
+													"value": "@item().targetname",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											},
+											{
+												"name": "joinid",
+												"type": "String",
+												"value": {
+													"value": "@item().join_id",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											}
+										],
+										"type": "NonQuery",
+										"text": "DECLARE @SQL1 NVARCHAR(MAX)\n\nSELECT @SQL1 = \n'Update BUSC.'+@tablename+' set isLatest = 0  where isLatest = 1;'\nEXECUTE sp_executesql @SQL1\n\n"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-02-28T06:06:35Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

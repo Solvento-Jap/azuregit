@@ -1,0 +1,20 @@
+{
+	"name": "BNKM_AtmCustomerRelatedCustomer_ATM",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "CREATE PROCEDURE BNKM.SP_AtmCustomerRelatedCustomer_ATM\nAS\nBEGIN\n\n--GET DELTA FROM BUSC\nWITH TEMP_BNKM_AtmCustomerRelatedCustomer\nAS\n(\nSELECT\nBAC.CLT_ID AS AtmCustomerId\n,BAC.CLT_CIF_NUMBER AS RelatedCustomerId\n,'Previous Card' AS RelationshipTypeId\n,BAC.CLT_CREATED_TS  AS PeriodStartTimestamp\n,BAC.CLT_UPDATED_TS AS PeriodEndTimestamp\n,NULL AS RelatedPaymentCardNote\n,BAC.BNK_CODE AS FinancialInstitutionId\n,'ATM' AS SourceSystemCode\n,BAC.INSERT_DTTM AS INSERTDTTM\n,BACD.RECORD_STATUS\nFROM BUSC.ATM_CLIENT_DELTA BACD\nLEFT JOIN BUSC.ATM_CLIENT BAC ON BAC.CLT_ID = BACD.CLT_ID AND BAC.ISLATEST = '1'\n)\n\nSELECT * INTO #TEMP_BNKM_AtmCustomerRelatedCustomer FROM TEMP_BNKM_AtmCustomerRelatedCustomer;\n\n\n--CHECK IF THERE IS DELTA\nWITH TEMP_BNKM_AtmCustomerRelatedCustomer_SRC\nAS\n(\nSELECT\nHASHBYTES('MD5', CONCAT(\nAtmCustomerId\n,RelatedCustomerId\n,PeriodStartTimestamp\n)) HASHROW, AtmCustomerId, RECORD_STATUS\nFROM #TEMP_BNKM_AtmCustomerRelatedCustomer WHERE RECORD_STATUS = 'UPDATE'\n),\n\n\nTEMP_BNKM_AtmCustomerRelatedCustomer_TGT\nAS\n(\nSELECT\nHASHBYTES('MD5', CONCAT(\nAtmCustomerId\n,RelatedCustomerId\n,PeriodStartTimestamp\n)) HASHROW, AtmCustomerId\nFROM BNKM.AtmCustomerRelatedCustomer\n),\n\nTEMP_BNKM_AtmCustomerRelatedCustomer_DELTA\nAS\n(\nSELECT\nSRC.HASHROW AS SRC_HR\n,TGT.HASHROW AS TGT_HR\n,ISNULL(SRC.AtmCustomerId, TGT.AtmCustomerId) AS AtmCustomerId\n,CASE\n    WHEN SRC.HASHROW <>  TGT.AtmCustomerId THEN 'UPDATE'\n    ELSE NULL END AS RECORD_STATUS\n\nFROM TEMP_BNKM_AtmCustomerRelatedCustomer_SRC SRC\nFULL OUTER JOIN TEMP_BNKM_AtmCustomerRelatedCustomer_TGT TGT\nON SRC.AtmCustomerId = TGT.AtmCustomerId\nWHERE SRC.HASHROW <> TGT.HASHROW\n)\n\nSELECT * INTO #TEMP_BNKM_AtmCustomerRelatedCustomer_DELTA FROM TEMP_BNKM_AtmCustomerRelatedCustomer_DELTA;\n\nUPDATE TGT\nSET\nAtmCustomerId = SRC.AtmCustomerId\n,RelatedCustomerId = SRC.RelatedCustomerId\n,RelationshipTypeId = SRC.RelationshipTypeId\n,PeriodStartTimestamp = SRC.PeriodStartTimestamp\n,PeriodEndTimestamp = SRC.PeriodEndTimestamp\n,RelatedPaymentCardNote = SRC.RelatedPaymentCardNote\nFROM BNKM.AtmCustomerRelatedCustomer TGT\nJOIN #TEMP_BNKM_AtmCustomerRelatedCustomer_DELTA DELTA ON DELTA.AtmCustomerId = TGT.AtmCustomerId AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_AtmCustomerRelatedCustomer SRC ON SRC.AtmCustomerId = TGT.AtmCustomerId;\n\n--INSERT TO BNKM\n\nINSERT INTO BNKM.AtmCustomerRelatedCustomer\n(\nAtmCustomerId\n,RelatedCustomerId\n,RelationshipTypeId\n,PeriodStartTimestamp\n,PeriodEndTimestamp\n,RelatedPaymentCardNote\n,FinancialInstitutionId\n,SourceSystemCode\n,WORKFLOWID\n,TASKRUNID\n,INSERTDTTM\n)\n\nSELECT\nAtmCustomerId\n,RelatedCustomerId\n,RelationshipTypeId\n,PeriodStartTimestamp\n,PeriodEndTimestamp\n,RelatedPaymentCardNote\n,FinancialInstitutionId\n,'ATM' AS SourceSystemCode\n,0 AS WORKFLOWID\n,0 AS TASKRUNID\n,INSERTDTTM\nFROM #TEMP_BNKM_AtmCustomerRelatedCustomer\nWHERE RECORD_STATUS = 'INSERT'\n\nDROP TABLE #TEMP_BNKM_AtmCustomerRelatedCustomer;\nDROP TABLE #TEMP_BNKM_AtmCustomerRelatedCustomer_DELTA;\n\n\nEND\n\n\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

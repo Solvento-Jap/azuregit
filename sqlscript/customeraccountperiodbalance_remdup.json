@@ -1,0 +1,20 @@
+{
+	"name": "customeraccountperiodbalance_remdup",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'BNKM' AND TABLE_NAME ='CustomerAccountPeriodBalance';\n\nSET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nCREATE TABLE [BNKM].[CustomerAccountPeriodBalance_WITH_DUP_20230523]\n( \n\t[RN] [int]  NOT NULL,\n\t[CustomerAccountId] [varchar](50)  NOT NULL,\n\t[PeriodBalanceTypeId] [varchar](50)  NOT NULL,\n\t[PeriodStartDate] [datetime]  NOT NULL,\n\t[PeriodEndDate] [datetime]  NULL,\n\t[BillingCycleId] [int]  NULL,\n\t[BalanceAmount] [numeric](18,5)  NULL,\n\t[IsoCurrencyCode] [char](3)  NULL,\n\t[FinancialInstitutionId] [nvarchar](32)  NOT NULL,\n\t[PeriodMonthYear] [varchar](10)  NULL,\n\t[PeriodQuarterYear] [varchar](6)  NULL,\n\t[SourceSystemCode] [varchar](50)  NULL,\n\t[TaskRunId] [bigint]  NULL,\n\t[WorkFlowId] [bigint]  NULL,\n\t[InsertDttm] [datetime]  NULL\n)\nWITH\n(\n\tDISTRIBUTION = ROUND_ROBIN,\n\tCLUSTERED COLUMNSTORE INDEX\n)\nGO\n\n\n\n\n\n--1 CHECK DUPLICATE\nSELECT  CustomerAccountId, PeriodBalanceTypeId,PeriodStartDate, FinancialInstitutionId,SOURCESYSTEMCODE, count(1)\nFROM bnkm.CustomerAccountPeriodBalance -- WHERE CUSTOMERACCOUNTID = ''\nGROUP BY CustomerAccountId, PeriodBalanceTypeId,PeriodStartDate, FinancialInstitutionId,SOURCESYSTEMCODE\nHAVING count(1) > 1\n\n\n\n--2 TAGGED DUPLICATE   with pipeline alternative\nSELECT ROW_NUMBER() OVER(PARTITION BY  CustomerAccountId, PeriodBalanceTypeId,PeriodStartDate, FinancialInstitutionId,SOURCESYSTEMCODE ORDER BY PeriodEndDate DESC, INSERTDTTM DESC ) RN , --define PKs in partition by\n*  --Name of backup table to store duplicate records\nFROM bnkm.CustomerAccountPeriodBalance;\n\n\n--3 CHECK COUNT MAIN AND BU TABLE\nSELECT COUNT(*) FROM bnkm.CustomerAccountPeriodBalance_WITH_DUP_20230523\n29563632\nSELECT COUNT(*) FROM bnkm.CustomerAccountPeriodBalance\n29563632\n\n\n--4 CLEAN DUP\nTRUNCATE TABLE bnkm.CustomerAccountPeriodBalance;\n\n\n\n--5 INSERT BACK UNIQUE RECORDS ONLY\nINSERT INTO bnkm.CustomerAccountPeriodBalance --Target table to remove duplicate\nSELECT  \n[CustomerAccountId]\n,[PeriodBalanceTypeId]\n,[PeriodStartDate]\n,[PeriodEndDate]\n,[BillingCycleId]\n,[BalanceAmount]\n,[IsoCurrencyCode]\n,[FinancialInstitutionId]\n,[PeriodMonthYear]\n,[PeriodQuarterYear]\n,[SourceSystemCode]\n,[TaskRunId]\n,[WorkFlowId]\n,[InsertDttm]\nFROM bnkm.CustomerAccountPeriodBalance_WITH_DUP_20230523 -- Name of backup table to store duplicate records\nWHERE RN = 1;\n\n--6 CHECK IF STILL HAVE DUP\nSELECT  CustomerAccountId, PeriodBalanceTypeId,PeriodStartDate, FinancialInstitutionId,SOURCESYSTEMCODE, count(1)\nFROM bnkm.CustomerAccountPeriodBalance -- WHERE CUSTOMERACCOUNTID = ''\nGROUP BY CustomerAccountId, PeriodBalanceTypeId,PeriodStartDate, FinancialInstitutionId,SOURCESYSTEMCODE\nHAVING count(1) > 1\n\n\nSELECT * FROM bnkm.CustomerAccountPeriodBalance WHERE CUSTOMERACCOUNTID = ''\n\n--7 COUNT\nSELECT COUNT(*) FROM bnkm.CustomerAccountPeriodBalance_WITH_DUP_20230523\n29563632\nSELECT COUNT(*) FROM bnkm.CustomerAccountPeriodBalance\n29563632",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

@@ -1,0 +1,725 @@
+{
+	"name": "DecToStg_EDS_TRU_UITFNAVPU",
+	"properties": {
+		"activities": [
+			{
+				"name": "TRU_UITFNAVPU_getfile_CBC01",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat(pipeline().parameters.Bank_id,'_',pipeline().parameters.tables,'_*',pipeline().parameters.DateToProcess,'*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/TRU"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "If Condition5",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "TRU_UITFNAVPU_getfile_CBC01",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@empty(activity('TRU_UITFNAVPU_getfile_CBC01').output.childItems)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "TRU_UITFNAVPU",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/TRU",
+										"wildcardFileName": {
+											"value": "@concat('*',pipeline().parameters.tables,'_*',pipeline().parameters.DateToProcess,'*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": {
+										"value": "@concat('TRUNCATE TABLE d360.STG_EDS_',pipeline().parameters.tables)",
+										"type": "Expression"
+									},
+									"allowCopyCommand": true,
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									},
+									"path": "data360/dev/stg_synapse",
+									"enableCompression": true
+								},
+								"enableSkipIncompatibleRow": true,
+								"logSettings": {
+									"enableCopyActivityLog": true,
+									"copyActivityLogSettings": {
+										"logLevel": "Warning",
+										"enableReliableLogging": true
+									},
+									"logLocationSettings": {
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+											"type": "LinkedServiceReference"
+										},
+										"path": {
+											"value": "@concat('data360/dev/Logging/TRU/TRU_UITFNAVPU/',substring(replace(replace(replace(addHours(utcnow(),+8),'-',''),'T','_'),':',''),0,15))",
+											"type": "Expression"
+										}
+									}
+								},
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "H",
+												"type": "String"
+											},
+											"sink": {
+												"name": "H",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "AMC_CD",
+												"type": "String"
+											},
+											"sink": {
+												"name": "AMC_CD",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FUND_SCHEME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FUND_SCHEME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FUND_PLAN",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FUND_PLAN",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FUND_CD",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FUND_CD",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "EFF_DT",
+												"type": "Date",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "EFF_DT",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "EFF_FROM_DT",
+												"type": "Date",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "EFF_FROM_DT",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "EFF_TO_DT",
+												"type": "Date",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "EFF_TO_DT",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "NAV",
+												"type": "String"
+											},
+											"sink": {
+												"name": "NAV",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SUBS_RT",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SUBS_RT",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "RDM_RT",
+												"type": "String"
+											},
+											"sink": {
+												"name": "RDM_RT",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "UPR",
+												"type": "String"
+											},
+											"sink": {
+												"name": "UPR",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "EQU",
+												"type": "String"
+											},
+											"sink": {
+												"name": "EQU",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "MKR_ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "MKR_ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "MKR_DT",
+												"type": "Date",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "MKR_DT",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "AUTH_ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "AUTH_ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "AUTH_DT",
+												"type": "Date",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "AUTH_DT",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "STATUS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "STATUS",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "REMARKS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "REMARKS",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "OPERATION",
+												"type": "String"
+											},
+											"sink": {
+												"name": "OPERATION",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ACTED_BY",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ACTED_BY",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "ACTED_ON",
+												"type": "Date",
+												"format": "yyyyMMddHHmmss"
+											},
+											"sink": {
+												"name": "ACTED_ON",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "REF_NO",
+												"type": "String"
+											},
+											"sink": {
+												"name": "REF_NO",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FILE_NAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm",
+												"type": "String"
+											},
+											"sink": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": " "
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": {
+											"value": "@concat('STG_EDS_',pipeline().parameters.tables)",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "SP_LOG_COPY_ACTIVITY_DTL",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "TRU_UITFNAVPU",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_LOG_COPY_ACTIVITY_DTL]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS_STG",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DatetoProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"dataread": {
+										"value": {
+											"value": "@activity('TRU_UITFNAVPU').output.dataRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"datawritten": {
+										"value": {
+											"value": "@activity('TRU_UITFNAVPU').output.dataWritten",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"filesread": {
+										"value": {
+											"value": "@activity('TRU_UITFNAVPU').output.filesRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"sourcepeakconnections": {
+										"value": {
+											"value": "@activity('TRU_UITFNAVPU').output.sourcePeakConnections",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsread": {
+										"value": {
+											"value": "@activity('TRU_UITFNAVPU').output.rowsRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowscopied": {
+										"value": {
+											"value": "@activity('TRU_UITFNAVPU').output.rowsCopied",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsskipped": {
+										"value": {
+											"value": "@activity('TRU_UITFNAVPU').output.rowsSkipped",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"copyduration": {
+										"value": {
+											"value": "@activity('TRU_UITFNAVPU').output.copyDuration",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"throughput": {
+										"value": {
+											"value": "@activity('TRU_UITFNAVPU').output.throughput",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"redirectrowpath": {
+										"value": {
+											"value": "@activity('TRU_UITFNAVPU').output.redirectRowPath",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"logfilepath": {
+										"value": {
+											"value": "@activity('TRU_UITFNAVPU').output.logFilePath",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Set v_error_desc_get",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "TRU_UITFNAVPU",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "@activity('TRU_UITFNAVPU').Error.message",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Fail5",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "Set v_error_desc_get_nofile",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": {
+									"value": "File not found: TRU_UITFNAVPU",
+									"type": "Expression"
+								},
+								"errorCode": {
+									"value": "404",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "Set v_error_desc_get_nofile",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "File not found: TRU_UITFNAVPU",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_GET",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "If Condition5",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_STG_EDS_',replace(pipeline().parameters.tables,'''',''))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_STG",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@pipeline().parameters.DateToProcess",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_DectoStg",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "SP_LOG_TASK_ERROR_DTL_GET",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": {
+						"value": "@variables('v_error_desc')",
+						"type": "Expression"
+					},
+					"errorCode": "500"
+				}
+			}
+		],
+		"parameters": {
+			"DateToProcess": {
+				"type": "string"
+			},
+			"tables": {
+				"type": "string"
+			},
+			"Bank_id": {
+				"type": "string"
+			}
+		},
+		"variables": {
+			"v_error_desc": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-09-22T06:05:51Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

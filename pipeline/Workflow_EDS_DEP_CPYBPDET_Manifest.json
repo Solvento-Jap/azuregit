@@ -1,0 +1,635 @@
+{
+	"name": "Workflow_EDS_DEP_CPYBPDET_Manifest",
+	"properties": {
+		"activities": [
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(pipeline().parameters.endDate),ticks(pipeline().parameters.startDate)),864000000000),1))",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append variable1",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "select fulldate\nfrom \n    eds.eds_ctl ect\ninner join \n    eds.date_dim dd\n    on \n    ect.DEPOSITS_Date=dd.previous_business_day and dd.business_day_flag='Y'\n",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "eds_ctl"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Iterate Execution of Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "ADLS_file_process",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Manifest_file",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "ADLS_file_process_EDS_DEP_CPYBPDET",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"DatetoProcess": {
+										"value": "@item()",
+										"type": "Expression"
+									},
+									"tables": {
+										"value": "@pipeline().parameters.tables1",
+										"type": "Expression"
+									},
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "OM_SRC_CHECK",
+							"type": "SqlPoolStoredProcedure",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [
+								{
+									"activity": "ADLS_file_process",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_EDS_DEP_CPYBPDET",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@replace(substring(item(),0,10),'-','')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Get Success Count EDS",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "OM_SRC_CHECK",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_EDS_DEP_CPYBPDET'',''EDS'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count EDS",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count EDS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count EDS').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "START_TASK_EDS_DEP_CPYBPDET",
+										"type": "SqlPoolStoredProcedure",
+										"state": "Inactive",
+										"onInactiveMarkAs": "Succeeded",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_DEP_CPYBPDET",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_DEP_CPYBPDET_SUCCESS",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_DEP_CPYBPDET",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_DEP_CPYBPDET",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_DEP_CPYBPDET_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_DEP_CPYBPDET",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_DEP_CPYBPDET",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "EDS_DEP_CPYBPDET",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_EDS_DEP_CPYBPDET",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"type": "Query",
+													"text": "DELETE FROM EDS.DEP_CPYBPDET WHERE AS_OF_DATE = (SELECT TOP 1 CONVERT(DATE,LEFT(RIGHT(FILE_NAME, 12), 8)) FROM D360.STG_EDS_DEP_CPYBPDET);\r\n\r\nINSERT INTO EDS.DEP_CPYBPDET\r\n(\r\nAS_OF_DATE\r\n,BILLER_ID\r\n,BILLER_SERVICE_ID\r\n,PAYMENT_ID\r\n,PAYMENT_DATE\r\n,PAYMENT_AMT\r\n,BILL_CCY\r\n,PAYMENT_TYPE\r\n,ACCT_NO\r\n,CHECK_NO\r\n,CHECK_TYPE\r\n,BANK_CODE\r\n,BRSTN\r\n,MC_DD_NO\r\n,BARCODE\r\n,SUBSCRIBER_NO\r\n,PHONE_NO\r\n,CARD_NO\r\n,CARD_TYPE\r\n,MERALCO_REF_NO\r\n,POLICY_NO\r\n,POLICY_TYPE\r\n,AREA\r\n,INSURANCE_TYPE\r\n,INVOICE_NO\r\n,NAME_OF_INSURED\r\n,STUDENT_ID\r\n,CAMPUS\r\n,STUDENT_NAME\r\n,PRODUCT_CODE\r\n,INSTITUTION_CODE\r\n,CORPORATE_NAME\r\n,TRANSACTION_CODE\r\n,COUNTRY_CODE\r\n,REMITTER\r\n,BENEFICIARY\r\n,BENEFICIARY_TIN\r\n,REF_TRANSMITTAL_NO\r\n,REPRESENTATIVE_NAME\r\n,AMLA_CODE\r\n,BANK_MNEMONIC\r\n,COMB_STRING\r\n,LATE_CHECK_PAYMENT_FLG\r\n,TRAN_ID_BY_PUB\r\n,TRAN_DATE_BY_PUB\r\n,BILLER_PAYMENT_TRAN_ID\r\n,BILLER_PAYMENT_TRAN_DATE\r\n,REVERSE_FLG\r\n,REVERSE_CRE_TIME\r\n,REVERSE_CRE_USER_ID\r\n,REVERSAL_TRAN_ID\r\n,REVERSAL_TRAN_DATE\r\n,RCRE_USER_ID\r\n,RCRE_TIME\r\n,LCHG_USER_ID\r\n,LCHG_TIME\r\n,DEL_FLG\r\n,ENTITY_CRE_FLG\r\n,SOL_ID\r\n,BANK_ID\r\n,SET_NUM\r\n,ZONE_DATE\r\n,ZONE_CODE\r\n,BNK_CODE\r\n,SOURCE_CODE\r\n,FILE_NAME\r\n,insert_dttm\r\n)\r\n\r\n\r\nSELECT \r\n\t\t\t\t CONVERT(DATE,LEFT(RIGHT(FILE_NAME, 12), 8)) AS AS_OF_DATE\r\n\t\t\t\t,[BILLER_ID]\r\n\t\t\t\t,[BILLER_SERVICE_ID]\r\n\t\t\t\t,[PAYMENT_ID]\r\n\t\t\t\t,[PAYMENT_DATE]\r\n\t\t\t\t,[PAYMENT_AMT]\r\n\t\t\t\t,[BILL_CCY]\r\n\t\t\t\t,[PAYMENT_TYPE]\r\n\t\t\t\t,[ACCT_NO]\r\n\t\t\t\t,[CHECK_NO]\r\n\t\t\t\t,[CHECK_TYPE]\r\n\t\t\t\t,[BANK_CODE]\r\n\t\t\t\t,[BRSTN]\r\n\t\t\t\t,[MC_DD_NO]\r\n\t\t\t\t,[BARCODE]\r\n\t\t\t\t,[SUBSCRIBER_NO]\r\n\t\t\t\t,[PHONE_NO]\r\n\t\t\t\t,[CARD_NO]\r\n\t\t\t\t,[CARD_TYPE]\r\n\t\t\t\t,[MERALCO_REF_NO]\r\n\t\t\t\t,[POLICY_NO]\r\n\t\t\t\t,[POLICY_TYPE]\r\n\t\t\t\t,[AREA]\r\n\t\t\t\t,[INSURANCE_TYPE]\r\n\t\t\t\t,[INVOICE_NO]\r\n\t\t\t\t,[NAME_OF_INSURED]\r\n\t\t\t\t,[STUDENT_ID]\r\n\t\t\t\t,[CAMPUS]\r\n\t\t\t\t,[STUDENT_NAME]\r\n\t\t\t\t,[PRODUCT_CODE]\r\n\t\t\t\t,[INSTITUTION_CODE]\r\n\t\t\t\t,[CORPORATE_NAME]\r\n\t\t\t\t,[TRANSACTION_CODE]\r\n\t\t\t\t,[COUNTRY_CODE]\r\n\t\t\t\t,[REMITTER]\r\n\t\t\t\t,[BENEFICIARY]\r\n\t\t\t\t,[BENEFICIARY_TIN]\r\n\t\t\t\t,[REF_TRANSMITTAL_NO]\r\n\t\t\t\t,[REPRESENTATIVE_NAME]\r\n\t\t\t\t,[AMLA_CODE]\r\n\t\t\t\t,[BANK_MNEMONIC]\r\n\t\t\t\t,[COMB_STRING]\r\n\t\t\t\t,[LATE_CHECK_PAYMENT_FLG]\r\n\t\t\t\t,[TRAN_ID_BY_PUB]\r\n\t\t\t\t,[TRAN_DATE_BY_PUB]\r\n\t\t\t\t,[BILLER_PAYMENT_TRAN_ID]\r\n\t\t\t\t,[BILLER_PAYMENT_TRAN_DATE]\r\n\t\t\t\t,[REVERSE_FLG]\r\n\t\t\t\t,[REVERSE_CRE_TIME]\r\n\t\t\t\t,[REVERSE_CRE_USER_ID]\r\n\t\t\t\t,[REVERSAL_TRAN_ID]\r\n\t\t\t\t,[REVERSAL_TRAN_DATE]\r\n\t\t\t\t,[RCRE_USER_ID]\r\n\t\t\t\t,[RCRE_TIME]\r\n\t\t\t\t,[LCHG_USER_ID]\r\n\t\t\t\t,[LCHG_TIME]\r\n\t\t\t\t,[DEL_FLG]\r\n\t\t\t\t,[ENTITY_CRE_FLG]\r\n\t\t\t\t,[SOL_ID]\r\n\t\t\t\t,[BANK_ID]\r\n\t\t\t\t,[SET_NUM]\r\n\t\t\t\t,[ZONE_DATE]\r\n\t\t\t\t,[ZONE_CODE]\r\n\t\t\t\t,LEFT(FILE_NAME, 5) AS BNK_CODE\r\n\t\t\t\t,SUBSTRING(FILE_NAME,7,3) AS SOURCE_CODE\r\n\t\t\t\t,FILE_NAME\r\n\t\t\t\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATETIME) as insert_dttm\r\nFROM D360.STG_EDS_DEP_CPYBPDET\r\nWHERE H = 'D'\r\nAND CAST(LEFT(RIGHT(FILE_NAME , 12), 8) AS DATE)>=CAST(RCRE_TIME AS DATE);\r\n\r\n"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "Manifest_file",
+							"type": "ExecutePipeline",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Workflow_Manifest",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"MaxPipelineCalls": 5,
+									"RetryInterval": 600,
+									"DatetoProcessed": {
+										"value": "@substring(item(),0,10)",
+										"type": "Expression"
+									},
+									"tables": {
+										"value": "@concat('''',pipeline().parameters.tables1,'''')",
+										"type": "Expression"
+									},
+									"EndTime": "08:00",
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									}
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"tables1": {
+				"type": "string",
+				"defaultValue": "DEP_CPYBPDET"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "DEP"
+			}
+		},
+		"variables": {
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"CheckFEstatus": {
+				"type": "String",
+				"defaultValue": "True"
+			},
+			"Source": {
+				"type": "String",
+				"defaultValue": "DEP_FACT"
+			},
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-11-25T06:14:11Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

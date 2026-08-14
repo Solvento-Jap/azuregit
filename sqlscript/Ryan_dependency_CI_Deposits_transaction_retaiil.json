@@ -1,0 +1,20 @@
+{
+	"name": "Ryan_dependency_CI_Deposits_transaction_retaiil",
+	"properties": {
+		"folder": {
+			"name": "Ryan"
+		},
+		"content": {
+			"query": "select * from om.om_tasks where task_name like '%CBCEXAPP%'\n\nselect * from om.om_task_run where task_name = 'TSK_CI_DEP_TRAN_RETAIL'\n\nselect * from om.om_copy_activity_dtl where task_name = 'TSK_CI_DEP_TRAN_RETAIL'\n\nselect * from om.om_task_error_dtl where task_name = 'TSK_CI_DEP_TRAN_RETAIL' order by create_datetime desc\n\n-----insert data in om tasks table\nINSERT INTO om.om_tasks (TASK_NAME,DATA_LAYER,SCHEMA_NAME,TABLE_NAME,SOURCE_CODE,DESCRIPTION,UPDATE_DATETIME,CREATE_DATETIME,MONTHEND,FREQUENCY_LOADING,TABLE_TYPE)\nSELECT 'TSK_CI_DEP_TRAN_RETAIL','CI',NULL,'CI_DEP_TRAN_RETAIL','DEP',NULL,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime),CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime),NULL,'WEEKDAYS','SNAPSHOT';GO\n\n-----insert data in om task dependency table \nINSERT INTO om.om_task_dependency (DEPENDENCY_ID,TASK_NAME,DEPENDENT_TASK_NAME,MONTHEND)\nSELECT (SELECT MAX(ISNULL(DEPENDENCY_ID,0)) FROM om.om_task_dependency) + 1,'TSK_EDS_DEP_ACCOUNTRELATIONSHIP','TSK_CI_DEP_TRAN_RETAIL',NULL; GO\nINSERT INTO om.om_task_dependency (DEPENDENCY_ID,TASK_NAME,DEPENDENT_TASK_NAME,MONTHEND)\nSELECT (SELECT MAX(ISNULL(DEPENDENCY_ID,0)) FROM om.om_task_dependency) + 1,'TSK_EDS_DEP_HISTTRANDTLTABLE','TSK_CI_DEP_TRAN_RETAIL',NULL; GO\nINSERT INTO om.om_task_dependency (DEPENDENCY_ID,TASK_NAME,DEPENDENT_TASK_NAME,MONTHEND)\nSELECT (SELECT MAX(ISNULL(DEPENDENCY_ID,0)) FROM om.om_task_dependency) + 1,'TSK_EDS_CUSTOMER_DIM','TSK_CI_DEP_TRAN_RETAIL',NULL; GO\n\n\n--DELETE A FROM om.om_task_dependency A\n--JOIN (SELECT *, ROW_NUMBER() OVER(PARTITION BY DEPENDENT_TASK_NAME, TASK_NAME ORDER BY DEPENDENCY_ID) RN  FROM  om.om_task_dependency WHERE DEPENDENT_TASK_NAME IN ('TSK_CI_DEPOSITS_RETAIL')) B \n--ON A.DEPENDENCY_ID = B.DEPENDENCY_ID\n--WHERE B.RN >1\n\nUPDATE EDS.EDS_CTL SET DEPOSITS_DATE = '2024-08-01'\n\nselect task_name from om.om_tasks where task_name like 'tsk_eds_DEP_ACCOUNTRELATIONSHIP%' union all\nselect task_name from om.om_tasks where task_name like 'tsk_eds_CUSTOMER_DIM%' union all\nselect task_name from om.om_tasks where task_name like 'tsk_eds_DEP_HISTTRANDTLTABLE%' \n\nunion all\nselect task_name from om.om_tasks where task_name like 'tsk_eds_CUSTOMER_DIM%' union all\nselect task_name from om.om_tasks where task_name like 'tsk_eds_DID_PRODUCTGROUPING%'\n\nselect distinct * from om.om_task_run where task_name in (\n'TSK_EDS_DEP_ACCOUNTRELATIONSHIP'\n,'TSK_EDS_CUSTOMER_DIM'\n,'TSK_EDS_DEP_HISTTRANDTLTABLE'\n)\n\ninsert into om.om_task_run\nselect task_run_id,upper('tsk_eds_DID_PRODUCTGROUPING'),pipeline_runID,status_id,data_layer,process_date,start_datetime,end_datetime,create_datetime,tgt_reccount from om.om_task_run  where pipeline_runid = '0ae2ed96-0221-4e79-8829-7c91882529eb' and data_layer = 'EDS'\n\nupdate om.om_task_run set process_date = '2024-07-31' where task_name in (\n'TSK_EDS_DEP_HISTTRANDTLTABLE'\n)\n\nTSK_EDS_DEP_ACCOUNTRELATIONSHIP\nTSK_EDS_BRANCH_DIM\nTSK_EDS_CUSTOMER_DIM\nTSK_EDS_DEPOSIT_FACT\nTSK_EDS_DID_PRODUCTGROUPING",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

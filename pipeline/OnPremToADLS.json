@@ -1,0 +1,906 @@
+{
+	"name": "OnPremToADLS",
+	"properties": {
+		"activities": [
+			{
+				"name": "ATM",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "START_STREAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "OnPremToADLS_ATM",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@pipeline().parameters.DatetoProcessed",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "START_STREAM",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "pipeline_runid",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().RunId",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "stream_name",
+									"type": "String",
+									"value": {
+										"value": "@variables('vSTREAM_NAME')",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "SET IDENTITY_INSERT  [OM].[OM_STREAM_QUEUE] ON;\nINSERT INTO [OM].[OM_STREAM_QUEUE] (STREAM_QUEUE_ID,STREAM_ID,PIPELINE_RUNID,DATA_LAYER,STATUS_ID,STREAM_DTTM,INSERT_DTTM,END_DTTM)\nSELECT  ROW_NUMBER() OVER(ORDER BY (SELECT NULL))+ (SELECT ISNULL(MAX(STREAM_ID),0) FROM [OM].[OM_STREAM_QUEUE]),(SELECT STREAM_ID FROM OM.OM_STREAMS WHERE STREAM_NAME=@stream_name ) ,@pipeline_runid,(SELECT DATA_LAYER FROM OM.OM_STREAMS WHERE STREAM_NAME=@stream_name ),(SELECT STATUS_ID FROM OM.OM_STATUS WHERE STATUS = 'RUNNING'), NULL,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime),NULL\nSET IDENTITY_INSERT  [OM].[OM_STREAM_QUEUE] OFF;"
+						}
+					]
+				}
+			},
+			{
+				"name": "END_STREAM",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ATM",
+						"dependencyConditions": [
+							"Completed"
+						]
+					},
+					{
+						"activity": "BOB",
+						"dependencyConditions": [
+							"Completed"
+						]
+					},
+					{
+						"activity": "CCD",
+						"dependencyConditions": [
+							"Completed"
+						]
+					},
+					{
+						"activity": "CRM",
+						"dependencyConditions": [
+							"Completed"
+						]
+					},
+					{
+						"activity": "DEP",
+						"dependencyConditions": [
+							"Completed"
+						]
+					},
+					{
+						"activity": "EBK_RIB",
+						"dependencyConditions": [
+							"Completed"
+						]
+					},
+					{
+						"activity": "GLD",
+						"dependencyConditions": [
+							"Completed"
+						]
+					},
+					{
+						"activity": "LNS",
+						"dependencyConditions": [
+							"Completed"
+						]
+					},
+					{
+						"activity": "MBK",
+						"dependencyConditions": [
+							"Completed"
+						]
+					},
+					{
+						"activity": "REF",
+						"dependencyConditions": [
+							"Completed"
+						]
+					},
+					{
+						"activity": "SEC",
+						"dependencyConditions": [
+							"Completed"
+						]
+					},
+					{
+						"activity": "SED",
+						"dependencyConditions": [
+							"Completed"
+						]
+					},
+					{
+						"activity": "TRU",
+						"dependencyConditions": [
+							"Completed"
+						]
+					},
+					{
+						"activity": "TRY",
+						"dependencyConditions": [
+							"Completed",
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "pipeline_runid",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().RunId",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "UPDATE [OM].[OM_STREAM_QUEUE]  SET STATUS_ID = (SELECT STATUS_ID FROM OM.OM_STATUS WHERE STATUS = 'SUCCESSFUL'), END_DTTM = CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) WHERE PIPELINE_RUNID = @pipeline_runid"
+						}
+					]
+				}
+			},
+			{
+				"name": "Failed_Stream1",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "ATM",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Stream",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "BOB",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "START_STREAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "OnPremToADLS_BOB",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@pipeline().parameters.DatetoProcessed",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_Stream2",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "BOB",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Stream",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "CCD",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "START_STREAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "OnPremToADLS_CCD",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@pipeline().parameters.DatetoProcessed",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_Stream3",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "CCD",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Stream",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "CRM",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "START_STREAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "OnPremToADLS_CRM_CATEGORIES_EDS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@pipeline().parameters.DatetoProcessed",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_Stream4",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "CRM",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Stream",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "DEP",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "START_STREAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "OnPremToADLS_DEP",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "Failed_Stream14",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "DEP",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Stream",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "EBK_RIB",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "START_STREAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "OnPremToADLS_EBK_RIB",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@pipeline().parameters.DatetoProcessed",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_Stream5",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "EBK_RIB",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Stream",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "GLD",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "START_STREAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "OnPremToADLS_GLD",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@pipeline().parameters.DatetoProcessed",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_Stream6",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "GLD",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Stream",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "LNS",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "START_STREAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "OnPremToADLS_LNS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@pipeline().parameters.DatetoProcessed",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_Stream7",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "LNS",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Stream",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "MBK",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "START_STREAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "OnPremToADLS_MBK",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@pipeline().parameters.DatetoProcessed",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_Stream8",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "MBK",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Stream",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "REF",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "START_STREAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "Failed_Stream12",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "REF",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Stream",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "SEC",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "START_STREAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "OnPremToADLS_SEC",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@pipeline().parameters.DatetoProcessed",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_Stream9",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "SEC",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Stream",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "SED",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "START_STREAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "OnPremToADLS_SED",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@pipeline().parameters.DatetoProcessed",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_Stream13",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "SED",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Stream",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "TRU",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "START_STREAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "OnPremToADLS_TRU",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@pipeline().parameters.DatetoProcessed",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_Stream10",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "TRU",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Stream",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "TRY",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "START_STREAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "OnPremToADLS_TRY",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@pipeline().parameters.DatetoProcessed",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "dev_Failed_Stream11",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "TRY",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Failed_Stream",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			}
+		],
+		"parameters": {
+			"DatetoProcessed": {
+				"type": "string"
+			}
+		},
+		"variables": {
+			"vSTREAM_NAME": {
+				"type": "String",
+				"defaultValue": "dev_OnPremToADLS"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-08-02T02:19:04Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

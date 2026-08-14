@@ -1,0 +1,916 @@
+{
+	"name": "CI_Loans_Transaction_Retail_EDS",
+	"properties": {
+		"description": "Sources data from EDS tables",
+		"activities": [
+			{
+				"name": "temp_LNSAAS_CUSTDIM",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Initial set end date",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "IF NOT EXISTS(SELECT TOP 1 * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'D360' AND TABLE_NAME = 'LNS_AAS_CUSTDIM_hash')\r\n    BEGIN\r\n\t\tCREATE TABLE D360.LNS_AAS_CUSTDIM_hash\r\n\t\tWITH\r\n\t\t(\r\n\t\t\tDISTRIBUTION = HASH(ACID)\r\n\t\t\t,HEAP--CLUSTERED COLUMNSTORE INDEX\r\n\t\t)\r\n\t\tAS\r\n\t\tSELECT \r\n\t\t\tAAS.AS_OF_DATE\r\n\t\t\t,AAS.ACID\r\n\t\t\t,AAS.BANK_ID\r\n\t\t\t,CUST.ORGKEY\r\n\t\tFROM EDS.LNS_ACCTAUTHSIGN AAS\r\n\t\tINNER JOIN EDS.CUSTOMER_DIM CUST\r\n\t\t\tON AAS.AS_OF_DATE BETWEEN CUST.SCD_START_DATE AND CUST.SCD_END_DATE\r\n\t\t\tAND AAS.CUST_ID = CUST.CORE_CUST_ID\r\n\t\t\tAND CUSTOMER_TYPE = 'Retail'\r\n\t\tWHERE AAS.DEL_FLG <> 'Y'\r\n    END\r\n\r\nELSE\r\n    BEGIN\r\n        TRUNCATE TABLE D360.LNS_AAS_CUSTDIM_hash;\r\n\r\n        INSERT INTO D360.LNS_AAS_CUSTDIM_hash (AS_OF_DATE,ACID,BANK_ID,ORGKEY)\r\n        SELECT \r\n             AAS.AS_OF_DATE\r\n            ,AAS.ACID\r\n            ,AAS.BANK_ID\r\n            ,CUST.ORGKEY\r\n        FROM EDS.LNS_ACCTAUTHSIGN AAS\r\n        INNER JOIN EDS.CUSTOMER_DIM CUST\r\n            ON AAS.AS_OF_DATE BETWEEN CUST.SCD_START_DATE AND CUST.SCD_END_DATE\r\n            AND AAS.CUST_ID = CUST.CORE_CUST_ID\r\n            AND CUSTOMER_TYPE = 'Retail'\r\n        WHERE AAS.DEL_FLG <> 'Y';\r\n    END"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "truncate_STG_table",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "temp_LNSAAS_CUSTDIM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nIF NOT EXISTS(SELECT TOP 1 * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'D360' AND TABLE_NAME = 'LNS_HISTTRANDTLTABLE_CI_LOAD')\r\n   CREATE TABLE [d360].[LNS_HISTTRANDTLTABLE_CI_LOAD]\r\n( \r\n\t[ACID] [varchar](30)  NULL,\r\n\t[TRANSACTION_ID] [varchar](9)  NULL,\r\n\t[TRANSACTION_SERIAL_NUMBER] [varchar](4)  NULL,\r\n\t[TRANSACTION_DATE] [date]  NULL,\r\n\t[TRANSACTION_CURRENCY_CODE] [varchar](3)  NULL,\r\n\t[TRANSACTION_AMOUNT] [numeric](20,4)  NULL,\r\n\t[TRANSACTION_AMOUNT_PHP] [numeric](20,4)  NULL,\r\n\t[INITIALIZING_BRANCH_CODE] [varchar](8)  NULL,\r\n\t[TRANSACTION_TYPE] [char](1)  NULL,\r\n\t[BRANCH_CODE] [varchar](8)  NULL,\r\n\t[SOURCE_CODE] [varchar](20)  NULL,\r\n\t[TRANSACTION_PARTICULAR] [varchar](50)  NULL,\r\n\t[TRANSACTION_REMARKS] [varchar](30)  NULL,\r\n\t[CHANGED_TIME] [datetime2](7)  NULL,\r\n\t[CREATED_TIME] [datetime2](7)  NULL,\r\n\t[POSTED_DATE] [datetime2](7)  NULL,\r\n\t[BANK_ID] [varchar](8)  NULL,\r\n\t[FCBSCIF] [varchar](50)  NULL,\r\n\t[SK] [bigint] IDENTITY \r\n)\r\nWITH\r\n(\r\n\tDISTRIBUTION = ROUND_ROBIN,\r\n\tHEAP\r\n);\r\n\r\nTRUNCATE TABLE [d360].[LNS_HISTTRANDTLTABLE_CI_LOAD];\r\n\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Until1",
+				"type": "Until",
+				"dependsOn": [
+					{
+						"activity": "Initial set currdate variable",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(formatDateTime(variables('curr_date')),formatDateTime(variables('end_date')) )",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "add month",
+							"type": "Script",
+							"dependsOn": [
+								{
+									"activity": "Load_process",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testsqlpool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"parameters": [
+											{
+												"name": "curr_date",
+												"type": "Datetime",
+												"value": {
+													"value": "@variables('curr_date')",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											}
+										],
+										"type": "Query",
+										"text": "select dateadd(mm,1,@curr_date) months"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						},
+						{
+							"name": "Set curr date",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "add month",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "curr_date",
+								"value": {
+									"value": "@activity('add month').output.resultSets[0].rows[0]['months']",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "Wait1",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "Set curr date",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 5
+							}
+						},
+						{
+							"name": "Load_process",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testsqlpool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"parameters": [
+											{
+												"name": "curr_date",
+												"type": "Datetime",
+												"value": {
+													"value": "@variables('curr_date')",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											}
+										],
+										"type": "Query",
+										"text": "\r\nINSERT INTO [d360].[LNS_HISTTRANDTLTABLE_CI_LOAD] (ACID,TRANSACTION_ID,TRANSACTION_SERIAL_NUMBER,TRANSACTION_DATE,TRANSACTION_CURRENCY_CODE,TRANSACTION_AMOUNT,TRANSACTION_AMOUNT_PHP,INITIALIZING_BRANCH_CODE,TRANSACTION_TYPE,BRANCH_CODE,SOURCE_CODE,TRANSACTION_PARTICULAR,TRANSACTION_REMARKS,CHANGED_TIME,CREATED_TIME,POSTED_DATE,BANK_ID,FCBSCIF)\r\n\r\nSELECT\r\n     HTD.ACID\r\n    ,HTD.TRAN_ID\r\n    ,HTD.PART_TRAN_SRL_NUM\r\n    ,HTD.TRAN_DATE\r\n    ,HTD.TRAN_CRNCY_CODE\r\n    ,HTD.TRAN_AMT\r\n    ,HTD.TRANSACTION_AMOUNT_PHP \r\n    ,HTD.DTH_INIT_SOL_ID\r\n    ,HTD.PART_TRAN_TYPE\r\n    ,HTD.SOL_ID\r\n    ,HTD.SOURCE_CODE\r\n    ,HTD.TRAN_PARTICULAR\r\n    ,HTD.TRAN_RMKS\r\n    ,HTD.LCHG_TIME\r\n    ,HTD.RCRE_TIME\r\n    ,HTD.PSTD_DATE\r\n    ,HTD.BANK_ID\r\n    ,DAC.ORGKEY AS FCBSCIF\r\n    FROM (\r\n        SELECT\r\n         HTD.ACID\r\n        ,HTD.TRAN_ID\r\n        ,HTD.PART_TRAN_SRL_NUM\r\n        ,HTD.TRAN_DATE\r\n        ,HTD.TRAN_CRNCY_CODE\r\n        ,HTD.TRAN_AMT\r\n        ,CASE WHEN HTD.TRAN_CRNCY_CODE = 'PHP' THEN HTD.TRAN_AMT \r\n            ELSE HTD.TRAN_AMT * CC.ConversionRate END AS TRANSACTION_AMOUNT_PHP\r\n        ,HTD.DTH_INIT_SOL_ID\r\n        ,HTD.PART_TRAN_TYPE\r\n        ,HTD.SOL_ID\r\n        ,HTD.SOURCE_CODE\r\n        ,HTD.TRAN_PARTICULAR\r\n        ,HTD.TRAN_RMKS\r\n        ,HTD.LCHG_TIME\r\n        ,HTD.RCRE_TIME\r\n        ,HTD.PSTD_DATE\r\n        ,HTD.BANK_ID\r\n        ,ROW_NUMBER() OVER(PARTITION BY HTD.ACID, HTD.TRAN_ID, HTD.PART_TRAN_SRL_NUM, HTD.TRAN_DATE  ORDER BY HTD.[FILE_NAME] DESC, HTD.INSERT_DTTM DESC ) RN\r\n        FROM [EDS].[LNS_HISTTRANDTL] HTD\r\n        LEFT JOIN  (SELECT * FROM bnkm.CurrencyConversion where ConvertToCurrencyId = 'PHP' AND RateId = 'REV') CC\r\n            ON HTD.BANK_ID = CC.FinancialInstitutionId\r\n            AND HTD.TRAN_CRNCY_CODE = CC.ConvertFromCurrencyId\r\n            AND HTD.TRAN_DATE = CC.CurrencyConversionTimestamp\r\n        WHERE BANK_ID = 'CBC01' AND DEL_FLG <> 'Y'\r\n        AND concat(right('0000'+convert(varchar,year(tran_date)),4), right('00'+convert(varchar,month(tran_date)),2) ) = concat(right('0000'+convert(varchar,year(@curr_date)),4), right('00'+convert(varchar,month(@curr_date)),2) )\r\n    ) HTD\r\nJOIN D360.LNS_AAS_CUSTDIM_hash DAC\r\n    ON HTD.ACID = DAC.ACID\r\n    AND HTD.TRAN_DATE = DAC.AS_OF_DATE\r\n    AND HTD.BANK_ID = DAC.BANK_ID\r\nWHERE HTD.RN = 1"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					],
+					"timeout": "0.12:00:00"
+				}
+			},
+			{
+				"name": "Initial set currdate variable",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "truncate_STG_table",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "curr_date",
+					"value": {
+						"value": "@variables('start_date')",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Initial set end date",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "START_TASK_CI",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "end_date",
+					"value": {
+						"value": "@variables('v_date')",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Lns Transaction Retail",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "Until1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "DelimitedTextSink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"formatSettings": {
+							"type": "DelimitedTextWriteSettings",
+							"quoteAllText": true,
+							"fileExtension": ".txt"
+						}
+					},
+					"enableStaging": false,
+					"translator": {
+						"type": "TabularTranslator",
+						"typeConversion": true,
+						"typeConversionSettings": {
+							"allowDataTruncation": true,
+							"treatBooleanAsNumber": false
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "LNS_HISTTRANDTLTABLE_CI_LOAD"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "CI_csv_gen",
+						"type": "DatasetReference",
+						"parameters": {
+							"Table": {
+								"value": "@toUpper(pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"Source": "TRANSACTION",
+							"Types": "Retail"
+						}
+					}
+				]
+			},
+			{
+				"name": "START_TASK_CI",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "OM_SRC_CHECK",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_START]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@variables('v_date')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.date,'9999-12-31')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_date",
+								"value": {
+									"value": "@pipeline().parameters.date",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('select ect.',pipeline().parameters.ctl_src_sys,'_DATE as fulldate\nfrom \n    eds.eds_ctl ect'\n)",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_date",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "END_TASK_CI_SUCCESSFUL",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Lns Transaction Retail",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "SUCCESSFUL",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_FAILED",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Lns Transaction Retail",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "FAILED",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_GET",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Set v_error_desc_get",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@variables('v_date')",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_ci_loans_transaction_retail",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "SP_LOG_TASK_ERROR_DTL_GET",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": {
+						"value": "@variables('v_error_desc')",
+						"type": "Expression"
+					},
+					"errorCode": "500"
+				}
+			},
+			{
+				"name": "Set v_error_desc_get",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Lns Transaction Retail",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_error_desc",
+					"value": {
+						"value": "@activity('Lns Transaction Retail').Error.message",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "SP_LOG_COPY_ACTIVITY_DTL",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Lns Transaction Retail",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_COPY_ACTIVITY_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@variables('v_date')",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"dataread": {
+							"value": {
+								"value": "@activity('Lns Transaction Retail').output.dataRead",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"datawritten": {
+							"value": {
+								"value": "@activity('Lns Transaction Retail').output.dataWritten",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"sourcepeakconnections": {
+							"value": {
+								"value": "@activity('Lns Transaction Retail').output.sourcePeakConnections",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowsread": {
+							"value": {
+								"value": "@activity('Lns Transaction Retail').output.rowsRead",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowscopied": {
+							"value": {
+								"value": "@activity('Lns Transaction Retail').output.rowsCopied",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowsskipped": {
+							"value": null,
+							"type": "String"
+						},
+						"copyduration": {
+							"value": {
+								"value": "@activity('Lns Transaction Retail').output.copyDuration",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"throughput": {
+							"value": {
+								"value": "@activity('Lns Transaction Retail').output.throughput",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"redirectrowpath": {
+							"value": null,
+							"type": "String"
+						},
+						"logfilepath": {
+							"value": null,
+							"type": "String"
+						},
+						"filesread": {
+							"value": null,
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "OM_SRC_CHECK",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@replace(substring(variables('v_date'),0,10),'-','')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			}
+		],
+		"parameters": {
+			"tables": {
+				"type": "string",
+				"defaultValue": "CI_LNS_TRAN_RETAIL"
+			},
+			"ctl_src_sys": {
+				"type": "string",
+				"defaultValue": "Loans"
+			},
+			"date": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			}
+		},
+		"variables": {
+			"tables": {
+				"type": "String",
+				"defaultValue": "CI_Lns_Tran_Retail"
+			},
+			"start_date": {
+				"type": "String",
+				"defaultValue": "2024-04-01"
+			},
+			"end_date": {
+				"type": "String",
+				"defaultValue": "2024-09-01"
+			},
+			"curr_date": {
+				"type": "String",
+				"defaultValue": "2024-04-01"
+			},
+			"v_error_desc": {
+				"type": "String"
+			},
+			"v_date": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-05-13T06:11:08Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

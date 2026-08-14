@@ -1,0 +1,20 @@
+{
+	"name": "dw_FactTotalRelationshipExposure",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "ALTER PROCEDURE DW.SP_DW_FACTTOTALRELATIONSHIPEXPOSURE\nAS\nBEGIN\n\nWITH TRE AS (\nSELECT [BusinessDateSK], DFLR.[BranchSK], DFLR.[BankSK], DFLR.[AccountSK], DFLR.[AccountID], [TotalRelationshipExposureFull], [TotalRelationshipExposureProrated] \nFROM dw.FactLoansRelationshipExposure DFLR\nJOIN DW.DimAccount DDA ON DFLR.AccountSK = DDA.AccountSK AND DDA.SOURCESYSTEMCODE = 'LNS'\nWHERE DDA.AccountStatus not in ('Closed') \n\nUNION ALL\n\nSELECT [BusinessDateSK], DFCR.[BranchSK], DFCR.[BankSK], DFCR.[AccountSK], DFCR.[AccountID], [RelationshipExposure], [RelationshipExposure] \nFROM dw.FactCardsRelationshipExposure DFCR\nJOIN DW.DimAccount DDA ON DFCR.AccountSK = DDA.AccountSK AND DDA.SOURCESYSTEMCODE = 'CCD'\nWHERE DDA.AccountStatus not in ('8')\n)\n\nINSERT INTO DW.FactTotalRelationshipExposure\n(\n BusinessDateSK\n,BranchSK\n,BankSK\n,CustomerSK\n,CustomerID\n,TotalRelationshipExposureFull\n,TotalRelationshipExposureProrated\n,SourceSystemCode\n,WorkFlowId\n,TaskRunId\n,InsertDttm\n)\n\nSELECT \n  TRE.[BusinessDateSK]\n, NULL [BranchSK]\n, TRE.[BankSK]\n, DCA.CustomerSK AS CustomerSK\n, DCA.CustomerID AS CustomerID\n, SUM([TotalRelationshipExposureFull]) AS TotalRelationshipExposureFull\n, SUM([TotalRelationshipExposureProrated]) AS TotalRelationshipExposureProrated \n, DC.SourceSystemCode AS SourceSystemCode\n, 0 AS WorkFlowId\n, 0 AS TaskRunId\n, Getdate() AS InsertDttm\nFROM TRE\nLEFT JOIN DW.DimCustomerAccount DCA ON TRE.AccountSK = DCA.AccountSK AND  DCA.CurrentIndicator = 1\nLEFT JOIN DW.DimCustomer DC ON  DCA.CustomerSK = DC.CustomerSK AND DC.CurrentIndicator = 1\nWHERE DC.CUSTOMERSK IS NOT NULL\nAND DCA.ShareIndicator = 'Y'\nGROUP BY \n TRE.[BusinessDateSK]\n,TRE.[BankSK]\n,DCA.CustomerSK\n,DCA.CustomerID\n,DC.SourceSystemCode\n\nEND\n\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

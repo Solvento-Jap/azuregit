@@ -1,0 +1,978 @@
+{
+	"name": "INC0057966_ATM_ACCOUNT_DATA_PATCH",
+	"properties": {
+		"activities": [
+			{
+				"name": "Onprem",
+				"type": "ExecutePipeline",
+				"dependsOn": [],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "OnPremToADLS_EDS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@replace(substring(pipeline().parameters.file_date,0,10),'-','')",
+							"type": "Expression"
+						},
+						"tables": {
+							"value": "@pipeline().parameters.tables",
+							"type": "Expression"
+						},
+						"src_sys": {
+							"value": "@pipeline().parameters.src_sys",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "PGP Decrypt",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Onprem",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PGPDecrypt_EDS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"tables": {
+							"value": "@pipeline().parameters.tables",
+							"type": "Expression"
+						},
+						"src_sys": {
+							"value": "@pipeline().parameters.src_sys",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Truncate Staging",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PGP Decrypt",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": {
+								"value": "@concat('TRUNCATE TABLE D360.STG_EDS_', pipeline().parameters.tables)\n\n",
+								"type": "Expression"
+							}
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ATM_ACCOUNT",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "Truncate Staging",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "DelimitedTextSource",
+						"additionalColumns": [
+							{
+								"name": "FILE_NAME",
+								"value": "$$FILEPATH"
+							},
+							{
+								"name": "insert_dttm",
+								"value": {
+									"value": "@addhours(pipeline().TriggerTime,8)",
+									"type": "Expression"
+								}
+							}
+						],
+						"storeSettings": {
+							"type": "AzureBlobFSReadSettings",
+							"recursive": true,
+							"wildcardFolderPath": "dev/decrypted/ATM",
+							"wildcardFileName": {
+								"value": "@concat('*ATM_ACCOUNT*',pipeline().parameters.file_date,'*')",
+								"type": "Expression"
+							},
+							"enablePartitionDiscovery": false
+						},
+						"formatSettings": {
+							"type": "DelimitedTextReadSettings"
+						}
+					},
+					"sink": {
+						"type": "SqlDWSink",
+						"preCopyScript": "truncate TABLE D360.STG_EDS_ATM_ACCOUNT",
+						"allowCopyCommand": true,
+						"tableOption": "autoCreate",
+						"disableMetricsCollection": false
+					},
+					"enableStaging": true,
+					"stagingSettings": {
+						"linkedServiceName": {
+							"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+							"type": "LinkedServiceReference"
+						},
+						"path": "data360/dev/stg_synapse",
+						"enableCompression": true
+					},
+					"enableSkipIncompatibleRow": true,
+					"logSettings": {
+						"enableCopyActivityLog": true,
+						"copyActivityLogSettings": {
+							"logLevel": "Warning",
+							"enableReliableLogging": true
+						},
+						"logLocationSettings": {
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+								"type": "LinkedServiceReference"
+							},
+							"path": {
+								"value": "@concat('data360/dev/Logging/ATM/ATM_ACCOUNT/',substring(replace(replace(replace(addHours(utcnow(),+8),'-',''),'T','_'),':',''),0,15))",
+								"type": "Expression"
+							}
+						}
+					},
+					"translator": {
+						"type": "TabularTranslator",
+						"mappings": [
+							{
+								"source": {
+									"name": "H",
+									"type": "String"
+								},
+								"sink": {
+									"name": "H",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_ID",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_ID",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_ATP_ID",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_ATP_ID",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_ACCOUNT_NUMBER",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_ACCOUNT_NUMBER",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_APD_ID",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_APD_ID",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_STATUS",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_STATUS",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_STATUS_DATE",
+									"type": "Date",
+									"format": "yyyyMMdd"
+								},
+								"sink": {
+									"name": "ACN_STATUS_DATE",
+									"type": "DateTime"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_DELINQUENCY",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_DELINQUENCY",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_DELINQUENCY_DATE",
+									"type": "Date",
+									"format": "yyyyMMdd"
+								},
+								"sink": {
+									"name": "ACN_DELINQUENCY_DATE",
+									"type": "DateTime"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_CUR_ID",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_CUR_ID",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_AMT_CODE_1",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_AMT_CODE_1",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_BALANCE_1",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_BALANCE_1",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_AMT_CODE_2",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_AMT_CODE_2",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_BALANCE_2",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_BALANCE_2",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_AMT_CODE_3",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_AMT_CODE_3",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_BALANCE_3",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_BALANCE_3",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_LAST_BATCH_UPDATE_DATE",
+									"type": "Date",
+									"format": "yyyyMMdd"
+								},
+								"sink": {
+									"name": "ACN_LAST_BATCH_UPDATE_DATE",
+									"type": "DateTime"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_CREDIT_LIMIT",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_CREDIT_LIMIT",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_TEMP_CREDIT_LIMIT",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_TEMP_CREDIT_LIMIT",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_TEMP_CREDIT_LIMIT_DATE",
+									"type": "Date",
+									"format": "yyyyMMdd"
+								},
+								"sink": {
+									"name": "ACN_TEMP_CREDIT_LIMIT_DATE",
+									"type": "DateTime"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_GUARANTEE_AMOUNT",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_GUARANTEE_AMOUNT",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_GUARANTEE_TYPE",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_GUARANTEE_TYPE",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_GUARANTEE_EXPIRY_DATE",
+									"type": "Date",
+									"format": "yyyyMMdd"
+								},
+								"sink": {
+									"name": "ACN_GUARANTEE_EXPIRY_DATE",
+									"type": "DateTime"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_LAST_FEP_HOST_TRACE_NBR",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_LAST_FEP_HOST_TRACE_NBR",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_LAST_HOST_FEP_TRACE_NBR",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_LAST_HOST_FEP_TRACE_NBR",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_SPECIFIC_DATA",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_SPECIFIC_DATA",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_PART_NO",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_PART_NO",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_CUSTOM_DATA",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_CUSTOM_DATA",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_STATUS_2",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_STATUS_2",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_STATUS_2_DATE",
+									"type": "Date",
+									"format": "yyyyMMdd"
+								},
+								"sink": {
+									"name": "ACN_STATUS_2_DATE",
+									"type": "DateTime"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_LAST_SOURCE",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_LAST_SOURCE",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_LAST_TERMINAL_ID",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_LAST_TERMINAL_ID",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_FEP_HOST_SUM",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_FEP_HOST_SUM",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_HOST_FEP_SUM",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_HOST_FEP_SUM",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_PAN",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_PAN",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_LAST_BATCH_SESSION",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_LAST_BATCH_SESSION",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_FUNCTIONS",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_FUNCTIONS",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_OVERRIDE_PERMISSION",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_OVERRIDE_PERMISSION",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_ISS_ID",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_ISS_ID",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_LIMIT_CONFIG",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_LIMIT_CONFIG",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_LAST_UPDATE_TS",
+									"type": "DateTime",
+									"format": "yyyyMMddHHmmss"
+								},
+								"sink": {
+									"name": "ACN_LAST_UPDATE_TS",
+									"type": "DateTime"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_ACCOUNT_NUMBER_EKY_ID",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_ACCOUNT_NUMBER_EKY_ID",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_PAN_EKY_ID",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_PAN_EKY_ID",
+									"type": "Decimal"
+								}
+							},
+							{
+								"source": {
+									"name": "FILE_NAME",
+									"type": "String"
+								},
+								"sink": {
+									"name": "FILE_NAME",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "insert_dttm",
+									"type": "String"
+								},
+								"sink": {
+									"name": "insert_dttm",
+									"type": "DateTime"
+								}
+							},
+							{
+								"source": {
+									"name": "ACN_ACCOUNT_NUMBER_MASKED",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ACN_ACCOUNT_NUMBER_MASKED",
+									"type": "String"
+								}
+							}
+						]
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": " ",
+							"SourceCode": " "
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_EDS_ATM_ACCOUNT"
+						}
+					}
+				]
+			},
+			{
+				"name": "Update File Name",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ATM_ACCOUNT",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "Datetoprocess",
+									"type": "String",
+									"value": {
+										"value": "@concat(replace(substring(pipeline().parameters.startDate,0,10),'-',''),'.csv')",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "UPDATE D360.STG_EDS_ATM_ACCOUNT\r\nSET FILE_NAME = LEFT(FILE_NAME, LEN(FILE_NAME) - 12) + @Datetoprocess"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Backup EDS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ATM_ACCOUNT",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "table_name",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.tables",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "ticket",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.ticket",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "--#1 BACKUP ATM_ACCOUNT\nDECLARE @sql NVARCHAR(MAX);\nDECLARE @tableName NVARCHAR(128);\nDECLARE @tableSchema NVARCHAR(128);\nDECLARE @ticketNumber NVARCHAR(128);\nDECLARE @backupName NVARCHAR(128);\nDECLARE @SUFFIX INT = 0;\nDECLARE @BU_DATE CHAR(8);\n\nSET @BU_DATE = CONVERT(CHAR(8), CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATE), 112);\nSET @tableName = @table_name;\nSET @tableSchema = 'EDS'\nSET @ticketNumber = @ticket;\n\nSET @backupName = @tableName+ '_' + @ticketNumber + '_BU_' + @BU_DATE;\n \nIF EXISTS (\n    SELECT 1\n    FROM INFORMATION_SCHEMA.TABLES\n    WHERE TABLE_NAME = @backupName AND TABLE_SCHEMA = 'D360'\n)\nBEGIN\n    -- Find the highest suffix number\n    SELECT TOP 1\n        @SUFFIX = TRY_CAST(RIGHT(TABLE_NAME, CHARINDEX('_', REVERSE(TABLE_NAME)) - 1) AS INT)\n    FROM INFORMATION_SCHEMA.TABLES\n    WHERE\n        TABLE_NAME LIKE @backupName + '_%'\n        AND TABLE_SCHEMA = 'D360'\n        AND ISNUMERIC(RIGHT(TABLE_NAME, CHARINDEX('_', REVERSE(TABLE_NAME)) - 1)) = 1\n    ORDER BY TABLE_NAME DESC;\n \n    -- If no _1 exists, make _1. Otherwise, increment.\n    SET @SUFFIX = ISNULL(@SUFFIX, 0) + 1;\n    SET @backupName = @backupName + '_' + CAST(@SUFFIX AS VARCHAR);\nEND\n \nSET @sql = '\nCREATE TABLE D360.' + QUOTENAME(@backupName) + '\nWITH\n(\n    DISTRIBUTION= ROUND_ROBIN, HEAP\n)\nAS\nSELECT *\nFROM '+ @tableSchema+'.' + @tableName + ';';\n \nEXEC sp_executesql @sql;\n\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Wait1",
+				"type": "Wait",
+				"dependsOn": [
+					{
+						"activity": "Update File Name",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Delete Update SCD",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"waitTimeInSeconds": 1
+				}
+			},
+			{
+				"name": "Validate Backup",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Backup EDS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "table_name",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.tables",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "ticket",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.ticket",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "--#2 Validate Backup\nDECLARE @sql NVARCHAR(MAX);\nDECLARE @tableName NVARCHAR(128);\nDECLARE @tableSchema NVARCHAR(128);\nDECLARE @ticketNumber NVARCHAR(128);\nDECLARE @backupName NVARCHAR(128);\nDECLARE @SUFFIX INT = 0;\nDECLARE @BU_DATE CHAR(8);\n\nSET @BU_DATE = CONVERT(CHAR(8), CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATE), 112);\nSET @tableName = @table_name;\nSET @tableSchema = 'EDS'\nSET @ticketNumber = @ticket;\n\nSET @backupName = @tableName+ '_' + @ticketNumber + '_BU_' + @BU_DATE;\n\nDECLARE @SQLString NVARCHAR(MAX);  \nDECLARE @count_tgt NVARCHAR(500);\nDECLARE @count_bkp NVARCHAR(500);\n\nSET @SQLString = 'SELECT @count_tgt = count(1)   FROM EDS.'+@tableName ; \nEXECUTE sp_executesql @SQLString;\n\nSET @SQLString = 'SELECT @count_bkp = count(1)   FROM D360.'+QUOTENAME(@backupName) ;  \nEXECUTE sp_executesql @SQLString;  \n--set @count_bkp=100\nIF(@count_tgt<>@count_bkp)\nBEGIN\n\n   DECLARE @errmsg1 NVARCHAR(2048) = 'Record count between target table and backup table does not match';\n   \n   THROW 50001, @errmsg1, 1;  \nEND "
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ATM_ACCOUNT EDS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Wait1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "TRUNCATE TABLE d360.STG_EDS_ATM_ACCOUNT_SELECT_SRC;\n\nINSERT INTO d360.STG_EDS_ATM_ACCOUNT_SELECT_SRC\n(\n\t\t\t\t ACN_ID\n\t\t\t\t,ACN_ATP_ID\n\t\t\t\t,ACN_ACCOUNT_NUMBER\n\t\t\t\t,ACN_APD_ID\n\t\t\t\t,ACN_STATUS\n\t\t\t\t,ACN_STATUS_DATE\n\t\t\t\t,ACN_DELINQUENCY\n\t\t\t\t,ACN_DELINQUENCY_DATE\n\t\t\t\t,ACN_CUR_ID\n\t\t\t\t,ACN_AMT_CODE_1\n\t\t\t\t,ACN_BALANCE_1\n\t\t\t\t,ACN_AMT_CODE_2\n\t\t\t\t,ACN_BALANCE_2\n\t\t\t\t,ACN_AMT_CODE_3\n\t\t\t\t,ACN_BALANCE_3\n\t\t\t\t,ACN_LAST_BATCH_UPDATE_DATE\n\t\t\t\t,ACN_CREDIT_LIMIT\n\t\t\t\t,ACN_TEMP_CREDIT_LIMIT\n\t\t\t\t,ACN_TEMP_CREDIT_LIMIT_DATE\n\t\t\t\t,ACN_GUARANTEE_AMOUNT\n\t\t\t\t,ACN_GUARANTEE_TYPE\n\t\t\t\t,ACN_GUARANTEE_EXPIRY_DATE\n\t\t\t\t,ACN_LAST_FEP_HOST_TRACE_NBR\n\t\t\t\t,ACN_LAST_HOST_FEP_TRACE_NBR\n\t\t\t\t,ACN_SPECIFIC_DATA\n\t\t\t\t,ACN_PART_NO\n\t\t\t\t,ACN_CUSTOM_DATA\n\t\t\t\t,ACN_STATUS_2\n\t\t\t\t,ACN_STATUS_2_DATE\n\t\t\t\t,ACN_LAST_SOURCE\n\t\t\t\t,ACN_LAST_TERMINAL_ID\n\t\t\t\t,ACN_FEP_HOST_SUM\n\t\t\t\t,ACN_HOST_FEP_SUM\n\t\t\t\t,ACN_PAN\n\t\t\t\t,ACN_LAST_BATCH_SESSION\n\t\t\t\t,ACN_FUNCTIONS\n\t\t\t\t,ACN_OVERRIDE_PERMISSION\n\t\t\t\t,ACN_ISS_ID\n\t\t\t\t,ACN_LIMIT_CONFIG\n\t\t\t\t,ACN_LAST_UPDATE_TS\n\t\t\t\t,ACN_ACCOUNT_NUMBER_EKY_ID\n\t\t\t\t,ACN_PAN_EKY_ID\n\t\t\t\t,ACN_ACCOUNT_NUMBER_MASKED\n\t\t\t\t,[FILE_NAME]\n\t\t\t\t,JSRC_FLG \n\t\t\t\t,JTAR_FLG \n)\nSELECT \n\t\t\t\t ACN_ID\n\t\t\t\t,ACN_ATP_ID\n\t\t\t\t,ACN_ACCOUNT_NUMBER\n\t\t\t\t,ACN_APD_ID\n\t\t\t\t,ACN_STATUS\n\t\t\t\t,ACN_STATUS_DATE\n\t\t\t\t,ACN_DELINQUENCY\n\t\t\t\t,ACN_DELINQUENCY_DATE\n\t\t\t\t,ACN_CUR_ID\n\t\t\t\t,ACN_AMT_CODE_1\n\t\t\t\t,ACN_BALANCE_1\n\t\t\t\t,ACN_AMT_CODE_2\n\t\t\t\t,ACN_BALANCE_2\n\t\t\t\t,ACN_AMT_CODE_3\n\t\t\t\t,ACN_BALANCE_3\n\t\t\t\t,ACN_LAST_BATCH_UPDATE_DATE\n\t\t\t\t,ACN_CREDIT_LIMIT\n\t\t\t\t,ACN_TEMP_CREDIT_LIMIT\n\t\t\t\t,ACN_TEMP_CREDIT_LIMIT_DATE\n\t\t\t\t,ACN_GUARANTEE_AMOUNT\n\t\t\t\t,ACN_GUARANTEE_TYPE\n\t\t\t\t,ACN_GUARANTEE_EXPIRY_DATE\n\t\t\t\t,ACN_LAST_FEP_HOST_TRACE_NBR\n\t\t\t\t,ACN_LAST_HOST_FEP_TRACE_NBR\n\t\t\t\t,ACN_SPECIFIC_DATA\n\t\t\t\t,ACN_PART_NO\n\t\t\t\t,ACN_CUSTOM_DATA\n\t\t\t\t,ACN_STATUS_2\n\t\t\t\t,ACN_STATUS_2_DATE\n\t\t\t\t,ACN_LAST_SOURCE\n\t\t\t\t,ACN_LAST_TERMINAL_ID\n\t\t\t\t,ACN_FEP_HOST_SUM\n\t\t\t\t,ACN_HOST_FEP_SUM\n\t\t\t\t,ACN_PAN\n\t\t\t\t,ACN_LAST_BATCH_SESSION\n\t\t\t\t,ACN_FUNCTIONS\n\t\t\t\t,ACN_OVERRIDE_PERMISSION\n\t\t\t\t,ACN_ISS_ID\n\t\t\t\t,ACN_LIMIT_CONFIG\n\t\t\t\t,ACN_LAST_UPDATE_TS\n\t\t\t\t,ACN_ACCOUNT_NUMBER_EKY_ID\n\t\t\t\t,ACN_PAN_EKY_ID\n\t\t\t\t,ACN_ACCOUNT_NUMBER_MASKED\n\t\t\t\t,[FILE_NAME]\n\t\t\t\t,1 AS JSRC_FLG \n\t\t\t\t,0 AS JTAR_FLG \n\t\t\tFROM [d360].[STG_EDS_ATM_ACCOUNT]\n            WHERE H = 'D';\n\n\nINSERT INTO d360.STG_EDS_ATM_ACCOUNT_SELECT_SRC\n(\n\t\t\t\t ACN_ID\n\t\t\t\t,ACN_ATP_ID\n\t\t\t\t,ACN_ACCOUNT_NUMBER\n\t\t\t\t,ACN_APD_ID\n\t\t\t\t,ACN_STATUS\n\t\t\t\t,ACN_STATUS_DATE\n\t\t\t\t,ACN_DELINQUENCY\n\t\t\t\t,ACN_DELINQUENCY_DATE\n\t\t\t\t,ACN_CUR_ID\n\t\t\t\t,ACN_AMT_CODE_1\n\t\t\t\t,ACN_BALANCE_1\n\t\t\t\t,ACN_AMT_CODE_2\n\t\t\t\t,ACN_BALANCE_2\n\t\t\t\t,ACN_AMT_CODE_3\n\t\t\t\t,ACN_BALANCE_3\n\t\t\t\t,ACN_LAST_BATCH_UPDATE_DATE\n\t\t\t\t,ACN_CREDIT_LIMIT\n\t\t\t\t,ACN_TEMP_CREDIT_LIMIT\n\t\t\t\t,ACN_TEMP_CREDIT_LIMIT_DATE\n\t\t\t\t,ACN_GUARANTEE_AMOUNT\n\t\t\t\t,ACN_GUARANTEE_TYPE\n\t\t\t\t,ACN_GUARANTEE_EXPIRY_DATE\n\t\t\t\t,ACN_LAST_FEP_HOST_TRACE_NBR\n\t\t\t\t,ACN_LAST_HOST_FEP_TRACE_NBR\n\t\t\t\t,ACN_SPECIFIC_DATA\n\t\t\t\t,ACN_PART_NO\n\t\t\t\t,ACN_CUSTOM_DATA\n\t\t\t\t,ACN_STATUS_2\n\t\t\t\t,ACN_STATUS_2_DATE\n\t\t\t\t,ACN_LAST_SOURCE\n\t\t\t\t,ACN_LAST_TERMINAL_ID\n\t\t\t\t,ACN_FEP_HOST_SUM\n\t\t\t\t,ACN_HOST_FEP_SUM\n\t\t\t\t,ACN_PAN\n\t\t\t\t,ACN_LAST_BATCH_SESSION\n\t\t\t\t,ACN_FUNCTIONS\n\t\t\t\t,ACN_OVERRIDE_PERMISSION\n\t\t\t\t,ACN_ISS_ID\n\t\t\t\t,ACN_LIMIT_CONFIG\n\t\t\t\t,ACN_LAST_UPDATE_TS\n\t\t\t\t,ACN_ACCOUNT_NUMBER_EKY_ID\n\t\t\t\t,ACN_PAN_EKY_ID\n\t\t\t\t,ACN_ACCOUNT_NUMBER_MASKED\n\t\t\t\t,[FILE_NAME]\n\t\t\t\t,JSRC_FLG \n\t\t\t\t,JTAR_FLG \n)\n\t\t\tSELECT \t\t\t\t\n\t\t\t\t CC.ACN_ID\n\t\t\t\t,CC.ACN_ATP_ID\n\t\t\t\t,CC.ACN_ACCOUNT_NUMBER\n\t\t\t\t,CC.ACN_APD_ID\n\t\t\t\t,CC.ACN_STATUS\n\t\t\t\t,CC.ACN_STATUS_DATE\n\t\t\t\t,CC.ACN_DELINQUENCY\n\t\t\t\t,CC.ACN_DELINQUENCY_DATE\n\t\t\t\t,CC.ACN_CUR_ID\n\t\t\t\t,CC.ACN_AMT_CODE_1\n\t\t\t\t,CC.ACN_BALANCE_1\n\t\t\t\t,CC.ACN_AMT_CODE_2\n\t\t\t\t,CC.ACN_BALANCE_2\n\t\t\t\t,CC.ACN_AMT_CODE_3\n\t\t\t\t,CC.ACN_BALANCE_3\n\t\t\t\t,CC.ACN_LAST_BATCH_UPDATE_DATE\n\t\t\t\t,CC.ACN_CREDIT_LIMIT\n\t\t\t\t,CC.ACN_TEMP_CREDIT_LIMIT\n\t\t\t\t,CC.ACN_TEMP_CREDIT_LIMIT_DATE\n\t\t\t\t,CC.ACN_GUARANTEE_AMOUNT\n\t\t\t\t,CC.ACN_GUARANTEE_TYPE\n\t\t\t\t,CC.ACN_GUARANTEE_EXPIRY_DATE\n\t\t\t\t,CC.ACN_LAST_FEP_HOST_TRACE_NBR\n\t\t\t\t,CC.ACN_LAST_HOST_FEP_TRACE_NBR\n\t\t\t\t,CC.ACN_SPECIFIC_DATA\n\t\t\t\t,CC.ACN_PART_NO\n\t\t\t\t,CC.ACN_CUSTOM_DATA\n\t\t\t\t,CC.ACN_STATUS_2\n\t\t\t\t,CC.ACN_STATUS_2_DATE\n\t\t\t\t,CC.ACN_LAST_SOURCE\n\t\t\t\t,CC.ACN_LAST_TERMINAL_ID\n\t\t\t\t,CC.ACN_FEP_HOST_SUM\n\t\t\t\t,CC.ACN_HOST_FEP_SUM\n\t\t\t\t,CC.ACN_PAN\n\t\t\t\t,CC.ACN_LAST_BATCH_SESSION\n\t\t\t\t,CC.ACN_FUNCTIONS\n\t\t\t\t,CC.ACN_OVERRIDE_PERMISSION\n\t\t\t\t,CC.ACN_ISS_ID\n\t\t\t\t,CC.ACN_LIMIT_CONFIG\n\t\t\t\t,CC.ACN_LAST_UPDATE_TS\n\t\t\t\t,CC.ACN_ACCOUNT_NUMBER_EKY_ID\n\t\t\t\t,CC.ACN_PAN_EKY_ID\n\t\t\t\t,CC.ACN_ACCOUNT_NUMBER_MASKED\n\t\t\t\t,CC.[FILE_NAME]\n\t\t        ,0 AS JSRC_FLG \n\t\t\t\t,1 AS JTAR_FLG \n\t\t\tFROM EDS.ATM_ACCOUNT CC\n\t\t\tJOIN d360.STG_EDS_ATM_ACCOUNT B \n\t\t\tON CC.ACN_ID = B.ACN_ID\n\t\t\tWHERE CC.ISLATEST = '1';\n\t\n\nTRUNCATE TABLE d360.STG_EDS_ATM_ACCOUNT_GROUP_SRC;\n\nINSERT INTO d360.STG_EDS_ATM_ACCOUNT_GROUP_SRC\n(\n\t\t\t\t ACN_ID\n\t\t\t\t,ACN_ATP_ID\n\t\t\t\t,ACN_ACCOUNT_NUMBER\n\t\t\t\t,ACN_APD_ID\n\t\t\t\t,ACN_STATUS\n\t\t\t\t,ACN_STATUS_DATE\n\t\t\t\t,ACN_DELINQUENCY\n\t\t\t\t,ACN_DELINQUENCY_DATE\n\t\t\t\t,ACN_CUR_ID\n\t\t\t\t,ACN_AMT_CODE_1\n\t\t\t\t,ACN_BALANCE_1\n\t\t\t\t,ACN_AMT_CODE_2\n\t\t\t\t,ACN_BALANCE_2\n\t\t\t\t,ACN_AMT_CODE_3\n\t\t\t\t,ACN_BALANCE_3\n\t\t\t\t,ACN_LAST_BATCH_UPDATE_DATE\n\t\t\t\t,ACN_CREDIT_LIMIT\n\t\t\t\t,ACN_TEMP_CREDIT_LIMIT\n\t\t\t\t,ACN_TEMP_CREDIT_LIMIT_DATE\n\t\t\t\t,ACN_GUARANTEE_AMOUNT\n\t\t\t\t,ACN_GUARANTEE_TYPE\n\t\t\t\t,ACN_GUARANTEE_EXPIRY_DATE\n\t\t\t\t,ACN_LAST_FEP_HOST_TRACE_NBR\n\t\t\t\t,ACN_LAST_HOST_FEP_TRACE_NBR\n\t\t\t\t,ACN_SPECIFIC_DATA\n\t\t\t\t,ACN_PART_NO\n\t\t\t\t,ACN_CUSTOM_DATA\n\t\t\t\t,ACN_STATUS_2\n\t\t\t\t,ACN_STATUS_2_DATE\n\t\t\t\t,ACN_LAST_SOURCE\n\t\t\t\t,ACN_LAST_TERMINAL_ID\n\t\t\t\t,ACN_FEP_HOST_SUM\n\t\t\t\t,ACN_HOST_FEP_SUM\n\t\t\t\t,ACN_PAN\n\t\t\t\t,ACN_LAST_BATCH_SESSION\n\t\t\t\t,ACN_FUNCTIONS\n\t\t\t\t,ACN_OVERRIDE_PERMISSION\n\t\t\t\t,ACN_ISS_ID\n\t\t\t\t,ACN_LIMIT_CONFIG\n\t\t\t\t,ACN_LAST_UPDATE_TS\n\t\t\t\t,ACN_ACCOUNT_NUMBER_EKY_ID\n\t\t\t\t,ACN_PAN_EKY_ID\n\t\t\t\t,ACN_ACCOUNT_NUMBER_MASKED\n\t\t\t\t,[FILE_NAME]\n\t\t\t\t,JSRC_FLG_CNT \n\t\t\t\t,JTAR_FLG_CNT \n\t\t\t\t,FILE_DATE\n)\n\nselect \n\t\t\t\t ACN_ID\n\t\t\t\t,ACN_ATP_ID\n\t\t\t\t,ACN_ACCOUNT_NUMBER\n\t\t\t\t,ACN_APD_ID\n\t\t\t\t,ACN_STATUS\n\t\t\t\t,ACN_STATUS_DATE\n\t\t\t\t,ACN_DELINQUENCY\n\t\t\t\t,ACN_DELINQUENCY_DATE\n\t\t\t\t,ACN_CUR_ID\n\t\t\t\t,ACN_AMT_CODE_1\n\t\t\t\t,ACN_BALANCE_1\n\t\t\t\t,ACN_AMT_CODE_2\n\t\t\t\t,ACN_BALANCE_2\n\t\t\t\t,ACN_AMT_CODE_3\n\t\t\t\t,ACN_BALANCE_3\n\t\t\t\t,ACN_LAST_BATCH_UPDATE_DATE\n\t\t\t\t,ACN_CREDIT_LIMIT\n\t\t\t\t,ACN_TEMP_CREDIT_LIMIT\n\t\t\t\t,ACN_TEMP_CREDIT_LIMIT_DATE\n\t\t\t\t,ACN_GUARANTEE_AMOUNT\n\t\t\t\t,ACN_GUARANTEE_TYPE\n\t\t\t\t,ACN_GUARANTEE_EXPIRY_DATE\n\t\t\t\t,ACN_LAST_FEP_HOST_TRACE_NBR\n\t\t\t\t,ACN_LAST_HOST_FEP_TRACE_NBR\n\t\t\t\t,ACN_SPECIFIC_DATA\n\t\t\t\t,ACN_PART_NO\n\t\t\t\t,ACN_CUSTOM_DATA\n\t\t\t\t,ACN_STATUS_2\n\t\t\t\t,ACN_STATUS_2_DATE\n\t\t\t\t,ACN_LAST_SOURCE\n\t\t\t\t,ACN_LAST_TERMINAL_ID\n\t\t\t\t,ACN_FEP_HOST_SUM\n\t\t\t\t,ACN_HOST_FEP_SUM\n\t\t\t\t,ACN_PAN\n\t\t\t\t,ACN_LAST_BATCH_SESSION\n\t\t\t\t,ACN_FUNCTIONS\n\t\t\t\t,ACN_OVERRIDE_PERMISSION\n\t\t\t\t,ACN_ISS_ID\n\t\t\t\t,ACN_LIMIT_CONFIG\n\t\t\t\t,ACN_LAST_UPDATE_TS\n\t\t\t\t,ACN_ACCOUNT_NUMBER_EKY_ID\n\t\t\t\t,ACN_PAN_EKY_ID\n\t\t\t\t,ACN_ACCOUNT_NUMBER_MASKED\n\t\t\t\t,[FILE_NAME]\n\t\t\t\t,JSRC_FLG_CNT \n\t\t\t\t,JTAR_FLG_CNT\n\t\t\t\t,CAST(LEFT(RIGHT(FILE_NAME , 12), 8) AS DATE) FILE_DATE\nfrom \n(\n\tSELECT \t\t\t\t\n\t\t\t\t ACN_ID\n\t\t\t\t,ACN_ATP_ID\n\t\t\t\t,ACN_ACCOUNT_NUMBER\n\t\t\t\t,ACN_APD_ID\n\t\t\t\t,ACN_STATUS\n\t\t\t\t,ACN_STATUS_DATE\n\t\t\t\t,ACN_DELINQUENCY\n\t\t\t\t,ACN_DELINQUENCY_DATE\n\t\t\t\t,ACN_CUR_ID\n\t\t\t\t,ACN_AMT_CODE_1\n\t\t\t\t,ACN_BALANCE_1\n\t\t\t\t,ACN_AMT_CODE_2\n\t\t\t\t,ACN_BALANCE_2\n\t\t\t\t,ACN_AMT_CODE_3\n\t\t\t\t,ACN_BALANCE_3\n\t\t\t\t,ACN_LAST_BATCH_UPDATE_DATE\n\t\t\t\t,ACN_CREDIT_LIMIT\n\t\t\t\t,ACN_TEMP_CREDIT_LIMIT\n\t\t\t\t,ACN_TEMP_CREDIT_LIMIT_DATE\n\t\t\t\t,ACN_GUARANTEE_AMOUNT\n\t\t\t\t,ACN_GUARANTEE_TYPE\n\t\t\t\t,ACN_GUARANTEE_EXPIRY_DATE\n\t\t\t\t,ACN_LAST_FEP_HOST_TRACE_NBR\n\t\t\t\t,ACN_LAST_HOST_FEP_TRACE_NBR\n\t\t\t\t,ACN_SPECIFIC_DATA\n\t\t\t\t,ACN_PART_NO\n\t\t\t\t,ACN_CUSTOM_DATA\n\t\t\t\t,ACN_STATUS_2\n\t\t\t\t,ACN_STATUS_2_DATE\n\t\t\t\t,ACN_LAST_SOURCE\n\t\t\t\t,ACN_LAST_TERMINAL_ID\n\t\t\t\t,ACN_FEP_HOST_SUM\n\t\t\t\t,ACN_HOST_FEP_SUM\n\t\t\t\t,ACN_PAN\n\t\t\t\t,ACN_LAST_BATCH_SESSION\n\t\t\t\t,ACN_FUNCTIONS\n\t\t\t\t,ACN_OVERRIDE_PERMISSION\n\t\t\t\t,ACN_ISS_ID\n\t\t\t\t,ACN_LIMIT_CONFIG\n\t\t\t\t,ACN_LAST_UPDATE_TS\n\t\t\t\t,ACN_ACCOUNT_NUMBER_EKY_ID\n\t\t\t\t,ACN_PAN_EKY_ID\n\t\t\t\t,ACN_ACCOUNT_NUMBER_MASKED\n\t\t\t\t,MAX(FILE_NAME) FILE_NAME \n\t\t\t\t,SUM(JSRC_FLG) AS JSRC_FLG_CNT \n\t\t\t\t,SUM(JTAR_FLG) AS JTAR_FLG_CNT\n\tFROM d360.STG_EDS_ATM_ACCOUNT_SELECT_SRC\n\tGROUP BY     \t\t\t\t \n\t\t\t\t ACN_ID\n\t\t\t\t,ACN_ATP_ID\n\t\t\t\t,ACN_ACCOUNT_NUMBER\n\t\t\t\t,ACN_APD_ID\n\t\t\t\t,ACN_STATUS\n\t\t\t\t,ACN_STATUS_DATE\n\t\t\t\t,ACN_DELINQUENCY\n\t\t\t\t,ACN_DELINQUENCY_DATE\n\t\t\t\t,ACN_CUR_ID\n\t\t\t\t,ACN_AMT_CODE_1\n\t\t\t\t,ACN_BALANCE_1\n\t\t\t\t,ACN_AMT_CODE_2\n\t\t\t\t,ACN_BALANCE_2\n\t\t\t\t,ACN_AMT_CODE_3\n\t\t\t\t,ACN_BALANCE_3\n\t\t\t\t,ACN_LAST_BATCH_UPDATE_DATE\n\t\t\t\t,ACN_CREDIT_LIMIT\n\t\t\t\t,ACN_TEMP_CREDIT_LIMIT\n\t\t\t\t,ACN_TEMP_CREDIT_LIMIT_DATE\n\t\t\t\t,ACN_GUARANTEE_AMOUNT\n\t\t\t\t,ACN_GUARANTEE_TYPE\n\t\t\t\t,ACN_GUARANTEE_EXPIRY_DATE\n\t\t\t\t,ACN_LAST_FEP_HOST_TRACE_NBR\n\t\t\t\t,ACN_LAST_HOST_FEP_TRACE_NBR\n\t\t\t\t,ACN_SPECIFIC_DATA\n\t\t\t\t,ACN_PART_NO\n\t\t\t\t,ACN_CUSTOM_DATA\n\t\t\t\t,ACN_STATUS_2\n\t\t\t\t,ACN_STATUS_2_DATE\n\t\t\t\t,ACN_LAST_SOURCE\n\t\t\t\t,ACN_LAST_TERMINAL_ID\n\t\t\t\t,ACN_FEP_HOST_SUM\n\t\t\t\t,ACN_HOST_FEP_SUM\n\t\t\t\t,ACN_PAN\n\t\t\t\t,ACN_LAST_BATCH_SESSION\n\t\t\t\t,ACN_FUNCTIONS\n\t\t\t\t,ACN_OVERRIDE_PERMISSION\n\t\t\t\t,ACN_ISS_ID\n\t\t\t\t,ACN_LIMIT_CONFIG\n\t\t\t\t,ACN_LAST_UPDATE_TS\n\t\t\t\t,ACN_ACCOUNT_NUMBER_EKY_ID\n\t\t\t\t,ACN_PAN_EKY_ID\n\t\t\t\t,ACN_ACCOUNT_NUMBER_MASKED\n\tHAVING ( SUM(JSRC_FLG) > 0 AND SUM(JTAR_FLG) = 0 ) OR ( SUM(JSRC_FLG) = 0 AND SUM(JTAR_FLG) = 1) \n) AS TEMP\n\nDECLARE @PREVIOUS_BUSINESS_DAY AS DATE\nSELECT @PREVIOUS_BUSINESS_DAY = PREVIOUS_BUSINESS_DAY FROM EDS.DATE_DIM \nINNER JOIN (SELECT TOP 1 CAST(LEFT(RIGHT(FILE_NAME, 12), 8) AS INTEGER) MX_DT FROM [d360].[STG_EDS_ATM_ACCOUNT]) MX_DT_TBL\nON DATESK = MX_DT;\t\n\n\nUPDATE A\nSET\nSCD_END_DATE = @PREVIOUS_BUSINESS_DAY\n, ISLATEST = 0\nFROM EDS.ATM_ACCOUNT A \nINNER JOIN d360.STG_EDS_ATM_ACCOUNT_GROUP_SRC B \nON COALESCE(A.ACN_ID,'-1') = COALESCE(B.ACN_ID,'-1')\nAND A.ISLATEST = 1\nAND B.JTAR_FLG_CNT = 1\n\n\n\nINSERT INTO EDS.ATM_ACCOUNT\n(\n\t\t\t\t ACN_ID\n\t\t\t\t,ACN_ATP_ID\n\t\t\t\t,ACN_ACCOUNT_NUMBER\n\t\t\t\t,ACN_APD_ID\n\t\t\t\t,ACN_STATUS\n\t\t\t\t,ACN_STATUS_DATE\n\t\t\t\t,ACN_DELINQUENCY\n\t\t\t\t,ACN_DELINQUENCY_DATE\n\t\t\t\t,ACN_CUR_ID\n\t\t\t\t,ACN_AMT_CODE_1\n\t\t\t\t,ACN_BALANCE_1\n\t\t\t\t,ACN_AMT_CODE_2\n\t\t\t\t,ACN_BALANCE_2\n\t\t\t\t,ACN_AMT_CODE_3\n\t\t\t\t,ACN_BALANCE_3\n\t\t\t\t,ACN_LAST_BATCH_UPDATE_DATE\n\t\t\t\t,ACN_CREDIT_LIMIT\n\t\t\t\t,ACN_TEMP_CREDIT_LIMIT\n\t\t\t\t,ACN_TEMP_CREDIT_LIMIT_DATE\n\t\t\t\t,ACN_GUARANTEE_AMOUNT\n\t\t\t\t,ACN_GUARANTEE_TYPE\n\t\t\t\t,ACN_GUARANTEE_EXPIRY_DATE\n\t\t\t\t,ACN_LAST_FEP_HOST_TRACE_NBR\n\t\t\t\t,ACN_LAST_HOST_FEP_TRACE_NBR\n\t\t\t\t,ACN_SPECIFIC_DATA\n\t\t\t\t,ACN_PART_NO\n\t\t\t\t,ACN_CUSTOM_DATA\n\t\t\t\t,ACN_STATUS_2\n\t\t\t\t,ACN_STATUS_2_DATE\n\t\t\t\t,ACN_LAST_SOURCE\n\t\t\t\t,ACN_LAST_TERMINAL_ID\n\t\t\t\t,ACN_FEP_HOST_SUM\n\t\t\t\t,ACN_HOST_FEP_SUM\n\t\t\t\t,ACN_PAN\n\t\t\t\t,ACN_LAST_BATCH_SESSION\n\t\t\t\t,ACN_FUNCTIONS\n\t\t\t\t,ACN_OVERRIDE_PERMISSION\n\t\t\t\t,ACN_ISS_ID\n\t\t\t\t,ACN_LIMIT_CONFIG\n\t\t\t\t,ACN_LAST_UPDATE_TS\n\t\t\t\t,ACN_ACCOUNT_NUMBER_EKY_ID\n\t\t\t\t,ACN_PAN_EKY_ID\n\t\t\t\t,ACN_ACCOUNT_NUMBER_MASKED\n\t\t\t\t,SCD_START_DATE \n\t\t\t\t,SCD_END_DATE\n\t\t\t\t,ISACTIVE\n\t\t\t\t,ISLATEST\n\t\t\t\t,BNK_CODE\n\t\t\t\t,SOURCE_CODE \n\t\t\t\t,FILE_NAME \n\t\t\t\t,insert_dttm\n)\nSELECT\n\t\t\t\t ACN_ID\n\t\t\t\t,ACN_ATP_ID\n\t\t\t\t,ACN_ACCOUNT_NUMBER\n\t\t\t\t,ACN_APD_ID\n\t\t\t\t,ACN_STATUS\n\t\t\t\t,ACN_STATUS_DATE\n\t\t\t\t,ACN_DELINQUENCY\n\t\t\t\t,ACN_DELINQUENCY_DATE\n\t\t\t\t,ACN_CUR_ID\n\t\t\t\t,ACN_AMT_CODE_1\n\t\t\t\t,ACN_BALANCE_1\n\t\t\t\t,ACN_AMT_CODE_2\n\t\t\t\t,ACN_BALANCE_2\n\t\t\t\t,ACN_AMT_CODE_3\n\t\t\t\t,ACN_BALANCE_3\n\t\t\t\t,ACN_LAST_BATCH_UPDATE_DATE\n\t\t\t\t,ACN_CREDIT_LIMIT\n\t\t\t\t,ACN_TEMP_CREDIT_LIMIT\n\t\t\t\t,ACN_TEMP_CREDIT_LIMIT_DATE\n\t\t\t\t,ACN_GUARANTEE_AMOUNT\n\t\t\t\t,ACN_GUARANTEE_TYPE\n\t\t\t\t,ACN_GUARANTEE_EXPIRY_DATE\n\t\t\t\t,ACN_LAST_FEP_HOST_TRACE_NBR\n\t\t\t\t,ACN_LAST_HOST_FEP_TRACE_NBR\n\t\t\t\t,ACN_SPECIFIC_DATA\n\t\t\t\t,ACN_PART_NO\n\t\t\t\t,ACN_CUSTOM_DATA\n\t\t\t\t,ACN_STATUS_2\n\t\t\t\t,ACN_STATUS_2_DATE\n\t\t\t\t,ACN_LAST_SOURCE\n\t\t\t\t,ACN_LAST_TERMINAL_ID\n\t\t\t\t,ACN_FEP_HOST_SUM\n\t\t\t\t,ACN_HOST_FEP_SUM\n\t\t\t\t,ACN_PAN\n\t\t\t\t,ACN_LAST_BATCH_SESSION\n\t\t\t\t,ACN_FUNCTIONS\n\t\t\t\t,ACN_OVERRIDE_PERMISSION\n\t\t\t\t,ACN_ISS_ID\n\t\t\t\t,ACN_LIMIT_CONFIG\n\t\t\t\t,ACN_LAST_UPDATE_TS\n\t\t\t\t,ACN_ACCOUNT_NUMBER_EKY_ID\n\t\t\t\t,ACN_PAN_EKY_ID\n\t\t\t\t,ACN_ACCOUNT_NUMBER_MASKED\n\t\t\t\t,FILE_DATE\n\t\t\t\t,'9999-12-31'\n\t\t\t\t,1\n\t\t\t\t,1\n\t\t\t\t,LEFT(SRC.FILE_NAME,5)\n\t\t\t\t,'ATM'\n\t\t\t\t,SRC.FILE_NAME\n\t\t\t\t,CURRENT_TIMESTAMP\nFROM d360.STG_EDS_ATM_ACCOUNT_GROUP_SRC SRC\nWHERE JSRC_FLG_CNT > 0\n\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Delete Update SCD",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Validate Backup",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "PROCESS_DATE",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.startDate",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "DECLARE @SQLString NVARCHAR(MAX);\n \n\nSET @SQLString = 'Delete FROM EDS.'+ @tableName +' WHERE LEFT(RIGHT(FILE_NAME,12),8) >= '+ REPLACE(@PROCESS_DATE,'-',''); \nEXECUTE sp_executesql @SQLString;  \n\nSET @SQLString = 'Update EDS.'+ @tableName +' SET SCD_END_DATE = ''9999-12-31'', ISLATEST =  1 WHERE CONVERT(varchar(12), SCD_END_DATE, 112) >='+ REPLACE(@PREV_PROCESS_DATE,'-',''); \nEXECUTE sp_executesql @SQLString;  "
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"tables": {
+				"type": "string",
+				"defaultValue": "ATM_ACCOUNT"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "DEP"
+			},
+			"file_date": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"ticket": {
+				"type": "string",
+				"defaultValue": "INC0057966"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-01-12T06:17:45Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

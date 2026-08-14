@@ -1,0 +1,136 @@
+{
+	"name": "Patch_CustomerTelephoneNumber",
+	"properties": {
+		"description": "Test patch for CustomerTelephoneNumber",
+		"activities": [
+			{
+				"name": "ALTER SP_CUSTOMERTELEPHONENUMBER_CCD",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CUSTOMERTELEPHONENUMBER_CCD] AS\r\nBEGIN\r\n\r\n--------------GET DELTA FROM BUSC\r\nWITH TMP_BNKM_CustomerTelephoneNumber AS \r\n(\r\nSELECT ROW_NUMBER() OVER(PARTITION BY CustomerId,TelephoneNumberTypeId ORDER BY INSERT_DTTM DESC ) RN, * FROM (\r\nSELECT * FROM (\r\nSELECT\r\n     BCD.CUST_NBR AS CustomerId\r\n    ,'Landline Number' AS TelephoneNumberTypeId\r\n    ,CONCAT(BCD.CUST_PHONE_CTY,BCD.CUST_PHONE_AREA,BCD.CUST_PHONE) AS TelephoneNumber \r\n    ,CONVERT(DATETIME2, stuff(stuff(stuff(BCD.CUST_TIME_MAINT, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) AS PeriodStartTimestamp\r\n    ,BCD.CUST_PHONE_AREA AS AreaCode\r\n    ,BCD.CUST_PHONE_CTY AS CountryCode\r\n    ,BCD.INSERT_DTTM\r\n    ,BCD.BNK_CODE AS FinancialInstitutionId\r\n    ,'CCD' AS SourceCode\r\nFROM BUSC.CCD_MCUSTOMER BCD WHERE BCD.ISLATEST = 1\r\n\r\nUNION\r\n\r\nSELECT\r\n     BCD.CUST_NBR AS CustomerId\r\n    ,'Mobile Number' AS TelephoneNumberTypeId\r\n    ,CONCAT(BCD.CUST_MOBILE_CTY,BCD.CUST_MOBILE_AREA,BCD.CUST_MOBILE_PHONE) AS TelephoneNumber\r\n    ,CONVERT(DATETIME2, stuff(stuff(stuff(BCD.CUST_TIME_MAINT, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) AS PeriodStartTimestamp\r\n    ,BCD.CUST_MOBILE_AREA AS AreaCode\r\n    ,BCD.CUST_MOBILE_CTY AS CountryCode\r\n    ,BCD.INSERT_DTTM\r\n    ,BCD.BNK_CODE AS FinancialInstitutionId\r\n    ,'CCD' AS SourceCode\r\nFROM  BUSC.CCD_MCUSTOMER BCD WHERE BCD.ISLATEST = 1\r\n) MONTHLY\r\n\r\nUNION \r\n\r\nSELECT * FROM (\r\nSELECT\r\n     BCD.CUST_NBR AS CustomerId\r\n    ,'Landline Number' AS TelephoneNumberTypeId\r\n    ,CONCAT(BCD.CUST_PHONE_CTY,BCD.CUST_PHONE_AREA,BCD.CUST_PHONE) AS TelephoneNumber\r\n    ,CONVERT(DATETIME2, stuff(stuff(stuff(BCD.CUST_TIME_MAINT, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) AS PeriodStartTimestamp\r\n    ,BCD.CUST_PHONE_AREA AS AreaCode\r\n    ,BCD.CUST_PHONE_CTY AS CountryCode\r\n    ,BCD.INSERT_DTTM\r\n    ,BCD.BNK_CODE AS FinancialInstitutionId\r\n    ,'CCD' AS SourceCode\r\nFROM BUSC.CCD_DCUSTOMER BCD WHERE BCD.ISLATEST = 1\r\n\r\nUNION \r\n\r\nSELECT\r\n     BCD.CUST_NBR AS CustomerId\r\n    ,'Mobile Number' AS TelephoneNumberTypeId\r\n    ,CONCAT(BCD.CUST_MOBILE_CTY,BCD.CUST_MOBILE_AREA,BCD.CUST_MOBILE_PHONE) AS TelephoneNumber\r\n    ,CONVERT(DATETIME2, stuff(stuff(stuff(BCD.CUST_TIME_MAINT, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) AS PeriodStartTimestamp\r\n    ,BCD.CUST_MOBILE_AREA AS AreaCode\r\n    ,BCD.CUST_MOBILE_CTY AS CountryCode\r\n    ,BCD.INSERT_DTTM\r\n    ,BCD.BNK_CODE AS FinancialInstitutionId\r\n    ,'CCD' AS SourceCode\r\nFROM BUSC.CCD_DCUSTOMER BCD WHERE BCD.ISLATEST = 1\r\n) DAILY\r\n)A\r\n)\r\n\r\nSELECT * INTO #TMP_BNKM_CustomerTelephoneNumber FROM TMP_BNKM_CustomerTelephoneNumber WHERE RN = 1;\r\n\r\n-------------CHECK IF THERE IS DELTA \r\nWITH\r\nTMP_BNKM_CustomerTelephoneNumber_SRC\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nconvert(varchar,CustomerId)\r\n,convert(varchar,TelephoneNumberTypeId)\r\n,convert(varchar,TelephoneNumber)\r\n,convert(varchar,AreaCode)\r\n,convert(varchar,CountryCode)\r\n,convert(varchar,FinancialInstitutionId)\r\n,convert(varchar,SourceCode)\r\n)) HASHROW, CustomerId, TelephoneNumberTypeId,TelephoneNumber,FinancialInstitutionId,SourceCode\r\nFROM #TMP_BNKM_CustomerTelephoneNumber \r\n)\r\n\r\n,\r\nTMP_BNKM_CustomerTelephoneNumber_TGT\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nconvert(varchar,CustomerId)\r\n,convert(varchar,TelephoneNumberTypeId)\r\n,convert(varchar,TelephoneNumber)\r\n,convert(varchar,AreaCode)\r\n,convert(varchar,CountryCode)\r\n,convert(varchar,FinancialInstitutionId)\r\n,convert(varchar,SourceCode)\r\n)) HASHROW, CustomerId, TelephoneNumberTypeId,TelephoneNumber,FinancialInstitutionId,SourceCode\r\nFROM BNKM.CustomerTelephoneNumber WHERE SourceCode = 'CCD'\t AND PeriodEndTimestamp IS NULL\r\n)\r\n\r\n\r\n,\r\nTMP_BNKM_CustomerTelephoneNumber_DELTA\r\nAS\r\n(\r\nSELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n\t,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\r\n\t,ISNULL(SRC.TelephoneNumberTypeId,TGT.TelephoneNumberTypeId) AS TelephoneNumberTypeId\r\n\t,ISNULL(SRC.TelephoneNumber,TGT.TelephoneNumber) AS TelephoneNumber\r\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n\t,ISNULL(SRC.SourceCode,TGT.SourceCode) AS SourceCode\r\n\t,CASE\r\n    WHEN TGT.HASHROW IS NULL THEN 'INSERT'    \r\n\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\tELSE NULL END AS RECORD_STATUS\r\n\t\r\nFROM TMP_BNKM_CustomerTelephoneNumber_SRC\tSRC\r\nLEFT JOIN TMP_BNKM_CustomerTelephoneNumber_TGT\tTGT\r\nON\tSRC.CustomerId = TGT.CustomerId\r\nAND SRC.TelephoneNumberTypeId = TGT.TelephoneNumberTypeId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceCode = TGT.SourceCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\r\n)\r\n\r\n\r\nSELECT * INTO #TMP_BNKM_CustomerTelephoneNumber_DELTA FROM TMP_BNKM_CustomerTelephoneNumber_DELTA;\r\n\r\n------UPDATE TO BNKM\r\nUPDATE TGT \r\nSET\r\nPeriodEndTimestamp = DATEADD(DAY,-1,CONVERT(DATE,CONVERT(VARCHAR,SRC.PeriodStartTimestamp)))\r\nFROM BNKM.CustomerTelephoneNumber TGT\r\nJOIN #TMP_BNKM_CustomerTelephoneNumber_DELTA DELTA ON DELTA.CustomerId = TGT.CustomerId AND DELTA.TelephoneNumberTypeId = TGT.TelephoneNumberTypeId AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId AND DELTA.SourceCode = TGT.SourceCode  AND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TMP_BNKM_CustomerTelephoneNumber SRC ON SRC.CustomerId = TGT.CustomerId AND SRC.TelephoneNumberTypeId = TGT.TelephoneNumberTypeId AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId AND SRC.SourceCode = TGT.SourceCode\r\nWHERE TGT.PeriodEndTimestamp = '9999-12-31';\r\n\r\n\r\n------INSERT TO BNKM\r\nINSERT INTO BNKM.CustomerTelephoneNumber\r\n(\r\n    CustomerId\r\n    ,TelephoneNumberTypeId\r\n    ,TelephoneNumber\r\n    ,PeriodStartTimestamp\r\n    ,PeriodEndTimestamp\r\n    ,PreferenceId\r\n    ,TelephoneNumberNote\r\n    ,LocationId\r\n    ,TextCapableIndicator\r\n    ,ExtensionNumber\r\n    ,DoNotDisturbIndicator\r\n    ,DateOfRequest\r\n    ,AreaCode\r\n    ,CountryCode\r\n    ,SourceCode\r\n    ,FinancialInstitutionId\r\n    ,WorkFlowId\r\n    ,TaskRunId\r\n    ,InsertDttm\r\n)\r\nSELECT DISTINCT\r\n    SRC.CustomerId AS CustomerId\r\n    ,SRC.TelephoneNumberTypeId AS TelephoneNumberTypeId\r\n    ,SRC.TelephoneNumber AS TelephoneNumber\r\n    ,SRC.PeriodStartTimestamp AS PeriodStartTimestamp\r\n    ,'9999-12-31' AS PeriodEndTimestamp\r\n    ,NULL AS PreferenceId\r\n    ,NULL AS TelephoneNumberNote\r\n    ,NULL AS LocationId\r\n    ,NULL AS TextCapableIndicator\r\n    ,NULL AS ExtensionNumber\r\n    ,NULL AS DoNotDisturbIndicator\r\n    ,NULL AS DateOfRequest\r\n    ,SRC.AreaCode AS AreaCode\r\n    ,SRC.CountryCode AS CountryCode\r\n    ,'CCD' AS SourceCode\r\n    ,SRC.FinancialInstitutionId AS FinancialInstitutionId\r\n    ,0 AS WorkFlowId\r\n    ,0 AS TaskRunId\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\nFROM #TMP_BNKM_CustomerTelephoneNumber SRC\r\nJOIN #TMP_BNKM_CustomerTelephoneNumber_DELTA DELTA ON DELTA.CustomerId = SRC.CustomerId AND DELTA.TelephoneNumberTypeId = SRC.TelephoneNumberTypeId AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId AND DELTA.SourceCode = SRC.SourceCode\r\nWHERE DELTA.RECORD_STATUS IN ('UPDATE','INSERT');\r\n\r\n\r\nDROP TABLE #TMP_BNKM_CustomerTelephoneNumber;\r\nDROP TABLE #TMP_BNKM_CustomerTelephoneNumber_DELTA;\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ALTER SP_CUSTOMERTELEPHONENUMBER_CRM",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CUSTOMERTELEPHONENUMBER_CRM] AS\r\nBEGIN\r\n\r\n---------------GET DELTA FROM BUSC\r\nWITH TEMP_BNKM_CustomerTelephoneNumber\r\nAS(\r\n    SELECT\r\n     BCP.ORGKEY AS CustomerId\r\n    ,BCP.PHONEEMAILTYPE AS TelephoneNumberTypeId\r\n    ,BCP.PHONENO AS TelephoneNumber\r\n    ,BCP.LAST_UPDATED_DATE AS PeriodStartTimestamp\r\n    ,BCP.END_DATE AS PeriodEndTimestamp\r\n    ,BCP.PREFERREDFLAG AS PreferenceId\r\n    ,BCP.WORKEXTENSION AS ExtensionNumber\r\n    ,BCP.DONOTDISTURB AS DoNotDisturbIndicator\r\n    ,BCP.DATEOFREQUEST AS DateOfRequest\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) as  INSERT_DTTM\r\n    ,BCP.BANK_ID   AS FinancialInstitutionId\r\n    ,BCP.SOURCE_CODE  AS SourceCode\r\n    FROM BUSC.CRM_PHONEEMAIL BCP\r\n    WHERE BCP.isLatest = '1'  AND BCP.PHONEOREMAIL = 'PHONE'\r\n\r\n    UNION ALL\r\n\r\n    select DISTINCT A.orgkey AS CustomerId\r\n    ,'SMSBANKING' AS TelephoneNumberTypeId\r\n    ,A.SMSBANKINGMOBILENUMBER AS TelephoneNumber\r\n    ,A.TMDATE AS PeriodStartTimestamp\r\n    ,'9999-12-31'  AS PeriodEndTimestamp\r\n    ,NULL AS PreferenceId\r\n    ,NULL AS ExtensionNumber\r\n    ,NULL AS DoNotDisturbIndicator\r\n    ,NULL AS DateOfRequest\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS INSERT_DTTM\r\n    ,A.BANK_ID  AS FinancialInstitutionId\r\n    ,A.SOURCE_CODE AS SourceCode\r\n    from busc.crm_accounts A\r\n    WHERE A.isLatest = '1' AND A.SMSBANKINGMOBILENUMBER <> ''\r\n\r\n)\r\n\r\nSELECT DISTINCT * INTO #TEMP_BNKM_CustomerTelephoneNumber FROM TEMP_BNKM_CustomerTelephoneNumber;\r\n\r\n-------------CHECK IF THERE IS DELTA \r\nWITH\r\nTEMP_BNKM_CustomerTelephoneNumber_SRC\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\n convert(varchar,CustomerId)\r\n,convert(varchar,TelephoneNumberTypeId)\r\n,convert(varchar,TelephoneNumber)\r\n,convert(varchar,PreferenceId)\r\n,convert(varchar,ExtensionNumber)\r\n,convert(varchar,trim(DoNotDisturbIndicator))\r\n,convert(date,DateOfRequest)\r\n)) HASHROW, CustomerId, TelephoneNumberTypeId,TelephoneNumber,FinancialInstitutionId,SourceCode\r\nFROM #TEMP_BNKM_CustomerTelephoneNumber\r\n)\r\n,\r\nTEMP_BNKM_CustomerTelephoneNumber_TGT\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\n convert(varchar,CustomerId)\r\n,convert(varchar,TelephoneNumberTypeId)\r\n,convert(varchar,TelephoneNumber)\r\n,convert(varchar,PreferenceId)\r\n,convert(varchar,ExtensionNumber)\r\n,convert(varchar,trim(DoNotDisturbIndicator))\r\n,convert(date,DateOfRequest)\r\n)) HASHROW, CustomerId, TelephoneNumberTypeId,TelephoneNumber,FinancialInstitutionId,SourceCode\r\nFROM BNKM.CustomerTelephoneNumber WHERE SourceCode = 'CRM' AND PeriodEndTimestamp = '9999-12-31' \r\n)\r\n,\r\nTEMP_BNKM_CustomerTelephoneNumber_DELTA\r\nAS\r\n(\r\nSELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n\t,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\r\n\t,ISNULL(SRC.TelephoneNumberTypeId,TGT.TelephoneNumberTypeId) AS TelephoneNumberTypeId\r\n\t,ISNULL(SRC.TelephoneNumber,TGT.TelephoneNumber) AS TelephoneNumber\r\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n\t,ISNULL(SRC.SourceCode,TGT.SourceCode) AS SourceCode\r\n\t,CASE\r\n        WHEN TGT.HASHROW IS NULL THEN 'INSERT'\r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\tELSE NULL END AS RECORD_STATUS\r\n\t\r\nFROM TEMP_BNKM_CustomerTelephoneNumber_SRC\tSRC\r\nLEFT JOIN TEMP_BNKM_CustomerTelephoneNumber_TGT\tTGT\r\nON\tSRC.CustomerId = TGT.CustomerId\r\nAND SRC.TelephoneNumberTypeId = TGT.TelephoneNumberTypeId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceCode = TGT.SourceCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerTelephoneNumber_DELTA FROM TEMP_BNKM_CustomerTelephoneNumber_DELTA;\r\n\r\n\r\nUPDATE TGT \r\nSET\r\nPeriodEndTimestamp = convert(date, DATEADD(day, -1, SRC.PeriodStartTimestamp))\r\nFROM BNKM.CustomerTelephoneNumber TGT\r\nJOIN #TEMP_BNKM_CustomerTelephoneNumber_DELTA DELTA ON DELTA.CustomerId = TGT.CustomerId AND DELTA.TelephoneNumberTypeId = TGT.TelephoneNumberTypeId AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId AND DELTA.SourceCode = TGT.SourceCode  AND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CustomerTelephoneNumber SRC ON SRC.CustomerId = TGT.CustomerId AND SRC.TelephoneNumberTypeId = TGT.TelephoneNumberTypeId AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId AND SRC.SourceCode = TGT.SourceCode\r\nWHERE TGT.PeriodEndTimestamp = '9999-12-31' AND TGT.SourceCode = 'CRM' ;   \r\n\r\n\r\nINSERT INTO BNKM.CustomerTelephoneNumber( \r\n[CustomerId]\r\n,[TelephoneNumberTypeId]\r\n,[TelephoneNumber]\r\n,[PeriodStartTimestamp]\r\n,[PeriodEndTimestamp]\r\n,[PreferenceId]\r\n,[TelephoneNumberNote]\r\n,[LocationId]\r\n,[TextCapableIndicator]\r\n,[ExtensionNumber]\r\n,[DoNotDisturbIndicator]\r\n,[DateOfRequest]\r\n,[AreaCode]\r\n,[CountryCode]\r\n,[SourceCode]\r\n,[FinancialInstitutionId]\r\n,[WorkFlowId]\r\n,[TaskRunId]\r\n,[InsertDttm])\r\n\r\nSELECT DISTINCT\r\n trim(SRC.CustomerId) AS CustomerId\r\n,trim(SRC.TelephoneNumberTypeId) AS TelephoneNumberTypeId\r\n,trim(SRC.TelephoneNumber) AS TelephoneNumber\r\n,PeriodStartTimestamp AS PeriodStartTimestamp\r\n,PeriodEndTimestamp AS PeriodEndTimestamp\r\n,trim(PreferenceId) AS PreferenceId\r\n,NULL AS TelephoneNumberNote\r\n,NULL AS LocationId\r\n,NULL AS TextCapableIndicator\r\n,trim(ExtensionNumber) AS ExtensionNumber\r\n,trim(DoNotDisturbIndicator) AS DoNotDisturbIndicator\r\n,DateOfRequest AS DateOfRequest\r\n,NULL AS AreaCode\r\n,NULL AS CountryCode\r\n,trim(SRC.SourceCode) AS SourceCode\r\n,trim(SRC.FinancialInstitutionId) AS FinancialInstitutionId\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,INSERT_DTTM AS InsertDttm\r\nFROM #TEMP_BNKM_CustomerTelephoneNumber SRC\r\nJOIN #TEMP_BNKM_CustomerTelephoneNumber_DELTA DELTA ON DELTA.CustomerId = SRC.CustomerId AND DELTA.TelephoneNumberTypeId = SRC.TelephoneNumberTypeId AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId AND DELTA.SourceCode = SRC.SourceCode  \r\nWHERE DELTA.RECORD_STATUS IN ('UPDATE','INSERT');\r\n\r\nDROP TABLE #TEMP_BNKM_CustomerTelephoneNumber;\r\nDROP TABLE #TEMP_BNKM_CustomerTelephoneNumber_DELTA;\r\n\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ALTER SP_CUSTOMERTELEPHONENUMBER_SEC",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CUSTOMERTELEPHONENUMBER_SEC] AS\r\nBEGIN\r\n\r\n\r\nWITH\r\nTMP_GET_DATE_CREATED\r\nAS\r\n(\r\n    SELECT BSC.CLTCODE, BSA.DATE_OPEN, BSA.ACCTCODE  FROM BUSC.SEC_TBLACCOUNTS BSA \r\n    JOIN BUSC.SEC_ACCOUNTLINK BSL ON BSA.ACCTCODE = BSL.ACCTKEY AND BSA.ISLATEST = 1 AND BSL.ISLATEST = 1\r\n    JOIN BUSC.SEC_TBLCLIENT BSC ON BSC.CLTCODE = BSL.CLTCODE AND BSC.ISLATEST = 1\r\n)\r\n,\r\n---------------GET DELTA FROM BUSC\r\nTEMP_BNKM_CustomerTelephoneNumber\r\nAS(\r\n\tSELECT \r\n     BSC.CLTCODE AS CustomerId\r\n    ,'Cellphone Number' AS TelephoneNumberTypeId\r\n    ,BSC.CELLPHONE AS TelephoneNumber\r\n    ,CASE WHEN BSC.LASTUPDATED IS NULL\r\n          THEN GDC.DATE_OPEN   \r\n          ELSE BSC.LASTUPDATED END AS PeriodStartTimestamp\r\n    ,'Y' AS TextCapableIndicator\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS INSERT_DTTM\r\n    ,BSC.BNK_CODE AS FinancialInstitutionId\r\n    ,BSC.SOURCE_CODE\r\n    ,'SEC' AS SourceCode\r\nFROM BUSC.SEC_TBLCLIENT BSC \r\nLEFT JOIN TMP_GET_DATE_CREATED GDC ON BSC.CLTCODE = GDC.CLTCODE\r\nWHERE BSC.CELLPHONE IS NOT NULL\r\nAND BSC.ISLATEST = 1 \r\nAND BSC.CELLPHONE NOT IN ('',' ') \r\n\r\nUNION\r\n\tSELECT \r\n     BSC.CLTCODE AS CustomerId\r\n    ,'Cellphone Number' AS TelephoneNumberTypeId\r\n    ,BSC.CELLPHONE2 AS TelephoneNumber\r\n    ,CASE WHEN BSC.LASTUPDATED IS NULL\r\n          THEN GDC.DATE_OPEN   \r\n          ELSE BSC.LASTUPDATED END AS PeriodStartTimestamp\r\n    ,'Y' AS TextCapableIndicator\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS INSERT_DTTM\r\n    ,BSC.BNK_CODE AS FinancialInstitutionId\r\n    ,BSC.SOURCE_CODE\r\n    ,'SEC' AS SourceCode\r\nFROM  BUSC.SEC_TBLCLIENT BSC \r\nLEFT JOIN TMP_GET_DATE_CREATED GDC ON BSC.CLTCODE = GDC.CLTCODE\r\nWHERE BSC.CELLPHONE IS NOT NULL\r\nAND BSC.ISLATEST = 1 AND BSC.CELLPHONE2 NOT IN ('',' ') \r\n\r\nUNION\r\n\tSELECT \r\n     BSC.CLTCODE AS CustomerId\r\n    ,'Home Phone Number' AS TelephoneNumberTypeId\r\n    ,BSC.HOME_PHONE AS TelephoneNumber\r\n    ,CASE WHEN BSC.LASTUPDATED IS NULL\r\n          THEN GDC.DATE_OPEN   \r\n          ELSE BSC.LASTUPDATED END AS PeriodStartTimestamp\r\n    ,'N' AS TextCapableIndicator\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS INSERT_DTTM\r\n    ,BSC.BNK_CODE AS FinancialInstitutionId\r\n    ,BSC.SOURCE_CODE\r\n    ,'SEC' AS SourceCode\r\nFROM  BUSC.SEC_TBLCLIENT BSC \r\nLEFT JOIN TMP_GET_DATE_CREATED GDC ON BSC.CLTCODE = GDC.CLTCODE\r\nWHERE BSC.HOME_PHONE IS NOT NULL\r\nAND BSC.ISLATEST = 1 AND BSC.HOME_PHONE NOT IN ('',' ') \r\n\r\n\r\nUNION\r\n\tSELECT \r\n     BSC.CLTCODE AS CustomerId\r\n    ,'Office Phone Number' AS TelephoneNumberTypeId\r\n    ,BSC.OFC_PHONE AS TelephoneNumber\r\n    ,CASE WHEN BSC.LASTUPDATED IS NULL\r\n          THEN GDC.DATE_OPEN   \r\n          ELSE BSC.LASTUPDATED END AS PeriodStartTimestamp\r\n    ,'N' AS TextCapableIndicator\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS INSERT_DTTM\r\n    ,BSC.BNK_CODE AS FinancialInstitutionId\r\n    ,BSC.SOURCE_CODE\r\n    ,'SEC' AS SourceCode\r\nFROM  BUSC.SEC_TBLCLIENT BSC \r\nLEFT JOIN TMP_GET_DATE_CREATED GDC ON BSC.CLTCODE = GDC.CLTCODE\r\nWHERE BSC.OFC_PHONE IS NOT NULL\r\nAND BSC.ISLATEST = 1 AND BSC.OFC_PHONE NOT IN ('',' ') \r\n\r\n\r\nUNION\r\n\tSELECT \r\n     BSC.CLTCODE AS CustomerId\r\n    ,'Permanent Address Phone Number' AS TelephoneNumberTypeId\r\n    ,BSC.PERM_PHONE AS TelephoneNumber\r\n    ,CASE WHEN BSC.LASTUPDATED IS NULL\r\n          THEN GDC.DATE_OPEN   \r\n          ELSE BSC.LASTUPDATED END AS PeriodStartTimestamp\r\n    ,'N' AS TextCapableIndicator\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS INSERT_DTTM\r\n    ,BSC.BNK_CODE AS FinancialInstitutionId\r\n    ,BSC.SOURCE_CODE\r\n    ,'SEC' AS SourceCode\r\nFROM  BUSC.SEC_TBLCLIENT BSC \r\nLEFT JOIN TMP_GET_DATE_CREATED GDC ON BSC.CLTCODE = GDC.CLTCODE\r\nWHERE BSC.PERM_PHONE IS NOT NULL\r\nAND BSC.ISLATEST = 1 AND BSC.PERM_PHONE NOT IN ('',' ') \r\n\r\n)\r\n\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerTelephoneNumber FROM TEMP_BNKM_CustomerTelephoneNumber;\r\n\r\n-------------CHECK IF THERE IS DELTA \r\nWITH\r\nTEMP_BNKM_CustomerTelephoneNumber_SRC\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nconvert(varchar,CustomerId)\r\n,convert(varchar,TelephoneNumberTypeId)\r\n,convert(varchar,TelephoneNumber)\r\n,convert(varchar,FinancialInstitutionId)\r\n,convert(varchar,SourceCode)\r\n)) HASHROW, CustomerId, TelephoneNumberTypeId,TelephoneNumber,FinancialInstitutionId,SourceCode\r\nFROM #TEMP_BNKM_CustomerTelephoneNumber \r\n)\r\n\r\n,\r\nTEMP_BNKM_CustomerTelephoneNumber_TGT\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nconvert(varchar,CustomerId)\r\n,convert(varchar,TelephoneNumberTypeId)\r\n,convert(varchar,TelephoneNumber)\r\n,convert(varchar,FinancialInstitutionId)\r\n,convert(varchar,SourceCode)\r\n)) HASHROW, CustomerId, TelephoneNumberTypeId,TelephoneNumber,FinancialInstitutionId,SourceCode\r\nFROM BNKM.CustomerTelephoneNumber WHERE PeriodEndTimestamp = '9999-12-31' AND SourceCode = 'SEC'\t\r\n)\r\n\r\n,\r\nTEMP_BNKM_CustomerTelephoneNumber_DELTA\r\nAS\r\n(\r\nSELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n\t,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\r\n\t,ISNULL(SRC.TelephoneNumberTypeId,TGT.TelephoneNumberTypeId) AS TelephoneNumberTypeId\r\n\t,ISNULL(SRC.TelephoneNumber,TGT.TelephoneNumber) AS TelephoneNumber\r\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n\t,ISNULL(SRC.SourceCode,TGT.SourceCode) AS SourceCode\r\n\t,CASE\r\n          WHEN TGT.HASHROW IS NULL THEN 'INSERT'  \r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\tELSE NULL END AS RECORD_STATUS\r\n\t\r\nFROM TEMP_BNKM_CustomerTelephoneNumber_SRC\tSRC\r\nLEFT JOIN TEMP_BNKM_CustomerTelephoneNumber_TGT\tTGT\r\nON\tSRC.CustomerId = TGT.CustomerId\r\nAND SRC.TelephoneNumberTypeId = TGT.TelephoneNumberTypeId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceCode = TGT.SourceCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerTelephoneNumber_DELTA FROM TEMP_BNKM_CustomerTelephoneNumber_DELTA;\r\n\r\n-------UPDATE TO BNKM\r\nUPDATE TGT \r\nSET\r\nPeriodEndTimestamp = DATEADD(DAY,-1,CONVERT(DATE,CONVERT(VARCHAR,SRC.PeriodStartTimestamp)))\r\nFROM BNKM.CustomerTelephoneNumber TGT\r\nJOIN #TEMP_BNKM_CustomerTelephoneNumber_DELTA DELTA ON DELTA.CustomerId = TGT.CustomerId AND DELTA.TelephoneNumberTypeId = TGT.TelephoneNumberTypeId AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId AND DELTA.SourceCode = TGT.SourceCode  AND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CustomerTelephoneNumber SRC ON SRC.CustomerId = TGT.CustomerId AND SRC.TelephoneNumberTypeId = TGT.TelephoneNumberTypeId AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId AND SRC.SourceCode = TGT.SourceCode\r\nWHERE TGT.PeriodEndTimestamp = '9999-12-31' AND TGT.SOURCECODE = 'SEC'\t;\r\n\r\n---------------INSERT RECORDS TO BNKM\r\nINSERT INTO  BNKM.CustomerTelephoneNumber  ( \r\n[CustomerId]\r\n,[TelephoneNumberTypeId]\r\n,[TelephoneNumber]\r\n,[PeriodStartTimestamp]\r\n,[PeriodEndTimestamp]\r\n,[PreferenceId]\r\n,[TelephoneNumberNote]\r\n,[LocationId]\r\n,[TextCapableIndicator]\r\n,[ExtensionNumber]\r\n,[DoNotDisturbIndicator]\r\n,[DateOfRequest]\r\n,[AreaCode]\r\n,[CountryCode]\r\n,[SourceCode]\r\n,[FinancialInstitutionId]\r\n,[WorkFlowId]\r\n,[TaskRunId]\r\n,[InsertDttm])\r\n\r\nSELECT DISTINCT\r\n SRC.CustomerId AS CustomerId\r\n,SRC.TelephoneNumberTypeId AS TelephoneNumberTypeId\r\n,SRC.TelephoneNumber AS TelephoneNumber\r\n,SRC.PeriodStartTimestamp AS PeriodStartTimestamp\r\n,'9999-12-31' AS PeriodEndTimestamp\r\n,NULL AS PreferenceId\r\n,NULL AS TelephoneNumberNote\r\n,NULL AS LocationId\r\n,SRC.TextCapableIndicator AS TextCapableIndicator\r\n,NULL AS ExtensionNumber\r\n,NULL AS DoNotDisturbIndicator\r\n,NULL AS DateOfRequest\r\n,NULL AS AreaCode\r\n,NULL AS CountryCode\r\n,SRC.SOURCE_CODE AS SourceCode\r\n,SRC.FinancialInstitutionId AS FinancialInstitutionId\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,SRC.INSERT_DTTM AS InsertDttm\r\n\r\nFROM #TEMP_BNKM_CustomerTelephoneNumber SRC\r\nJOIN #TEMP_BNKM_CustomerTelephoneNumber_DELTA DELTA ON DELTA.CustomerId = SRC.CustomerId AND DELTA.TelephoneNumberTypeId = SRC.TelephoneNumberTypeId AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId AND DELTA.SourceCode = SRC.SourceCode  \r\nWHERE DELTA.RECORD_STATUS IN ('UPDATE','INSERT');\r\n\r\nDROP TABLE #TEMP_BNKM_CustomerTelephoneNumber;\r\nDROP TABLE #TEMP_BNKM_CustomerTelephoneNumber_DELTA;\r\n\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CRM_PATCH",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "ALTER SP_CUSTOMERTELEPHONENUMBER_CRM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Patch_SRC",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"table": "BNKM.CustomerTelephoneNumber",
+						"field": "PeriodEndTimestamp",
+						"src_field": "SourceCode",
+						"src": "CRM"
+					}
+				}
+			}
+		],
+		"variables": {
+			"TB_NAME": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-02-19T05:29:17Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

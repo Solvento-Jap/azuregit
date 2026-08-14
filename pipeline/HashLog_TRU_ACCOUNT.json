@@ -1,0 +1,39 @@
+{
+	"name": "HashLog_TRU_ACCOUNT",
+	"properties": {
+		"activities": [
+			{
+				"name": "HashLog_TRU_ACCOUNT",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "WITH CTE1 \r\nAS(\r\nSELECT convert(numeric(25,5),COUNT(*)) COUNT_tgt\r\n, FILE_NAME, INSERT_DTTM \r\nFROM d360.STG_EDS_TRU_ACCOUNT WHERE H = 'D'\r\nGROUP BY FILE_NAME, INSERT_DTTM\r\n\r\n)\r\n,\r\nCTE2 AS (\r\nSELECT REPLACE(H,'F-','') COUNT_src\r\n, FILE_NAME, INSERT_DTTM FROM d360.STG_EDS_TRU_ACCOUNT WHERE H <> 'D'\r\n\r\n)\r\n,\r\nCTE12 as (\r\nSELECT COUNT_SRC, COUNT_TGT\r\n, A.FILE_NAME, A.INSERT_DTTM, CONVERT(DATE,(left(right(A.FILE_NAME, 12),8))) DATE FROM CTE1 A\r\nJOIN CTE2 B ON A.FILE_NAME = B.FILE_NAME AND A.INSERT_DTTM = B.INSERT_DTTM\r\n)\r\n\r\nINSERT INTO [EDS].[EDS_HASH_LOG_TBL]\r\nSELECT \r\nFILE_NAME\r\n,DATE\r\n,insert_dttm\r\n,REPLACE(METRICS,'_SRC','') METRICS\r\n,SRC\r\n,TGT \r\n\r\nFROM\r\n(\r\nSELECT \r\n CAST(COUNT_SRC AS NUMERIC(25,5)) COUNT_SRC\r\n,CAST(COUNT_TGT AS NUMERIC(25,5)) COUNT_TGT\r\n,FILE_NAME\r\n,INSERT_DTTM\r\n,[DATE]\r\nFROM CTE12\r\n) pvt\r\n\r\nUNPIVOT\r\n(\r\nSRC FOR METRICS IN (COUNT_SRC\r\n )\r\n) pvt1\r\n\r\nUNPIVOT\r\n(\r\nTGT For METRICS2 IN (COUNT_TGT\r\n )\r\n) pvt2\r\n \r\nWHERE REPLACE(METRICS,'_SRC','') = REPLACE(METRICS2,'_TGT','');\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-07-03T00:30:18Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

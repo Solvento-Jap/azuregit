@@ -1,0 +1,152 @@
+{
+	"name": "Patch_CustomerCountryOfCitizenship",
+	"properties": {
+		"activities": [
+			{
+				"name": "ALTER SP_CUSTOMERCOUNTRYOFCITIZENSHIP_CCD",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CUSTOMERCOUNTRYOFCITIZENSHIP_CCD] AS\nBEGIN\n--------------GET DELTA FROM BUSC\nWITH TMP_BNKM_CustomerCountryOfCitizenship AS \n(\nSELECT \n\tBCD.CUST_NBR AS CustomerId\n\t,BCD.CUST_NATIONALITY_CDE AS CountryId\n\t,BCD.CUST_DATE_MAINT  AS PeriodStartDate\n\t,CONVERT(DATE,'9999-12-31') AS PeriodEndDate\n\t,NULL AS NationalId\n\t,NULL AS PassportId\n\t,NULL AS CitizenshipTypeId\n\t,BCD.CUST_NATIONALITY AS NationalityId\n\t,'CCD' AS SourceSystemCode\n\t,BCD.BNK_CODE AS FinancialInstitutionId\n\t,0 AS WorkFlowId\n\t,0 AS TaskRunId\n\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS [InsertDttm]\nFROM BUSC.CCD_MCUSTOMER BCD WHERE BCD.ISLATEST = 1 AND BCD.CUST_NBR IS NOT NULL \n\nUNION ALL\n\nSELECT\n\tBCD.CUST_NBR AS CustomerId\n\t,BCD.CUST_NATIONALITY_CDE AS CountryId\n\t,BCD.CUST_DATE_MAINT  AS PeriodStartDate\n\t,CONVERT(DATE,'9999-12-31') AS PeriodEndDate\n\t,NULL AS NationalId\n\t,NULL AS PassportId\n\t,NULL AS CitizenshipTypeId\n\t,BCD.CUST_NATIONALITY AS NationalityId\n\t,'CCD' AS SourceSystemCode\n\t,BCD.BNK_CODE AS FinancialInstitutionId\n\t,0 AS WorkFlowId\n\t,0 AS TaskRunId\n\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS [InsertDttm]\nFROM BUSC.CCD_DCUSTOMER BCD \nwhere BCD.ISLATEST = 1 AND BCD.CUST_NBR IS NOT NULL\n)\n\n\nSELECT * INTO #TMP_BNKM_CustomerCountryOfCitizenship FROM TMP_BNKM_CustomerCountryOfCitizenship;\n\n-------------CHECK IF THERE IS DELTA \nWITH\nTMP_BNKM_CustomerCountryOfCitizenship_SRC\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerId)\n,convert(varchar,CountryId)\n,convert(varchar,NationalityId)\n,convert(varchar,FinancialInstitutionId)\n,convert(varchar,SourceSystemCode)\n)) HASHROW, CustomerId, CountryId, FinancialInstitutionId, SourceSystemCode\nFROM #TMP_BNKM_CustomerCountryOfCitizenship\n)\n\n,\nTMP_BNKM_CustomerCountryOfCitizenship_TGT\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerId)\n,convert(varchar,CountryId)\n,convert(varchar,NationalityId)\n,convert(varchar,FinancialInstitutionId)\n,convert(varchar,SourceSystemCode)\n)) HASHROW, CustomerId, CountryId, FinancialInstitutionId, SourceSystemCode\nFROM BNKM.CustomerCountryOfCitizenship WHERE PeriodEndDate = '9999-12-31' AND SourceSystemCode = 'CCD'\t\n)\n,\nTMP_BNKM_CustomerCountryOfCitizenship_DELTA\nAS\n(\nSELECT\t\n\tSRC.HASHROW AS SRC_HR\n\t,TGT.HASHROW AS TGT_HR\n\t,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\n\t,ISNULL(SRC.CountryId,TGT.CountryId) AS CountryId\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\n\t,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\n\t,CASE\n    WHEN TGT.HASHROW IS NULL THEN 'INSERT'    \n\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n\tELSE NULL END AS RECORD_STATUS\n\t\nFROM TMP_BNKM_CustomerCountryOfCitizenship_SRC\tSRC\nLEFT JOIN TMP_BNKM_CustomerCountryOfCitizenship_TGT\tTGT\nON\tSRC.CustomerId = TGT.CustomerId\nAND SRC.CountryId = TGT.CountryId\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL \n)\n\nSELECT * INTO #TMP_BNKM_CustomerCountryOfCitizenship_DELTA FROM TMP_BNKM_CustomerCountryOfCitizenship_DELTA;\n\n------UPDATE TO BNKM\nUPDATE TGT \nSET\nPeriodEndDate = CONVERT(DATE,DATEADD(day,-1,CONVERT(VARCHAR,SRC.PeriodStartDate)))\nFROM BNKM.CustomerCountryOfCitizenship TGT\nJOIN #TMP_BNKM_CustomerCountryOfCitizenship_DELTA DELTA ON DELTA.CustomerId = TGT.CustomerId AND DELTA.CountryId = TGT.CountryId AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId AND DELTA.SourceSystemCode = TGT.SourceSystemCode AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TMP_BNKM_CustomerCountryOfCitizenship SRC ON SRC.CustomerId = TGT.CustomerId AND SRC.CountryId = TGT.CountryId AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId AND SRC.SourceSystemCode = TGT.SourceSystemCode\nWHERE TGT.PeriodEndDate = '9999-12-31' AND TGT.SourceSystemCode = 'CCD';\n\n\n-------INSERT TO BNKM\nINSERT INTO BNKM.CustomerCountryOfCitizenship\n(\n\tCustomerId\n\t,CountryId\n\t,PeriodStartDate\n\t,PeriodEndDate\n\t,NationalId\n\t,PassportId\n\t,CitizenshipTypeId\n\t,NationalityId\n\t,SourceSystemCode\n\t,FinancialInstitutionId\n\t,WorkFlowId\n\t,TaskRunId\n\t,InsertDttm\n\n)\nSELECT\n\tSRC.CustomerId AS CustomerId\n\t,SRC.CountryId AS CountryId\n    ,CONVERT(DATE,CONVERT(VARCHAR,PeriodStartDate)) AS PeriodStartDate\n\t,PeriodEndDate\n\t,NationalId\n\t,PassportId\n\t,CitizenshipTypeId\n\t,SRC.NationalityId AS NationalityId\n\t,'CCD' AS SourceSystemCode\n\t,SRC.FinancialInstitutionId AS FinancialInstitutionId\n\t,0 AS WorkFlowId\n\t,0 AS TaskRunId\n\t,InsertDttm AS InsertDttm\nFROM #TMP_BNKM_CustomerCountryOfCitizenship SRC\nJOIN #TMP_BNKM_CustomerCountryOfCitizenship_DELTA DELTA ON DELTA.CustomerId = SRC.CustomerId AND DELTA.CountryId = SRC.CountryId AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId AND DELTA.SourceSystemCode = SRC.SourceSystemCode\nWHERE DELTA.RECORD_STATUS IN ('UPDATE','INSERT');\n\n\nDROP TABLE #TMP_BNKM_CustomerCountryOfCitizenship;\nDROP TABLE #TMP_BNKM_CustomerCountryOfCitizenship_DELTA;\n\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ALTER SP_CUSTOMERCOUNTRYOFCITIZENSHIP_CRM",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CUSTOMERCOUNTRYOFCITIZENSHIP_CRM] AS\r\nBEGIN\r\n\r\n--------------GET DELTA FROM BUSC\r\nWITH TEMP_BNKM_CustomerCountryOfCitizenship AS (\r\nSELECT \r\n\tBCD.ORGKEY AS CustomerId\r\n\t,NULL AS CountryId\r\n\t,BCD.TMDATE AS PeriodStartDate\r\n\t,'9999-12-31' AS PeriodEndDate\r\n\t,BCA.STRUSERFIELD17 AS NationalId\r\n\t,NULL AS PassportId\r\n\t,NULL AS CitizenshipTypeId\r\n\t,BCD.NATIONALITY AS NationalityId\r\n\t,BCD.Source_Code AS SourceSystemCode\r\n\t,BCD.BANK_ID AS FinancialInstitutionId\r\n\t,0 AS WorkFlowId\r\n\t,0 AS TaskRunId\r\n\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) InsertDttm\r\nFROM BUSC.CRM_DEMOGRAPHIC BCD\r\nLEFT JOIN BUSC.CRM_ACCOUNTS BCA  ON BCD.ORGKEY = BCA.ORGKEY\r\nWHERE BCD.ORGKEY IS NOT NULL AND BCD.isLatest = '1'\r\n\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerCountryOfCitizenship FROM TEMP_BNKM_CustomerCountryOfCitizenship;\r\n\r\n\r\n-------------CHECK IF THERE IS DELTA \r\n\r\nWITH TEMP_BNKM_CustomerCountryOfCitizenship_SRC AS (\r\nSELECT \r\n    HASHBYTES('MD5',CONCAT(\r\n\tconvert(varchar,CustomerId)\r\n\t,convert(varchar,CountryId)\r\n\t,convert(varchar,NationalId)\r\n\t,convert(varchar,NationalityId)\r\n\t,convert(varchar,FinancialInstitutionId)\r\n\t,convert(varchar,SourceSystemCode)\r\n\t)) HASHROW, CustomerId, CountryId, FinancialInstitutionId, SourceSystemCode\r\nFROM #TEMP_BNKM_CustomerCountryOfCitizenship\r\n)\r\n\r\n,\r\nTEMP_BNKM_CustomerCountryOfCitizenship_TGT AS (\r\nSELECT  \r\n    HASHBYTES('MD5',CONCAT(\r\n\tconvert(varchar,CustomerId)\r\n\t,convert(varchar,CountryId)\r\n\t,convert(varchar,NationalId)\r\n\t,convert(varchar,NationalityId)\r\n\t,convert(varchar,FinancialInstitutionId)\r\n\t,convert(varchar,SourceSystemCode)\r\n\t)) HASHROW, CustomerId, CountryId, FinancialInstitutionId, SourceSystemCode\r\nFROM BNKM.CustomerCountryOfCitizenship\r\nWHERE SourceSystemCode = 'CRM' AND (PeriodEndDate IS NULL OR PeriodEndDate = '9999-12-31')\r\n)\r\n\r\n\r\n,\r\nTEMP_BNKM_CustomerCountryOfCitizenship_DELTA AS (\r\nSELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n\t,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\r\n\t,ISNULL(SRC.CountryId,TGT.CountryId) AS CountryId\r\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n\t,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\r\n\t,CASE\r\n    WHEN TGT.HASHROW IS NULL THEN 'INSERT'    \r\n\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\tELSE NULL END AS RECORD_STATUS\r\n\t\r\nFROM TEMP_BNKM_CustomerCountryOfCitizenship_SRC\tSRC\r\nLEFT JOIN TEMP_BNKM_CustomerCountryOfCitizenship_TGT\tTGT\r\nON\tSRC.CustomerId = TGT.CustomerId\r\nAND SRC.CountryId = TGT.CountryId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL \r\n)\r\nSELECT * INTO #TEMP_BNKM_CustomerCountryOfCitizenship_DELTA FROM TEMP_BNKM_CustomerCountryOfCitizenship_DELTA;\r\n\r\n\r\n---------UPDATE TO BNKM\r\nUPDATE TGT \r\nSET\r\n[PeriodEndDate] = convert(date, DATEADD(day, -1, SRC.PeriodStartDate)) \r\nFROM BNKM.CustomerCountryOfCitizenship TGT\r\nJOIN #TEMP_BNKM_CustomerCountryOfCitizenship_DELTA DELTA ON DELTA.CustomerId = TGT.CustomerId AND DELTA.CountryId = TGT.CountryId AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId AND DELTA.SourceSystemCode = TGT.SourceSystemCode AND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CustomerCountryOfCitizenship SRC ON SRC.CustomerId = TGT.CustomerId AND SRC.CountryId = TGT.CountryId AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId AND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE (TGT.PeriodEndDate IS NULL OR TGT.PeriodEndDate  = '9999-12-31' ) AND TGT.SourceSystemCode = 'CRM';\r\n\r\n\r\n-------INSERT TO BNKM\r\nINSERT INTO BNKM.CustomerCountryOfCitizenship (\r\n[CustomerId]\r\n,[CountryId]\r\n,[PeriodStartDate]\r\n,[PeriodEndDate]\r\n,[NationalId]\r\n,[PassportId]\r\n,[CitizenshipTypeId]\r\n,[NationalityId]\r\n,[SourceSystemCode]\r\n,[FinancialInstitutionId]\r\n,[WorkFlowId]\r\n,[TaskRunId]\r\n,[InsertDttm])\r\n\r\nSELECT     \r\n\tSRC.CustomerId\r\n\t,SRC.CountryId\r\n\t,PeriodStartDate\r\n\t,PeriodEndDate\r\n\t,NationalId\r\n\t,PassportId\r\n\t,CitizenshipTypeId\r\n\t,SRC.NationalityId\r\n\t,'CRM' AS SourceSystemCode\r\n\t,SRC.FinancialInstitutionId\r\n\t,0 AS WorkFlowId\r\n\t,0 AS TaskRunId\r\n\t,InsertDttm\r\nFROM #TEMP_BNKM_CustomerCountryOfCitizenship SRC\r\nJOIN #TEMP_BNKM_CustomerCountryOfCitizenship_DELTA DELTA ON DELTA.CustomerId = SRC.CustomerId AND DELTA.CountryId = SRC.CountryId AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId AND DELTA.SourceSystemCode = SRC.SourceSystemCode\r\nWHERE DELTA.RECORD_STATUS IN ('UPDATE','INSERT');\r\n\r\nDROP TABLE #TEMP_BNKM_CustomerCountryOfCitizenship;\r\nDROP TABLE #TEMP_BNKM_CustomerCountryOfCitizenship_DELTA;\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ALTER SP_CUSTOMERCOUNTRYOFCITIZENSHIP_SEC",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CUSTOMERCOUNTRYOFCITIZENSHIP_SEC] AS\r\nBEGIN\r\n\r\n\r\n--------------GET DELTA FROM BUSC\r\nWITH\r\nTMP_GET_DATE_CREATED\r\nAS\r\n(\r\n    SELECT BSC.CLTCODE, BSA.DATE_OPEN, BSA.ACCTCODE  FROM BUSC.SEC_TBLACCOUNTS BSA \r\n    JOIN BUSC.SEC_ACCOUNTLINK BSL ON BSA.ACCTCODE = BSL.ACCTKEY AND BSA.ISLATEST = 1 AND BSL.ISLATEST = 1\r\n    JOIN BUSC.SEC_TBLCLIENT BSC ON BSC.CLTCODE = BSL.CLTCODE AND BSC.ISLATEST = 1\r\n)\r\n, \r\nTEMP_BNKM_CustomerCountryOfCitizenship\r\nAS(\r\n\tSELECT \r\n     BSC.CLTCODE AS CustomerId\r\n\t,NATIONALITY AS CountryId\r\n    ,CASE WHEN BSC.LASTUPDATED IS NULL\r\n          THEN GDC.DATE_OPEN   \r\n          ELSE BSC.LASTUPDATED END AS PeriodStartDate\r\n\t,'9999-12-31' AS PeriodEndDate\r\n\t,NULL AS NationalId\r\n\t,NULL AS PassportId\r\n\t,NULL AS CitizenshipTypeId\r\n\t,NULL AS NationalityId\r\n\t,'SEC' AS SourceSystemCode\r\n    ,BSC.BNK_CODE AS FinancialInstitutionId\r\n\t,0 AS WorkFlowId\r\n\t,0 AS TaskRunId\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS [InsertDttm]\r\n    ,BSC.SOURCE_CODE\t\r\nFROM BUSC.SEC_TBLCLIENT BSC \r\nLEFT JOIN TMP_GET_DATE_CREATED GDC ON BSC.CLTCODE = GDC.CLTCODE\r\nWHERE BSC.ISLATEST = 1\r\n\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerCountryOfCitizenship FROM TEMP_BNKM_CustomerCountryOfCitizenship;\r\n\r\n-------------CHECK IF THERE IS DELTA \r\nWITH\r\nTEMP_BNKM_CustomerCountryOfCitizenship_SRC\r\nAS\r\n(\r\nSELECT\r\n    HASHBYTES('MD5',CONCAT(\r\n\tconvert(varchar,CustomerId)\r\n\t,convert(varchar,CountryId)\r\n\t,convert(varchar,FinancialInstitutionId)\r\n\t,convert(varchar,SourceSystemCode)\r\n\t)) HASHROW, CustomerId, CountryId, FinancialInstitutionId, SourceSystemCode\r\nFROM #TEMP_BNKM_CustomerCountryOfCitizenship\r\n)\r\n\r\n,\r\nTEMP_BNKM_CustomerCountryOfCitizenship_TGT\r\nAS\r\n(\r\nSELECT\r\n    HASHBYTES('MD5',CONCAT(\r\n\tconvert(varchar,CustomerId)\r\n\t,convert(varchar,CountryId)\r\n\t,convert(varchar,FinancialInstitutionId)\r\n\t,convert(varchar,SourceSystemCode)\r\n\t)) HASHROW, CustomerId, CountryId, FinancialInstitutionId, SourceSystemCode\r\nFROM BNKM.CustomerCountryOfCitizenship WHERE PeriodEndDate = '9999-12-31' AND SourceSystemCode = 'SEC'\t\r\n)\r\n,\r\nTEMP_BNKM_CustomerCountryOfCitizenship_DELTA\r\nAS\r\n(\r\nSELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n\t,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\r\n\t,ISNULL(SRC.CountryId,TGT.CountryId) AS CountryId\r\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n\t,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\r\n\t,CASE\r\n    WHEN TGT.HASHROW IS NULL THEN 'INSERT'    \r\n\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\tELSE NULL END AS RECORD_STATUS\r\n\t\r\nFROM TEMP_BNKM_CustomerCountryOfCitizenship_SRC\tSRC\r\nLEFT JOIN TEMP_BNKM_CustomerCountryOfCitizenship_TGT\tTGT\r\nON\tSRC.CustomerId = TGT.CustomerId\r\nAND SRC.CountryId = TGT.CountryId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL \r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerCountryOfCitizenship_DELTA FROM TEMP_BNKM_CustomerCountryOfCitizenship_DELTA;\r\n\r\nUPDATE TGT \r\nSET\r\n[PeriodEndDate] =  CONVERT(DATE,DATEADD(day,-1,CONVERT(VARCHAR,SRC.PeriodStartDate)))\r\nFROM BNKM.CustomerCountryOfCitizenship TGT\r\nJOIN #TEMP_BNKM_CustomerCountryOfCitizenship_DELTA DELTA ON DELTA.CustomerId = TGT.CustomerId AND DELTA.CountryId = TGT.CountryId AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId AND DELTA.SourceSystemCode = TGT.SourceSystemCode AND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CustomerCountryOfCitizenship SRC ON SRC.CustomerId = TGT.CustomerId AND SRC.CountryId = TGT.CountryId AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId AND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE TGT.PeriodEndDate = '9999-12-31' AND TGT.SourceSystemCode = 'SEC';\r\n\r\n-------------INSERT RECORDS TO BNKM\r\nINSERT INTO BNKM.CustomerCountryOfCitizenship  ( \r\n[CustomerId]\r\n,[CountryId]\r\n,[PeriodStartDate]\r\n,[PeriodEndDate]\r\n,[NationalId]\r\n,[PassportId]\r\n,[CitizenshipTypeId]\r\n,[NationalityId]\r\n,[SourceSystemCode]\r\n,[FinancialInstitutionId]\r\n,[WorkFlowId]\r\n,[TaskRunId]\r\n,[InsertDttm])\r\n\r\nSELECT \r\n SRC.CustomerId AS CustomerId\r\n,SRC.CountryId AS CountryId\r\n,PeriodStartDate AS PeriodStartDate\r\n,'9999-12-31' AS PeriodEndDate\r\n,NULL AS NationalId\r\n,NULL AS PassportId\r\n,NULL AS CitizenshipTypeId\r\n,SRC.NationalityId AS NationalityId\r\n,'SEC' AS SourceSystemCode\r\n,SRC.FinancialInstitutionId AS FinancialInstitutionId\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,InsertDttm AS InsertDttm\r\nFROM #TEMP_BNKM_CustomerCountryOfCitizenship SRC\r\nJOIN #TEMP_BNKM_CustomerCountryOfCitizenship_DELTA DELTA ON DELTA.CustomerId = SRC.CustomerId AND DELTA.CountryId = SRC.CountryId AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId AND DELTA.SourceSystemCode = SRC.SourceSystemCode\r\nWHERE DELTA.RECORD_STATUS IN ('UPDATE','INSERT');\r\n\r\nDROP TABLE #TEMP_BNKM_CustomerCountryOfCitizenship;\r\nDROP TABLE #TEMP_BNKM_CustomerCountryOfCitizenship_DELTA;\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Execute Patch",
+				"type": "ExecutePipeline",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Patch",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"table": "BNKM.CustomerCountryOfCitizenship",
+						"col": "PeriodEndDate"
+					}
+				}
+			},
+			{
+				"name": "CRM_PATCH",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "ALTER SP_CUSTOMERCOUNTRYOFCITIZENSHIP_CRM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Patch_SRC",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"table": "BNKM.CustomerCountryOfCitizenship",
+						"field": "PeriodEndDate",
+						"src_field": "SourceSystemCode",
+						"src": "CRM"
+					}
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-02-19T03:22:16Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

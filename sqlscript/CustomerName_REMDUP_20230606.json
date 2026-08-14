@@ -1,0 +1,20 @@
+{
+	"name": "CustomerName_REMDUP_20230606",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "--STEPS:\n\nSET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nCREATE TABLE [BNKM].[CustomerName_WITH_DUP_20230606]\n( \n    [RN] [INT] NOT NULL,\n\t[CustomerId] [bigint]  NOT NULL,\n\t[CustomerNameId] [varbinary](8000)  NOT NULL,\n\t[NameUsageId] [nvarchar](32)  NULL,\n\t[StartDate] [date]  NULL,\n\t[EndDate] [date]  NULL,\n\t[CustomerNameNote] [nvarchar](128)  NULL,\n\t[FinancialInstitutionId] [nvarchar](20)  NOT NULL,\n\t[SourceSystemCode] [varchar](50)  NULL,\n\t[TaskRunId] [bigint]  NULL,\n\t[WorkFlowId] [bigint]  NULL,\n\t[InsertDttm] [datetime]  NULL\n)\nWITH\n(\n\tDISTRIBUTION = ROUND_ROBIN,\n\tCLUSTERED COLUMNSTORE INDEX\n)\nGO\n\n\n\n\n\n--1 CHECK DUPLICATE\nSELECT top 100 CustomerId, CustomerNameId, NameUsageId, FinancialInstitutionId, SourceSystemCode, count(1)\nFROM bnkm.CustomerName -- WHERE CUSTOMERACCOUNTID = ''\nGROUP BY CustomerId, CustomerNameId, NameUsageId, FinancialInstitutionId, SourceSystemCode\nHAVING count(1) > 1\n\n\n\n--2 TAGGED DUPLICATE   with pipeline alternative\nSELECT ROW_NUMBER() OVER(PARTITION BY  CustomerId, CustomerNameId, NameUsageId, FinancialInstitutionId, SourceSystemCode ORDER BY EndDate DESC, INSERTDTTM DESC ) RN , --define PKs in partition by\n*  --Name of backup table to store duplicate records\nFROM bnkm.CustomerName;\n\n\n\n--3 CHECK COUNT MAIN AND BU TABLE\nSELECT COUNT(*) FROM bnkm.CustomerName_WITH_DUP_20230606\n--244757\nSELECT COUNT(*) FROM bnkm.CustomerName\n--244757\n\n--4 CLEAN DUP\nTRUNCATE TABLE bnkm.CustomerName;\n\n\n\n--5 INSERT BACK UNIQUE RECORDS ONLY\nINSERT INTO bnkm.CustomerName --Target table to remove duplicate\nSELECT  \n[CustomerId]\n,[CustomerNameId]\n,[NameUsageId]\n,[StartDate]\n,[EndDate]\n,[CustomerNameNote]\n,[FinancialInstitutionId]\n,[SourceSystemCode]\n,[TaskRunId]\n,[WorkFlowId]\n,[InsertDttm]\n\nFROM bnkm.CustomerName_WITH_DUP_20230606 -- Name of backup table to store duplicate records\nWHERE RN = 1;\n\n\n--6 CHECK IF STILL HAVE DUP\nSELECT  CustomerId, CustomerNameId, NameUsageId, FinancialInstitutionId, SourceSystemCode, count(1)\nFROM bnkm.CustomerName -- WHERE CUSTOMERACCOUNTID = ''\nGROUP BY CustomerId, CustomerNameId, NameUsageId, FinancialInstitutionId, SourceSystemCode\nHAVING count(1) > 1\n\n\n\n--7 COUNT\nSELECT COUNT(*) FROM bnkm.CustomerName_WITH_DUP_20230606\n--244757\nSELECT COUNT(*) FROM bnkm.CustomerName\n--244757",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

@@ -1,0 +1,376 @@
+{
+	"name": "StgToBusc_DID_WMGLIST",
+	"properties": {
+		"activities": [
+			{
+				"name": "DID_WMGLIST_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT COUNT(1) CNT FROM D360.STG_DID_WMGLIST WHERE H = 'D'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_DID_WMGLIST"
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition1",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "DID_WMGLIST_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('DID_WMGLIST_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "DID_WMGLIST",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": "SELECT \n\t[RM]\n\t,[CLUSTER]\n\t,STG.[account_number]\n\t,STG.[fcbs_customer_id]\n    ,1 as isActive\n    ,1 as isLatest\n\t,left(FILE_NAME, 5) as [BNK_CODE]\n\t,substring(FILE_NAME,7,3) as [SOURCE_CODE]\n    ,[FILE_NAME]\n    ,convert(date,[insert_dttm]) as insert_dttm\nFROM [BUSC].[DID_WMGLIST_DELTA] DELTA\nLEFT JOIN [d360].[STG_DID_WMGLIST] STG \n\t--ON DELTA.fcbs_customer_id = STG.fcbs_customer_id AND DELTA.account_number = STG.account_number\n\tON  coalesce(DELTA.fcbs_customer_id,'') = coalesce(STG.fcbs_customer_id,'')\n    AND coalesce(DELTA.account_number,'') = coalesce(STG.account_number,'')\nWHERE H = 'D'",
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									},
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									}
+								},
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "RM",
+												"type": "String"
+											},
+											"sink": {
+												"name": "RM",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CLUSTER",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CLUSTER",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "account_number",
+												"type": "String"
+											},
+											"sink": {
+												"name": "account_number",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "fcbs_customer_id",
+												"type": "String"
+											},
+											"sink": {
+												"name": "fcbs_customer_id",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "isActive",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "isActive",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "isLatest",
+												"type": "Int32"
+											},
+											"sink": {
+												"name": "isLatest",
+												"type": "Int32"
+											}
+										},
+										{
+											"source": {
+												"name": "BNK_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BNK_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SOURCE_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SOURCE_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FILE_NAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											},
+											"sink": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_DID_WMGLIST"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_TGT",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "DID_WMGLIST"
+									}
+								}
+							]
+						},
+						{
+							"name": "ErrorExecutionLog",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "DID_WMGLIST",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@pipeline().TriggerTime",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": {
+											"value": "@activity('DID_WMGLIST').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": {
+											"value": "@activity('DID_WMGLIST').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "@concat('FAILED - ',activity('DID_WMGLIST').error.message)",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "SuccessExecutionLog",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "DID_WMGLIST",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@addHours(pipeline().TriggerTime,+8)",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "SUCCESS",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-05-15T02:54:59Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

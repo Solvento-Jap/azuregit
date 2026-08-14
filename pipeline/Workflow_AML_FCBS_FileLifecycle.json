@@ -1,0 +1,2923 @@
+{
+	"name": "Workflow_AML_FCBS_FileLifecycle",
+	"properties": {
+		"description": "AML FCBS lifecycle wrapper: exact per-table decrypt (10 PGPDecrypt_AML_FCBS_*), then existing per-table staging (10 DecToStg_AML_FCBS_*). Archive/cleanup phase is intentionally absent pending the Gate 0 scope decision (CBC-RDP-AML-003 item 8).",
+		"activities": [
+			{
+				"name": "Require_Approved_Execution",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.ExecutionMode, 'ApprovedDateSliceReload')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Unapproved_Execution",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "ExecutionMode must be ApprovedDateSliceReload.",
+								"errorCode": "AML_EXECUTION_NOT_APPROVED"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Execution_Approved",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Require_Valid_MissingFilePolicy",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(equals(pipeline().parameters.MissingFilePolicy, 'Fail'), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Invalid_MissingFilePolicy",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "MissingFilePolicy must be Fail or Skip.",
+								"errorCode": "AML_INVALID_MISSING_FILE_POLICY"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "MissingFilePolicy_Valid",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Require_Complete_KeyPair",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(and(equals(pipeline().parameters.kvsecpass, 'cbcpassp'), equals(pipeline().parameters.kvsecpriv, 'cbcprivkeyaml')), and(not(equals(pipeline().parameters.kvsecpass, '')), not(equals(pipeline().parameters.kvsecpriv, '')), not(equals(pipeline().parameters.kvsecpass, 'cbcpassp')), not(equals(pipeline().parameters.kvsecpriv, 'cbcprivkeyaml'))))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Incomplete_KeyPair",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "kvsecpass and kvsecpriv must be supplied together or both omitted for the defaults.",
+								"errorCode": "AML_KEY_PAIR_INCOMPLETE"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "KeyPair_Valid",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Execute_PGPDecrypt_AML_FCBS_BILLERDETAILS",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Complete_KeyPair",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PGPDecrypt_AML_FCBS_BILLERDETAILS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						},
+						"kvsecpass": {
+							"value": "@pipeline().parameters.kvsecpass",
+							"type": "Expression"
+						},
+						"kvsecpriv": {
+							"value": "@pipeline().parameters.kvsecpriv",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_PGPDecrypt_AML_FCBS_BILLERNAME",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Complete_KeyPair",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PGPDecrypt_AML_FCBS_BILLERNAME",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						},
+						"kvsecpass": {
+							"value": "@pipeline().parameters.kvsecpass",
+							"type": "Expression"
+						},
+						"kvsecpriv": {
+							"value": "@pipeline().parameters.kvsecpriv",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_PGPDecrypt_AML_FCBS_DELIVERYCHTRANSACTION",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Complete_KeyPair",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PGPDecrypt_AML_FCBS_DELIVERYCHTRANSACTION",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						},
+						"kvsecpass": {
+							"value": "@pipeline().parameters.kvsecpass",
+							"type": "Expression"
+						},
+						"kvsecpriv": {
+							"value": "@pipeline().parameters.kvsecpriv",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_PGPDecrypt_AML_FCBS_MCGCDETAILS",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Complete_KeyPair",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PGPDecrypt_AML_FCBS_MCGCDETAILS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						},
+						"kvsecpass": {
+							"value": "@pipeline().parameters.kvsecpass",
+							"type": "Expression"
+						},
+						"kvsecpriv": {
+							"value": "@pipeline().parameters.kvsecpriv",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_PGPDecrypt_AML_FCBS_OTCGOVTPAYREVERSAL",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Complete_KeyPair",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PGPDecrypt_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						},
+						"kvsecpass": {
+							"value": "@pipeline().parameters.kvsecpass",
+							"type": "Expression"
+						},
+						"kvsecpriv": {
+							"value": "@pipeline().parameters.kvsecpriv",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_PGPDecrypt_AML_FCBS_OTCHCRTREVERSAL",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Complete_KeyPair",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PGPDecrypt_AML_FCBS_OTCHCRTREVERSAL",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						},
+						"kvsecpass": {
+							"value": "@pipeline().parameters.kvsecpass",
+							"type": "Expression"
+						},
+						"kvsecpriv": {
+							"value": "@pipeline().parameters.kvsecpriv",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_PGPDecrypt_AML_FCBS_OTCREMITTANCE",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Complete_KeyPair",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PGPDecrypt_AML_FCBS_OTCREMITTANCE",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						},
+						"kvsecpass": {
+							"value": "@pipeline().parameters.kvsecpass",
+							"type": "Expression"
+						},
+						"kvsecpriv": {
+							"value": "@pipeline().parameters.kvsecpriv",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_PGPDecrypt_AML_FCBS_OTCREVERSAL",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Complete_KeyPair",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PGPDecrypt_AML_FCBS_OTCREVERSAL",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						},
+						"kvsecpass": {
+							"value": "@pipeline().parameters.kvsecpass",
+							"type": "Expression"
+						},
+						"kvsecpriv": {
+							"value": "@pipeline().parameters.kvsecpriv",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_PGPDecrypt_AML_FCBS_OTCTRANSACTION",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Complete_KeyPair",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PGPDecrypt_AML_FCBS_OTCTRANSACTION",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						},
+						"kvsecpass": {
+							"value": "@pipeline().parameters.kvsecpass",
+							"type": "Expression"
+						},
+						"kvsecpriv": {
+							"value": "@pipeline().parameters.kvsecpriv",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_PGPDecrypt_AML_FCBS_UPLOADDETAILS",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Require_Complete_KeyPair",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PGPDecrypt_AML_FCBS_UPLOADDETAILS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						},
+						"kvsecpass": {
+							"value": "@pipeline().parameters.kvsecpass",
+							"type": "Expression"
+						},
+						"kvsecpriv": {
+							"value": "@pipeline().parameters.kvsecpriv",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Fail_Decryption_Phase",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": "One or more FCBS decryption phases failed; no staging was attempted.",
+					"errorCode": "AML_FCBS_DECRYPTION_PHASE_FAILED"
+				}
+			},
+			{
+				"name": "Execute_DecToStg_AML_FCBS_BILLERDETAILS",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "DecToStg_AML_FCBS_BILLERDETAILS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_DecToStg_AML_FCBS_BILLERNAME",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "DecToStg_AML_FCBS_BILLERNAME",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_DecToStg_AML_FCBS_DELIVERYCHTRANSACTION",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "DecToStg_AML_FCBS_DELIVERYCHTRANSACTION",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_DecToStg_AML_FCBS_MCGCDETAILS",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "DecToStg_AML_FCBS_MCGCDETAILS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_DecToStg_AML_FCBS_OTCGOVTPAYREVERSAL",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "DecToStg_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_DecToStg_AML_FCBS_OTCHCRTREVERSAL",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "DecToStg_AML_FCBS_OTCHCRTREVERSAL",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_DecToStg_AML_FCBS_OTCREMITTANCE",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "DecToStg_AML_FCBS_OTCREMITTANCE",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_DecToStg_AML_FCBS_OTCREVERSAL",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "DecToStg_AML_FCBS_OTCREVERSAL",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_DecToStg_AML_FCBS_OTCTRANSACTION",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "DecToStg_AML_FCBS_OTCTRANSACTION",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_DecToStg_AML_FCBS_UPLOADDETAILS",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_PGPDecrypt_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "DecToStg_AML_FCBS_UPLOADDETAILS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Fail_Staging_Phase",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": "One or more FCBS staging phases failed after successful decryption.",
+					"errorCode": "AML_FCBS_STAGING_PHASE_FAILED"
+				}
+			},
+			{
+				"name": "Execute_Archive_AML_FCBS_BILLERDETAILS",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Archive_AML_ExactFile",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"SourceCode": {
+							"value": "FCBS",
+							"type": "Expression"
+						},
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"EncryptedSelector": {
+							"value": "@concat('*CBC-AML-FCBS-CUSTOM.C_BIDBCD-', pipeline().parameters.DateToProcess, '*.gpg')",
+							"type": "Expression"
+						},
+						"ExpectedFileCount": 1,
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_Archive_AML_FCBS_BILLERNAME",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Archive_AML_ExactFile",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"SourceCode": {
+							"value": "FCBS",
+							"type": "Expression"
+						},
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"EncryptedSelector": {
+							"value": "@concat('*CBC-AML-FCBS-TBAADM.BRGT-', pipeline().parameters.DateToProcess, '*.gpg')",
+							"type": "Expression"
+						},
+						"ExpectedFileCount": 1,
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_Archive_AML_FCBS_DELIVERYCHTRANSACTION",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Archive_AML_ExactFile",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"SourceCode": {
+							"value": "FCBS",
+							"type": "Expression"
+						},
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"EncryptedSelector": {
+							"value": "@concat('*CBC-AML-FCBS-TBAADM.RTT-', pipeline().parameters.DateToProcess, '*.gpg')",
+							"type": "Expression"
+						},
+						"ExpectedFileCount": 1,
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_Archive_AML_FCBS_MCGCDETAILS",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Archive_AML_ExactFile",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"SourceCode": {
+							"value": "FCBS",
+							"type": "Expression"
+						},
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"EncryptedSelector": {
+							"value": "@concat('*CBC-AML-FCBS-CUSTOM.C_CSALMCGC-', pipeline().parameters.DateToProcess, '*.gpg')",
+							"type": "Expression"
+						},
+						"ExpectedFileCount": 1,
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_Archive_AML_FCBS_OTCGOVTPAYREVERSAL",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Archive_AML_ExactFile",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"SourceCode": {
+							"value": "FCBS",
+							"type": "Expression"
+						},
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"EncryptedSelector": {
+							"value": "@concat('*CBC-AML-FCBS-CUSTOM.C_CGAT-', pipeline().parameters.DateToProcess, '*.gpg')",
+							"type": "Expression"
+						},
+						"ExpectedFileCount": 1,
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_Archive_AML_FCBS_OTCHCRTREVERSAL",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Archive_AML_ExactFile",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"SourceCode": {
+							"value": "FCBS",
+							"type": "Expression"
+						},
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"EncryptedSelector": {
+							"value": "@concat('*CBC-AML-FCBS-TBAADM.ATD-', pipeline().parameters.DateToProcess, '*.gpg')",
+							"type": "Expression"
+						},
+						"ExpectedFileCount": 1,
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_Archive_AML_FCBS_OTCREMITTANCE",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Archive_AML_ExactFile",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"SourceCode": {
+							"value": "FCBS",
+							"type": "Expression"
+						},
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"EncryptedSelector": {
+							"value": "@concat('*CBC-AML-FCBS-CUSTOM.C_CTTIOW-', pipeline().parameters.DateToProcess, '*.gpg')",
+							"type": "Expression"
+						},
+						"ExpectedFileCount": 1,
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_Archive_AML_FCBS_OTCREVERSAL",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Archive_AML_ExactFile",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"SourceCode": {
+							"value": "FCBS",
+							"type": "Expression"
+						},
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"EncryptedSelector": {
+							"value": "@concat('*CBC-AML-FCBS-CUSTOM.C_NLCD-', pipeline().parameters.DateToProcess, '*.gpg')",
+							"type": "Expression"
+						},
+						"ExpectedFileCount": 1,
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_Archive_AML_FCBS_OTCTRANSACTION",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Archive_AML_ExactFile",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"SourceCode": {
+							"value": "FCBS",
+							"type": "Expression"
+						},
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"EncryptedSelector": {
+							"value": "@concat('*CBC-AML-FCBS-CUSTOM.C_REPRINT-', pipeline().parameters.DateToProcess, '*.gpg')",
+							"type": "Expression"
+						},
+						"ExpectedFileCount": 1,
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Execute_Archive_AML_FCBS_UPLOADDETAILS",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_DecToStg_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Archive_AML_ExactFile",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"SourceCode": {
+							"value": "FCBS",
+							"type": "Expression"
+						},
+						"DateToProcess": {
+							"value": "@pipeline().parameters.DateToProcess",
+							"type": "Expression"
+						},
+						"EncryptedSelector": {
+							"value": "@concat('*CBC-AML-FCBS-CUSTOM.CINUPLD_RECORD-', pipeline().parameters.DateToProcess, '*.gpg')",
+							"type": "Expression"
+						},
+						"ExpectedFileCount": 1,
+						"ExecutionMode": {
+							"value": "@pipeline().parameters.ExecutionMode",
+							"type": "Expression"
+						},
+						"MissingFilePolicy": {
+							"value": "@pipeline().parameters.MissingFilePolicy",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Fail_Archive_Phase",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "Execute_Archive_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_Archive_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_Archive_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_Archive_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_Archive_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_Archive_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_Archive_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_Archive_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_Archive_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Execute_Archive_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": "One or more FCBS archive phases failed; no encrypted landing file is deleted.",
+					"errorCode": "AML_FCBS_ARCHIVE_PHASE_FAILED"
+				}
+			},
+			{
+				"name": "Lifecycle_Complete",
+				"type": "Wait",
+				"dependsOn": [
+					{
+						"activity": "Execute_Archive_AML_FCBS_BILLERDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_Archive_AML_FCBS_BILLERNAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_Archive_AML_FCBS_DELIVERYCHTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_Archive_AML_FCBS_MCGCDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_Archive_AML_FCBS_OTCGOVTPAYREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_Archive_AML_FCBS_OTCHCRTREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_Archive_AML_FCBS_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_Archive_AML_FCBS_OTCREVERSAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_Archive_AML_FCBS_OTCTRANSACTION",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Execute_Archive_AML_FCBS_UPLOADDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"waitTimeInSeconds": 1
+				}
+			}
+		],
+		"parameters": {
+			"DateToProcess": {
+				"type": "String"
+			},
+			"ExecutionMode": {
+				"type": "String",
+				"defaultValue": "PlanOnly"
+			},
+			"MissingFilePolicy": {
+				"type": "String",
+				"defaultValue": "Skip"
+			},
+			"kvsecpass": {
+				"type": "String",
+				"defaultValue": "cbcpassp"
+			},
+			"kvsecpriv": {
+				"type": "String",
+				"defaultValue": "cbcprivkeyaml"
+			}
+		},
+		"folder": {
+			"name": "AML_ETL/Lifecycle"
+		},
+		"annotations": [
+			"AML",
+			"FCBS",
+			"FileLifecycle",
+			"PGPDecryptExact",
+			"DecToStgPreserved"
+		],
+		"lastPublishTime": "2026-08-11T07:59:59Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

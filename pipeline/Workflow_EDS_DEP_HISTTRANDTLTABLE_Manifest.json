@@ -1,0 +1,1026 @@
+{
+	"name": "Workflow_EDS_DEP_HISTTRANDTLTABLE_Manifest",
+	"properties": {
+		"activities": [
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('select fulldate\nfrom \n    eds.eds_ctl ect\ninner join \n    eds.date_dim dd\n    on \n    ect.Deposits_Date=dd.previous_business_day and dd.business_day_flag=''Y''')\n\n\n",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(variables('V_endDate')),ticks(variables('V_startDate'))),864000000000),1))\n",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append Process Date",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Iterate Execution of Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "OM_SRC_CHECK_DEP_HISTTRANDTLTABLE",
+							"type": "SqlPoolStoredProcedure",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [
+								{
+									"activity": "Condition Success Count",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@replace(substring(item(),0,10),'-','')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Manifest_file",
+							"type": "ExecutePipeline",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Workflow_Manifest",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"MaxPipelineCalls": 5,
+									"RetryInterval": 600,
+									"DatetoProcessed": {
+										"value": "@substring(item(),0,10)",
+										"type": "Expression"
+									},
+									"tables": {
+										"value": "@concat('''',pipeline().parameters.tables,'''')",
+										"type": "Expression"
+									},
+									"EndTime": "07:00",
+									"src_sys": "DEP"
+								}
+							}
+						},
+						{
+							"name": "Get Success Count",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_STG_EDS_',pipeline().parameters.tables,''',''EDS_STG'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Manifest_file",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "END_TASK_STG_EDS_DEP_HISTTRANDTLTABLE_SUCCESSFUL",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_DEP_HISTTRANDTLTABLE",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												},
+												"tablename": {
+													"value": {
+														"value": "@concat('D360.STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_STG_EDS_DEP_HISTTRANDTLTABLE_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_DEP_HISTTRANDTLTABLE",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												},
+												"tablename": {
+													"value": {
+														"value": "@concat('D360.STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "START_TASK_STG_EDS_DEP_HISTTRANDTLTABLE",
+										"type": "SqlPoolStoredProcedure",
+										"state": "Inactive",
+										"onInactiveMarkAs": "Succeeded",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "Truncate Staging",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "PGP Decrypt",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 3,
+											"retryIntervalInSeconds": 60,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"type": "NonQuery",
+													"text": "TRUNCATE TABLE D360.STG_EDS_DEP_HISTTRANDTLTABLE;\n\n"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									},
+									{
+										"name": "MovToArchive_DEP_HISTTRANDTLTABLE",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_DEP_HISTTRANDTLTABLE",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "MovToArchive_DEP_HISTTRANDTLTABLE",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true
+										}
+									},
+									{
+										"name": "HashLog_DEP_HISTTRANDTLTABLE",
+										"type": "ExecutePipeline",
+										"state": "Inactive",
+										"onInactiveMarkAs": "Succeeded",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_DEP_HISTTRANDTLTABLE",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "HashLog_DEP_HISTTRANDTLTABLE_EDS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true
+										}
+									},
+									{
+										"name": "DecToStg_DEP_HISTTRANDTLTABLE",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "Truncate Staging",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "DecToStg_DEP_HISTTRANDTLTABLE_EDS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"DateToProcess": {
+													"value": "@replace(substring(item(),0,10),'-','')",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "Onprem",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_STG_EDS_DEP_HISTTRANDTLTABLE",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "OnPremToADLS_EDS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"DatetoProcessed": {
+													"value": "@replace(substring(item(),0,10),'-','')",
+													"type": "Expression"
+												},
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												},
+												"src_sys": {
+													"value": "@pipeline().parameters.src_sys",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "PGP Decrypt",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "Onprem",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "PGPDecrypt_EDS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												},
+												"src_sys": {
+													"value": "@pipeline().parameters.src_sys",
+													"type": "Expression"
+												}
+											}
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "Get Success Count EDS",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "OM_SRC_CHECK_DEP_HISTTRANDTLTABLE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_EDS_',pipeline().parameters.tables,''',''EDS'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count BUSC",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count EDS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count EDS').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "START_TASK_EDS_DEP_HISTTRANDTLTABLE",
+										"type": "SqlPoolStoredProcedure",
+										"state": "Inactive",
+										"onInactiveMarkAs": "Succeeded",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_DEP_HISTTRANDTLTABLE_SUCCESS",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "DEP_HISTTRANDTLTABLE",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_DEP_HISTTRANDTLTABLE_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "DEP_HISTTRANDTLTABLE",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "DEP_HISTTRANDTLTABLE",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_EDS_DEP_HISTTRANDTLTABLE",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 3,
+											"retryIntervalInSeconds": 300,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testSQLpool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"parameters": [
+														{
+															"name": "DatetoProcessed",
+															"type": "Datetime",
+															"value": {
+																"value": "@item()",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														}
+													],
+													"type": "Query",
+													"text": "DELETE FROM EDS.DEP_HISTTRANDTLTABLE WHERE TRAN_DATE = CAST(@DatetoProcessed AS DATE);\r\n\r\nINSERT INTO EDS.DEP_HISTTRANDTLTABLE\r\n(\r\n\t\t\t\t [TRAN_DATE]\r\n\t\t\t\t,[TRAN_DATETIME]\r\n\t\t\t\t,[TRAN_ID]\r\n\t\t\t\t,[PART_TRAN_SRL_NUM]\r\n\t\t\t\t,[DEL_FLG]\r\n\t\t\t\t,[TRAN_TYPE]\r\n\t\t\t\t,[TRAN_SUB_TYPE]\r\n\t\t\t\t,[PART_TRAN_TYPE]\r\n\t\t\t\t,[GL_SUB_HEAD_CODE]\r\n\t\t\t\t,[ACID]\r\n\t\t\t\t,[VALUE_DATE]\r\n\t\t\t\t,[TRAN_AMT]\r\n\t\t\t\t,[TRAN_PARTICULAR]\r\n\t\t\t\t,[ENTRY_USER_ID]\r\n\t\t\t\t,[PSTD_USER_ID]\r\n\t\t\t\t,[VFD_USER_ID]\r\n\t\t\t\t,[ENTRY_DATE]\r\n\t\t\t\t,[PSTD_DATE]\r\n\t\t\t\t,[VFD_DATE]\r\n\t\t\t\t,[RPT_CODE]\r\n\t\t\t\t,[REF_NUM]\r\n\t\t\t\t,[INSTRMNT_TYPE]\r\n\t\t\t\t,[INSTRMNT_DATE]\r\n\t\t\t\t,[INSTRMNT_NUM]\r\n\t\t\t\t,[INSTRMNT_ALPHA]\r\n\t\t\t\t,[TRAN_RMKS]\r\n\t\t\t\t,[PSTD_FLG]\r\n\t\t\t\t,[PRNT_ADVC_IND]\r\n\t\t\t\t,[AMT_RESERVATION_IND]\r\n\t\t\t\t,[RESERVATION_AMT]\r\n\t\t\t\t,[RESTRICT_MODIFY_IND]\r\n\t\t\t\t,[LCHG_USER_ID]\r\n\t\t\t\t,[LCHG_TIME]\r\n\t\t\t\t,[RCRE_USER_ID]\r\n\t\t\t\t,[RCRE_TIME]\r\n\t\t\t\t,[CUST_ID]\r\n\t\t\t\t,[VOUCHER_PRINT_FLG]\r\n\t\t\t\t,[MODULE_ID]\r\n\t\t\t\t,[BR_CODE]\r\n\t\t\t\t,[FX_TRAN_AMT]\r\n\t\t\t\t,[RATE_CODE]\r\n\t\t\t\t,[RATE]\r\n\t\t\t\t,[CRNCY_CODE]\r\n\t\t\t\t,[NAVIGATION_FLG]\r\n\t\t\t\t,[TRAN_CRNCY_CODE]\r\n\t\t\t\t,[REF_CRNCY_CODE]\r\n\t\t\t\t,[REF_AMT]\r\n\t\t\t\t,[SOL_ID]\r\n\t\t\t\t,[BANK_CODE]\r\n\t\t\t\t,[TREA_REF_NUM]\r\n\t\t\t\t,[TREA_RATE]\r\n\t\t\t\t,[TS_CNT]\r\n\t\t\t\t,[GST_UPD_FLG]\r\n\t\t\t\t,[ISO_FLG]\r\n\t\t\t\t,[EABFAB_UPD_FLG]\r\n\t\t\t\t,[LIFT_LIEN_FLG]\r\n\t\t\t\t,[PROXY_POST_IND]\r\n\t\t\t\t,[SI_SRL_NUM]\r\n\t\t\t\t,[SI_ORG_EXEC_DATE]\r\n\t\t\t\t,[PR_SRL_NUM]\r\n\t\t\t\t,[SERIAL_NUM]\r\n\t\t\t\t,[DEL_MEMO_PAD]\r\n\t\t\t\t,[UAD_MODULE_ID]\r\n\t\t\t\t,[UAD_MODULE_KEY]\r\n\t\t\t\t,[REVERSAL_DATE]\r\n\t\t\t\t,[REVERSAL_VALUE_DATE]\r\n\t\t\t\t,[PTTM_EVENT_TYPE]\r\n\t\t\t\t,[PROXY_ACID]\r\n\t\t\t\t,[TOD_ENTITY_TYPE]\r\n\t\t\t\t,[TOD_ENTITY_ID]\r\n\t\t\t\t,[DTH_INIT_SOL_ID]\r\n\t\t\t\t,[REGULARIZATION_AMT]\r\n\t\t\t\t,[PRINCIPAL_PORTION_AMT]\r\n\t\t\t\t,[TF_ENTITY_SOL_ID]\r\n\t\t\t\t,[TRAN_PARTICULAR_2]\r\n\t\t\t\t,[TRAN_PARTICULAR_CODE]\r\n\t\t\t\t,[TR_STATUS]\r\n\t\t\t\t,[SVS_TRAN_ID]\r\n\t\t\t\t,[CRNCY_HOL_CHK_DONE_FLG]\r\n\t\t\t\t,[REFERRAL_ID]\r\n\t\t\t\t,[PARTY_CODE]\r\n\t\t\t\t,[GL_DATE]\r\n\t\t\t\t,[BKDT_TRAN_FLG]\r\n\t\t\t\t,[BANK_ID]\r\n\t\t\t\t,[IMPL_CASH_PART_TRAN_FLG]\r\n\t\t\t\t,[PTRAN_CHRG_EXISTS_FLG]\r\n\t\t\t\t,[MUD_POOL_BAL_BUILD_FLG]\r\n\t\t\t\t,[USED_CLEAN_SINGLE_TRAN_LIM]\r\n\t\t\t\t,[USED_SINGLE_TRAN_LIM]\r\n\t\t\t\t,[USED_UN_CLR_OVER_DACC_AMT]\r\n\t\t\t\t,[USED_CLEAN_EMER_ADVN]\r\n\t\t\t\t,[USED_EMER_ADVN]\r\n\t\t\t\t,[GL_SEGMENT_STRING]\r\n\t\t\t\t,[COMB_TRAN_ID]\r\n\t\t\t\t,[SYS_PART_TRAN_CODE]\r\n\t\t\t\t,[USER_PART_TRAN_CODE]\r\n\t\t\t\t,[TRAN_FREE_CODE1]\r\n\t\t\t\t,[TRAN_FREE_CODE2]\r\n\t\t\t\t,[RESP_ACCT_REF_NO]\r\n\t\t\t\t,[PURPOSE_CODE]\r\n\t\t\t\t,BNK_CODE\r\n\t\t\t\t,SOURCE_CODE\r\n\t\t\t\t,FILE_NAME\r\n\t\t\t\t,insert_dttm\r\n\t\t\t\t,BUSINESSDATE\r\n)\r\n\r\n\r\nSELECT \r\n\t\t\t\t CAST(TRAN_DATE AS DATE) AS TRAN_DATE\r\n\t\t\t\t,TRAN_DATE AS TRAN_DATETIME\r\n\t\t\t\t,TRAN_ID\r\n\t\t\t\t,PART_TRAN_SRL_NUM\r\n\t\t\t\t,DEL_FLG\r\n\t\t\t\t,TRAN_TYPE\r\n\t\t\t\t,TRAN_SUB_TYPE\r\n\t\t\t\t,PART_TRAN_TYPE\r\n\t\t\t\t,GL_SUB_HEAD_CODE\r\n\t\t\t\t,ACID\r\n\t\t\t\t,VALUE_DATE\r\n\t\t\t\t,isnull(TRAN_AMT,0) AS TRAN_AMT\r\n\t\t\t\t,TRAN_PARTICULAR\r\n\t\t\t\t,ENTRY_USER_ID\r\n\t\t\t\t,PSTD_USER_ID\r\n\t\t\t\t,VFD_USER_ID\r\n\t\t\t\t,ENTRY_DATE\r\n\t\t\t\t,PSTD_DATE\r\n\t\t\t\t,VFD_DATE\r\n\t\t\t\t,RPT_CODE\r\n\t\t\t\t,REF_NUM\r\n\t\t\t\t,INSTRMNT_TYPE\r\n\t\t\t\t,INSTRMNT_DATE\r\n\t\t\t\t,INSTRMNT_NUM\r\n\t\t\t\t,INSTRMNT_ALPHA\r\n\t\t\t\t,TRAN_RMKS\r\n\t\t\t\t,PSTD_FLG\r\n\t\t\t\t,PRNT_ADVC_IND\r\n\t\t\t\t,AMT_RESERVATION_IND\r\n\t\t\t\t,isnull(RESERVATION_AMT,0) AS RESERVATION_AMT\r\n\t\t\t\t,RESTRICT_MODIFY_IND\r\n\t\t\t\t,LCHG_USER_ID\r\n\t\t\t\t,LCHG_TIME\r\n\t\t\t\t,RCRE_USER_ID\r\n\t\t\t\t,RCRE_TIME\r\n\t\t\t\t,CUST_ID\r\n\t\t\t\t,VOUCHER_PRINT_FLG\r\n\t\t\t\t,MODULE_ID\r\n\t\t\t\t,BR_CODE\r\n\t\t\t\t,isnull(FX_TRAN_AMT,0) AS FX_TRAN_AMT\r\n\t\t\t\t,RATE_CODE\r\n\t\t\t\t,isnull(RATE,0) AS RATE\r\n\t\t\t\t,CRNCY_CODE\r\n\t\t\t\t,NAVIGATION_FLG\r\n\t\t\t\t,TRAN_CRNCY_CODE\r\n\t\t\t\t,REF_CRNCY_CODE\r\n\t\t\t\t,isnull(REF_AMT,0) AS REF_AMT\r\n\t\t\t\t,SOL_ID\r\n\t\t\t\t,BANK_CODE\r\n\t\t\t\t,TREA_REF_NUM\r\n\t\t\t\t,isnull(TREA_RATE,0) AS TREA_RATE\r\n\t\t\t\t,TS_CNT\r\n\t\t\t\t,GST_UPD_FLG\r\n\t\t\t\t,ISO_FLG\r\n\t\t\t\t,EABFAB_UPD_FLG\r\n\t\t\t\t,LIFT_LIEN_FLG\r\n\t\t\t\t,PROXY_POST_IND\r\n\t\t\t\t,SI_SRL_NUM\r\n\t\t\t\t,SI_ORG_EXEC_DATE\r\n\t\t\t\t,PR_SRL_NUM\r\n\t\t\t\t,SERIAL_NUM\r\n\t\t\t\t,DEL_MEMO_PAD\r\n\t\t\t\t,UAD_MODULE_ID\r\n\t\t\t\t,UAD_MODULE_KEY\r\n\t\t\t\t,REVERSAL_DATE\r\n\t\t\t\t,REVERSAL_VALUE_DATE\r\n\t\t\t\t,PTTM_EVENT_TYPE\r\n\t\t\t\t,PROXY_ACID\r\n\t\t\t\t,TOD_ENTITY_TYPE\r\n\t\t\t\t,TOD_ENTITY_ID\r\n\t\t\t\t,DTH_INIT_SOL_ID\r\n\t\t\t\t,isnull(REGULARIZATION_AMT,0) AS REGULARIZATION_AMT\r\n\t\t\t\t,isnull(PRINCIPAL_PORTION_AMT,0) AS PRINCIPAL_PORTION_AMT\r\n\t\t\t\t,TF_ENTITY_SOL_ID\r\n\t\t\t\t,TRAN_PARTICULAR_2\r\n\t\t\t\t,TRAN_PARTICULAR_CODE\r\n\t\t\t\t,TR_STATUS\r\n\t\t\t\t,SVS_TRAN_ID\r\n\t\t\t\t,CRNCY_HOL_CHK_DONE_FLG\r\n\t\t\t\t,REFERRAL_ID\r\n\t\t\t\t,PARTY_CODE\r\n\t\t\t\t,GL_DATE\r\n\t\t\t\t,BKDT_TRAN_FLG\r\n\t\t\t\t,BANK_ID\r\n\t\t\t\t,IMPL_CASH_PART_TRAN_FLG\r\n\t\t\t\t,PTRAN_CHRG_EXISTS_FLG\r\n\t\t\t\t,MUD_POOL_BAL_BUILD_FLG\r\n\t\t\t\t,isnull(USED_CLEAN_SINGLE_TRAN_LIM,0) AS USED_CLEAN_SINGLE_TRAN_LIM\r\n\t\t\t\t,isnull(USED_SINGLE_TRAN_LIM,0) AS USED_SINGLE_TRAN_LIM\r\n\t\t\t\t,isnull(USED_UN_CLR_OVER_DACC_AMT,0) AS USED_UN_CLR_OVER_DACC_AMT\r\n\t\t\t\t,isnull(USED_CLEAN_EMER_ADVN,0) AS USED_CLEAN_EMER_ADVN\r\n\t\t\t\t,isnull(USED_EMER_ADVN,0) AS USED_EMER_ADVN\r\n\t\t\t\t,GL_SEGMENT_STRING\r\n\t\t\t\t,COMB_TRAN_ID\r\n\t\t\t\t,SYS_PART_TRAN_CODE\r\n\t\t\t\t,USER_PART_TRAN_CODE\r\n\t\t\t\t,TRAN_FREE_CODE1\r\n\t\t\t\t,TRAN_FREE_CODE2\r\n\t\t\t\t,RESP_ACCT_REF_NO\r\n\t\t\t\t,PURPOSE_CODE\r\n\t\t\t\t,LEFT(FILE_NAME, 5) AS BNK_CODE\r\n\t\t\t\t,SUBSTRING(FILE_NAME,7,3) AS SOURCE_CODE\r\n\t\t\t\t,FILE_NAME\r\n\t\t\t\t,INSERT_DTTM\r\n\t\t\t\t,CONVERT(INT, LEFT(RIGHT(FILE_NAME,12),8)) AS BUSINESSDATE\r\nFROM D360.STG_EDS_DEP_HISTTRANDTLTABLE\r\nWHERE H = 'D'\r\n"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"tables": {
+				"type": "string",
+				"defaultValue": "DEP_HISTTRANDTLTABLE"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "DEP"
+			}
+		},
+		"variables": {
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"CheckFEstatus": {
+				"type": "String",
+				"defaultValue": "True"
+			},
+			"Source": {
+				"type": "String",
+				"defaultValue": "DEP"
+			},
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-11-28T13:44:32Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

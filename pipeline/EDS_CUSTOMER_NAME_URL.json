@@ -1,0 +1,55 @@
+{
+	"name": "EDS_CUSTOMER_NAME_URL",
+	"properties": {
+		"activities": [
+			{
+				"name": "EDS_CUSTOMER_NAME_URL",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "Datetoprocess",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.Datetoprocess",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "NonQuery",
+							"text": "TRUNCATE TABLE EDS.CUSTOMER_NAME_URL;\r\n\r\nWITH TEMP_SRC AS (\r\nSELECT BANK_ID, CUST_ID, SOL_ID, SOL_DESC, ORGKEY, NAME, Customer_Type, isActive, isLatest, BNK_CODE, SOURCE_CODE, FILE_NAME,\r\nROW_NUMBER () OVER (PARTITION BY ORGKEY, NAME, SOL_ID, SOL_DESC, CUSTOMER_TYPE ORDER BY CUST_ID) RNK\r\nFROM (\r\nSELECT GAM_BANK_ID BANK_ID, AAS_CUST_ID CUST_ID, DF_SOL_ID SOL_ID, BRANCH_NAME SOL_DESC, ORGKEY ORGKEY, CUSTOMER_NAME NAME, Customer_Type, CUST_isActive isActive, CUST_isLatest isLatest, CUST_BNK_CODE BNK_CODE, CUST_SOURCE_CODE SOURCE_CODE, CUST_FILE_NAME FILE_NAME\r\nFROM EDS.DEPOSITS_ACCOUNT_HOLDER DEP \r\nWHERE GAM_BANK_ID = 'CBC01' \r\nUNION ALL\r\nSELECT GAM_BANK_ID BANK_ID, AAS_CUST_ID CUST_ID, SOL_ID SOL_ID, BRANCH_NAME SOL_DESC, ORGKEY ORGKEY, CUSTOMER_NAME NAME, Customer_Type, CUST_isActive isActive, CUST_isLatest isLatest, CUST_BNK_CODE BNK_CODE, CUST_SOURCE_CODE SOURCE_CODE, CUST_FILE_NAME FILE_NAME\r\nFROM EDS.LOANS_ACCOUNT_HOLDER LNS\r\nWHERE GAM_BANK_ID = 'CBC01' \r\n) A\r\n)\r\n\r\nINSERT INTO EDS.CUSTOMER_NAME_URL\r\n(CustomerID,\r\nCustomerName,\r\nCustomerNameID,\r\nCustomerType,\r\nBranch,\r\nURL,\r\nisActive,\r\nisLatest,\r\nBNK_CODE,\r\nSOURCE_CODE,\r\nFILE_NAME,\r\ninsert_dttm)   \r\nSELECT ORGKEY AS CustomerID\r\n               , Name AS CustomerName\r\n               , CONCAT(Name, ' - ', ORGKEY) AS CustomerNameID\r\n               , COALESCE(Customer_Type , 'NA') AS Customer_Type\r\n               , CONCAT(SOL_ID, ' - ', SOL_DESC) AS Branch\r\n               , CONCAT ('https://app.powerbi.com/groups/172214a5-2625-4222-bf18-328238309387/reports/5bbee878-4207-4d06-b51d-f84f77c078ab/ReportSectionb3bac1535211098d00e1?filter=Customer/CustomerID eq ''', ORGKEY, '''') URL\r\n               , isActive\r\n               , isLatest\r\n               , BNK_CODE\r\n               , SOURCE_CODE\r\n               , FILE_NAME\r\n               , SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' insert_dttm\r\nFROM TEMP_SRC\r\nWHERE RNK = 1\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"parameters": {
+			"Datetoprocess": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-07-30T09:01:44Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

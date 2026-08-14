@@ -1,0 +1,579 @@
+{
+	"name": "Workflow_EDS_DIGITAL_FIN_TXN_FACT_No_Manifest",
+	"properties": {
+		"activities": [
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(variables('V_endDate')),ticks(variables('V_startDate'))),864000000000),1))\n",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append Process Date",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Iterate Execution of Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "OM_SRC_CHECK_DIGITAL_FIN_TXN_FACT",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_EDS_DIGITAL_FIN_TXN_FACT",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@replace(substring(item(),0,10),'-','')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Get Success Count EDS",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "OM_SRC_CHECK_DIGITAL_FIN_TXN_FACT",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_EDS_DIGITAL_FIN_TXN_FACT'',''EDS'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count EDS",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count EDS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count EDS').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "START_TASK_EDS_DIGITAL_FIN_TXN_FACT",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_DIGITAL_FIN_TXN_FACT",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_DIGITAL_FIN_TXN_FACT_SUCCESSFUL",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_DIGITAL_FIN_TXN_FACT",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_DIGITAL_FIN_TXN_FACT",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_DIGITAL_FIN_TXN_FACT_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_DIGITAL_FIN_TXN_FACT",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_DIGITAL_FIN_TXN_FACT",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "EDS_DIGITAL_FIN_TXN_FACT",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_EDS_DIGITAL_FIN_TXN_FACT",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testsqlpool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"parameters": [
+														{
+															"name": "process_date",
+															"type": "Datetime",
+															"value": {
+																"value": "@substring(item(),0,10)",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														}
+													],
+													"type": "NonQuery",
+													"text": "--DELETE FROM EDS.DIGITAL_FIN_TXN_FACT WHERE TXN_DATE = CAST(@process_date AS DATE);\r\n\r\nWITH DIGITAL_FIN_TXN_FACT_MBK\r\nAS\r\n(\r\n\r\n\tSELECT \r\n\t\tBANK_ID\r\n\t\t,TXN_DATE\r\n\t\t,CIF_ID\r\n\t\t,BILLER_ID\r\n\t\t,TXN_COUNT\r\n\t\t,TXN_STATUS\r\n\t\t,CRNCY_CODE\r\n\t\t,TXN_AMT_ORIG\r\n\t\t,TXN_AMT_PHP\r\n\t\t,TXN_TYPE\r\n\t\t,RECEIVING_BANK\r\n\t\t,GROSS_TXN_FEE\r\n\t\t,NET_TXN_FEE\r\n\t\t,SUM(TXN_COUNT * GROSS_TXN_FEE) AS GROSS_FEE_INCOME\r\n\t\t,SUM(TXN_COUNT * NET_TXN_FEE) AS NET_FEE_INCOME\r\n\t\t,SOURCE_CODE\r\n\t\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS INSERT_DTTM\r\n\tFROM \r\n\t(\r\n\t\tSELECT \r\n\t\t\tCTRAN.BNK_CODE AS BANK_ID,\r\n\t\t\t--DTE.CURRENT_MONTH_END AS TXN_DATE, \r\n\t\t\tEOMONTH(CAST(CTRAN.TXN_DATE AS DATE))  AS TXN_DATE, \r\n\t\t\tCTRAN.CIF_NO AS CIF_ID, \r\n\t\t\tCTRAN.BILLER_ID, \r\n\t\t\tCOUNT(CTRAN.TXN_ID) AS TXN_COUNT, \r\n\t\t\tCTRAN.[STATUS] AS TXN_STATUS,\r\n\t\t\tCTRAN.FROM_ACCT_CCY AS CRNCY_CODE,\t\r\n\t\t\tSUM(CTRAN.TXN_AMT) AS TXN_AMT_ORIG, \r\n\t\t\tSUM(CTRAN.TXN_AMT_PHP) TXN_AMT_PHP,\r\n\t\t\tCTRAN.TXN_TYPE, \r\n\t\t\tCTRAN.TO_BANK_NAME AS RECEIVING_BANK, \r\n\t\t\tCOALESCE(DBD2.GROSS_TXN_FEE,DBD1.GROSS_TXN_FEE,DBD2.D_FEE,DBD1.D_FEE) AS GROSS_TXN_FEE,\r\n\t\t\tCOALESCE(DBD2.NET_TXN_FEE,DBD1.NET_TXN_FEE,DBD2.D_FEE,DBD1.D_FEE) AS NET_TXN_FEE,\r\n\t\t\tCTRAN.SOURCE_CODE AS SOURCE_CODE\r\n\t\tFROM (\r\n\t\t\t\t\t\tSELECT \r\n\t\t\t\t\t\t\tCUST.CIF_NO, \r\n\t\t\t\t\t\t\tMBKTRAN.BNK_CODE, \r\n\t\t\t\t\t\t\tMBKTRAN.SOURCE_CODE, \r\n\t\t\t\t\t\t\tMBKTRAN.TXN_DATE, \r\n\t\t\t\t\t\t\tMBKTRAN.TXN_ID, \r\n\t\t\t\t\t\t\tMBKTRAN.TXN_TYPE, \r\n\t\t\t\t\t\t\tMBKTRAN.[STATUS], \r\n\t\t\t\t\t\t\tMBKTRAN.BILLER_ID, \r\n\t\t\t\t\t\t\tMBKTRAN.TO_BANK_NAME, \r\n\t\t\t\t\t\t\tMBKTRAN.TXN_AMT, \r\n\t\t\t\t\t\t\tMBKTRAN.TXN_AMT_PHP,\r\n\t\t\t\t\t\t\tMBKTRAN.FROM_ACCT_CCY\r\n\t\t\t\t\t\tFROM \r\n\t\t\t\t\t\t\t(  \r\n\t\t\t\t\t\t\t\t\tSELECT \r\n\t\t\t\t\t\t\t\t\t\tDISTINCT\r\n\t\t\t\t\t\t\t\t\t\tCIF_NO,\r\n\t\t\t\t\t\t\t\t\t\tCUST_ID\r\n\t\t\t\t\t\t\t\t\tFROM \r\n\t\t\t\t\t\t\t\t\t\tEDS.MBK_RTBKCUSTOMERMTB \r\n\t\t\t\t\t\t\t\t\tWHERE \r\n\t\t\t\t\t\t\t\t\t\tBNK_CODE = 'CBC01'\r\n\t\t\t\t\t\t\t) CUST\r\n\t\t\t\t\t\t\tINNER JOIN\t\r\n\t\t\t\t\t\t\t(\r\n\t\t\t\t\t\t\t\t\tSELECT \r\n\t\t\t\t\t\t\t\t\tBNK_CODE,\r\n\t\t\t\t\t\t\t\t\tSOURCE_CODE,\r\n\t\t\t\t\t\t\t\t\tTXN_DATE, \r\n\t\t\t\t\t\t\t\t\tTXN_ID, \r\n\t\t\t\t\t\t\t\t\tTXN_TYPE, \r\n\t\t\t\t\t\t\t\t\t[STATUS], \r\n\t\t\t\t\t\t\t\t\tCUST_ID, \r\n\t\t\t\t\t\t\t\t\tTXN_FIELD1 BILLER_ID, \r\n\t\t\t\t\t\t\t\t\tFROM_ACCT_CCY, \r\n\t\t\t\t\t\t\t\t\tTO_BANK_NAME, \r\n\t\t\t\t\t\t\t\t\tTXN_AMT, \r\n\t\t\t\t\t\t\t\t\tCASE WHEN FROM_ACCT_CCY <> 'PHP' THEN TXN_AMT *  ConversionRate ELSE TXN_AMT END  TXN_AMT_PHP\r\n\t\t\t\t\t\t\t\t\tFROM \r\n\t\t\t\t\t\t\t\t\t\tEDS.MBK_RTBKTRANSACTIONMTB A\r\n\t\t\t\t\t\t\t\t\tLEFT JOIN \r\n\t\t\t\t\t\t\t\t\t\t(    \r\n\t\t\t\t\t\t\t\t\t\t\tSELECT \r\n\t\t\t\t\t\t\t\t\t\t\t\tCONVERT(varchar(12), CurrencyConversionTimestamp, 112) CurrencyConversionTimestamp, ConvertFromCurrencyId, \r\n\t\t\t\t\t\t\t\t\t\t\t\tConversionRate \r\n\t\t\t\t\t\t\t\t\t\t\tFROM \r\n\t\t\t\t\t\t\t\t\t\t\t\tBNKM.CurrencyConversion\r\n\t\t\t\t\t\t\t\t\t\t\tWHERE \r\n\t\t\t\t\t\t\t\t\t\t\t\tConvertToCurrencyId = 'PHP' AND \r\n\t\t\t\t\t\t\t\t\t\t\t\tRateId = 'REV' AND \r\n\t\t\t\t\t\t\t\t\t\t\t\tFinancialInstitutionId = 'CBC01'\r\n\t\t\t\t\t\t\t\t\t\t) RATE \r\n\t\t\t\t\t\t\t\t\t\tON RATE.CurrencyConversionTimestamp = CONVERT(varchar(8), A.TXN_DATE, 112) \r\n\t\t\t\t\t\t\t\t\t\tAND Rate.ConvertFromCurrencyId = A.FROM_ACCT_CCY\r\n\r\n\t\t\t\t\t\t\t\t\tWHERE \r\n\t\t\t\t\t\t\t\t\t\tBNK_CODE = 'CBC01' \r\n\t\t\t\t\t\t\t) MBKTRAN \r\n\t\t\t\t\t\t\tON CUST.CUST_ID = MBKTRAN.CUST_ID \r\n\t\t\t) CTRAN\r\n\t\tINNER JOIN eds.DATE_DIM DTE \r\n\t\t\tON DTE.FULLDATE = CAST(CTRAN.TXN_DATE AS DATE)\r\n\t\tLEFT JOIN (SELECT \r\n\t\t\t\t\tCASE \r\n\t\t\t\t\tWHEN PROPRIETARY_TAG IS NOT NULL THEN EBK_BP \r\n\t\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NOT NULL THEN P2B_BP\r\n\t\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NULL THEN DEFAULT_FEE_BP\r\n\t\t\t\t\tEND D_FEE\r\n\t\t\t\t\t,\r\n\t\t\t\t\t*\r\n\t\t\t\t\tFROM EDS.DIGITAL_BILLERS_DIM \r\n\t\t\t\t) DBD1\r\n\t\t\tON CTRAN.TXN_TYPE = DBD1.TXN_TYPE\r\n\t\t\tAND CTRAN.TXN_TYPE NOT IN ('BP', 'BPQ')\r\n\t\tLEFT JOIN (SELECT \r\n\t\t\t\t\tCASE \r\n\t\t\t\t\tWHEN PROPRIETARY_TAG IS NOT NULL THEN EBK_BP \r\n\t\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NOT NULL THEN P2B_BP\r\n\t\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NULL THEN DEFAULT_FEE_BP\r\n\t\t\t\t\tEND D_FEE\r\n\t\t\t\t\t,\r\n\t\t\t\t\t*\r\n\t\t\t\t\tFROM EDS.DIGITAL_BILLERS_DIM \r\n\t\t\t\t) DBD2\r\n\t\t\tON DBD2.BILLER_ID = CTRAN.BILLER_ID\r\n\t\t\tAND COALESCE(CTRAN.BILLER_ID,'') <> ''\r\n\t\t\tAND CTRAN.TXN_TYPE IN ('BP', 'BPQ')\t\r\n\t\tGROUP BY \r\n\t\t\tCTRAN.BNK_CODE,\r\n\t\t\t--DTE.CURRENT_MONTH_END AS TXN_DATE, \r\n\t\t\tEOMONTH(CAST(CTRAN.TXN_DATE AS DATE)), \r\n\t\t\tCTRAN.CIF_NO, \r\n\t\t\tCTRAN.BILLER_ID, \r\n\t\t\tCTRAN.[STATUS],\r\n\t\t\tCTRAN.FROM_ACCT_CCY,\t\r\n\t\t\tCTRAN.TXN_TYPE, \r\n\t\t\tCTRAN.TO_BANK_NAME, \r\n\t\t\tCOALESCE(DBD2.GROSS_TXN_FEE,DBD1.GROSS_TXN_FEE,DBD2.D_FEE,DBD1.D_FEE),\r\n\t\t\tCOALESCE(DBD2.NET_TXN_FEE,DBD1.NET_TXN_FEE,DBD2.D_FEE,DBD1.D_FEE),\r\n\t\t\tCTRAN.SOURCE_CODE\r\n\t\t\t\r\n\t) TMP_MBK_AGG_TXN\r\n\tGROUP BY\r\n\t\tBANK_ID\r\n\t\t,TXN_DATE\r\n\t\t,CIF_ID\r\n\t\t,BILLER_ID\r\n\t\t,TXN_COUNT\r\n\t\t,TXN_STATUS\r\n\t\t,CRNCY_CODE\r\n\t\t,TXN_AMT_ORIG\r\n\t\t,TXN_AMT_PHP\r\n\t\t,TXN_TYPE\r\n\t\t,RECEIVING_BANK\r\n\t\t,GROSS_TXN_FEE\r\n\t\t,NET_TXN_FEE\r\n\t\t,SOURCE_CODE\r\n\r\n)\r\n\r\n,DIGITAL_FIN_TXN_FACT_RIB\r\nAS\r\n(\r\n    SELECT \r\n        BANK_ID\r\n        ,TXN_DATE\r\n        ,CIF_ID\r\n        ,BILLER_ID\r\n        ,TXN_COUNT\r\n        ,TXN_STATUS\r\n        ,CRNCY_CODE\r\n        ,TXN_AMT_ORIG\r\n        ,TXN_AMT_PHP\r\n        ,TXN_TYPE\r\n        ,RECEIVING_BANK\r\n        ,GROSS_TXN_FEE\r\n        ,NET_TXN_FEE\r\n        ,(TXN_COUNT * GROSS_TXN_FEE) AS GROSS_FEE_INCOME\r\n        ,(TXN_COUNT * NET_TXN_FEE) AS NET_FEE_INCOME\r\n        ,SOURCE_CODE\r\n        ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS INSERT_DTTM\r\n    FROM \r\n    ( \r\n        SELECT  \r\n            A.BANK_ID AS BANK_ID,\r\n            --DTE.CURRENT_MONTH_END AS TXN_DATE,\r\n            EOMONTH(CAST(A.TXN_DATE AS DATE))  AS TXN_DATE, \t\t\r\n            B.CUST_ID AS CIF_ID,\r\n            COALESCE(DBD2.BILLER_ID,DBD3.BILLER_ID,DBD1.BILLER_ID) AS BILLER_ID,\r\n            COUNT(A.TXN_ID) AS TXN_COUNT,\r\n            BB.TXN_ENTRY_STATUS AS TXN_STATUS,\r\n            A.TXN_CRN AS CRNCY_CODE,\r\n            SUM(A.TOTAL_TXN_AMT) AS TXN_AMT_ORIG,\r\n            SUM(A.TOTAL_TXN_AMT_IN_HOMECRN) AS TXN_AMT_PHP,\r\n            A.TXN_TYPE AS TXN_TYPE,\r\n            NULL AS RECEIVING_BANK,\r\n            COALESCE(DBD2.GROSS_TXN_FEE,DBD3.GROSS_TXN_FEE,DBD1.GROSS_TXN_FEE,DBD2.D_FEE,DBD3.D_FEE,DBD1.D_FEE) AS GROSS_TXN_FEE,\r\n            COALESCE(DBD2.NET_TXN_FEE,DBD3.NET_TXN_FEE,DBD1.NET_TXN_FEE,DBD2.D_FEE,DBD3.D_FEE,DBD1.D_FEE) AS NET_TXN_FEE,\r\n            A.SOURCE_CODE AS SOURCE_CODE\r\n        FROM \r\n            EDS.RIB_TRANSACTIONHEADER A \r\n        INNER JOIN eds.DATE_DIM DTE \r\n                ON DTE.FULLDATE = CAST(A.TXN_DATE AS DATE)\r\n        INNER JOIN \r\n            (\r\n                SELECT \r\n                    ROW_NUMBER() over(PARTITION by TRIM(CORP_USER), BNK_CODE ORDER BY SCD_START_DATE) RN ,\r\n                    CUST_ID,\r\n                    TRIM(CORP_USER) CORP_USER,\r\n                    DEL_FLG,\r\n                    R_CRE_TIME,\r\n                    SCD_START_DATE,\r\n                    SCD_END_DATE,\r\n                    BNK_CODE \r\n                FROM \r\n                    EDS.RIB_CORPORATEUSER\r\n            ) B \r\n            ON B.BNK_CODE = A.BNK_CODE \r\n            AND A.CORP_USER = B.CORP_USER \r\n            AND CAST(A.TXN_DATE AS DATE) BETWEEN (CASE WHEN B.RN = 1 THEN B.R_CRE_TIME ELSE B.SCD_START_DATE END)  AND B.SCD_END_DATE\r\n        LEFT JOIN \r\n            (   \r\n                SELECT \r\n                    CONVERT(varchar(12), CurrencyConversionTimestamp, 112) CurrencyConversionTimestamp, \r\n                    ConvertFromCurrencyId, \r\n                    ConversionRate \r\n                FROM \r\n                    BNKM.CurrencyConversion\r\n                WHERE \r\n                    ConvertToCurrencyId = 'PHP' \r\n                    AND RateId = 'REV' \r\n                    AND FinancialInstitutionId = 'CBC01'\r\n            ) RATE \r\n            ON RATE.CurrencyConversionTimestamp = CONVERT(varchar(8), A.TXN_DATE, 112) \r\n            AND Rate.ConvertFromCurrencyId = A.TXN_CRN\r\n\r\n        LEFT JOIN eds.RIB_TRANSACTIONDETAILS BB \r\n            ON BB.TXN_ID = A.TXN_ID \r\n            AND BB.TXN_ENTRY_STATUS = (CASE WHEN A.TXN_STATUS = 'PRO' THEN 'PEN' ELSE A.TXN_STATUS END) \r\n            AND BB.BANK_ID = A.BANK_ID\r\n        LEFT JOIN eds.RIB_CUSTOMERPAYEE C \r\n            ON  CAST(C.PAYEE_LIST_ID as varchar(35)) = BB.CP_ENTITY_ID \r\n            AND C.BNK_CODE = BB.BNK_CODE\r\n        LEFT JOIN eds.RIB_PAYEEMASTER D \r\n            ON D.BNF_ID = C.BNF_ID \r\n            AND D.BNK_CODE = C.BNK_CODE  \r\n        LEFT JOIN (SELECT \r\n                    CASE \r\n                    WHEN PROPRIETARY_TAG IS NOT NULL THEN EBK_BP \r\n                    WHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NOT NULL THEN P2B_BP\r\n                    WHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NULL THEN DEFAULT_FEE_BP\r\n                    END D_FEE\r\n                    ,\r\n                    *\r\n                    FROM EDS.DIGITAL_BILLERS_DIM \r\n                ) DBD1\r\n            ON A.TXN_TYPE = DBD1.TXN_TYPE\r\n            AND A.TXN_TYPE NOT IN ('BPR', 'QPT')\r\n\r\n            \r\n        LEFT JOIN (SELECT \r\n                    CASE \r\n                    WHEN PROPRIETARY_TAG IS NOT NULL THEN EBK_BP \r\n                    WHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NOT NULL THEN P2B_BP\r\n                    WHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NULL THEN DEFAULT_FEE_BP\r\n                    END D_FEE\r\n                    ,\r\n                    *\r\n                    FROM EDS.DIGITAL_BILLERS_DIM \r\n                ) DBD2\r\n            ON  BB.CP_ENTITY_EXTN1 = DBD2.BILLER_NAME\r\n            AND A.TXN_TYPE IN ('BPR', 'QPT')\t\r\n            AND COALESCE(BB.CP_ENTITY_EXTN1,'') <> ''\r\n            \r\n            \r\n        LEFT JOIN (SELECT \r\n                    CASE \r\n                    WHEN PROPRIETARY_TAG IS NOT NULL THEN EBK_BP \r\n                    WHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NOT NULL THEN P2B_BP\r\n                    WHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NULL THEN DEFAULT_FEE_BP\r\n                    END D_FEE\r\n                    ,\r\n                    *\r\n                    FROM EDS.DIGITAL_BILLERS_DIM \r\n                ) DBD3\r\n            ON  D.BNF_NAME = DBD3.BILLER_NAME\r\n            AND A.TXN_TYPE IN ('BPR', 'QPT') \r\n            AND COALESCE(BB.CP_ENTITY_EXTN1,'') = ''\r\n            \r\n            \r\n            \r\n        WHERE \r\n            A.BNK_CODE = 'CBC01' \r\n            AND  LEFT(B.CUST_ID,1) = 'R' \r\n            AND A.DEL_FLG = 'N' \r\n            AND B.DEL_FLG = 'N'\r\n        GROUP BY \r\n            A.BANK_ID,\r\n            --DTE.CURRENT_MONTH_END, \r\n            EOMONTH(CAST(A.TXN_DATE AS DATE)),\r\n            B.CUST_ID,\r\n            COALESCE(DBD2.BILLER_ID,DBD3.BILLER_ID,DBD1.BILLER_ID),\r\n            BB.TXN_ENTRY_STATUS,\r\n            A.TXN_CRN,\r\n            A.TXN_TYPE,\r\n            COALESCE(DBD2.GROSS_TXN_FEE,DBD3.GROSS_TXN_FEE,DBD1.GROSS_TXN_FEE,DBD2.D_FEE,DBD3.D_FEE,DBD1.D_FEE),\r\n            COALESCE(DBD2.NET_TXN_FEE,DBD3.NET_TXN_FEE,DBD1.NET_TXN_FEE,DBD2.D_FEE,DBD3.D_FEE,DBD1.D_FEE),\r\n            A.SOURCE_CODE\r\n        \r\n    ) TMP_RIB_AGG_TXN\t\r\n)\r\n\r\n,DIGITAL_FIN_TXN_FACT_D30\r\nAS\r\n(\r\n\tSELECT \r\n\t\t BANK_ID\r\n\t\t,TXN_DATE\r\n\t\t,CIF_ID\r\n\t\t,BILLER_ID\r\n\t\t,TXN_COUNT\r\n\t\t,TXN_STATUS\r\n\t\t,CRNCY_CODE\r\n\t\t,TXN_AMT_ORIG\r\n\t\t,TXN_AMT_PHP\r\n\t\t,TXN_TYPE\r\n\t\t,RECEIVING_BANK\r\n\t\t,GROSS_TXN_FEE\r\n\t\t,NET_TXN_FEE\r\n\t\t,SUM(TXN_COUNT * GROSS_TXN_FEE) AS GROSS_FEE_INCOME\r\n\t\t,SUM(TXN_COUNT * NET_TXN_FEE) AS NET_FEE_INCOME\r\n\t\t,SOURCE_CODE,\r\n\t\tCAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS INSERT_DTTM\r\n\tFROM \r\n\t(\r\n\t\tSELECT \r\n\t\t\t'CBC01' AS BANK_ID,\r\n\t\t\tEOMONTH(CASE WHEN ISDATE(A.[Transaction Date])=1 THEN CAST(A.[Transaction Date] AS DATE) END)  AS TXN_DATE, \r\n\t\t\tB.CIF_ID AS CIF_ID, \r\n\t\t\tA.[Biller Mnemonic] AS BILLER_ID, \r\n\t\t\tCOUNT(*) AS TXN_COUNT, \r\n\t\t\tA.[Status] AS TXN_STATUS,\r\n\t\t\tA.[Transaction Currency] AS CRNCY_CODE,\t\r\n\t\t\tSUM(CAST(REPLACE(REPLACE(A.[TRANSACTION AMOUNT],',',''),'.','') AS NUMERIC(11,2))) AS TXN_AMT_ORIG, \r\n\t\t\tSUM(CAST(REPLACE(REPLACE(A.[TRANSACTION AMOUNT],',',''),'.','') AS NUMERIC(11,2))) AS TXN_AMT_PHP,\r\n\t\t\tA.[Transaction Type] AS TXN_TYPE, \r\n\t\t\tA.[Transferee Bank] AS RECEIVING_BANK, \r\n\t\t\tCOALESCE(DBD2.GROSS_TXN_FEE,DBD1.GROSS_TXN_FEE,DBD2.D_FEE,DBD1.D_FEE) AS GROSS_TXN_FEE,\r\n\t\t\tCOALESCE(DBD2.NET_TXN_FEE,DBD1.NET_TXN_FEE,DBD2.D_FEE,DBD1.D_FEE) AS NET_TXN_FEE,\r\n\t\t\t'D30' AS SOURCE_CODE\r\n\t\tFROM \r\n\t\t\teds.d30_TransactionReport A\r\n\t\tINNER JOIN \r\n\t\t\teds.d30_Customer B \r\n\t\t\tON B.USERNAME = A.UserName\r\n\t\tLEFT JOIN (SELECT \r\n\t\t\t\t\tCASE \r\n\t\t\t\t\tWHEN PROPRIETARY_TAG IS NOT NULL THEN EBK_BP \r\n\t\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NOT NULL THEN P2B_BP\r\n\t\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NULL THEN DEFAULT_FEE_BP\r\n\t\t\t\t\tEND D_FEE\r\n\t\t\t\t\t,\r\n\t\t\t\t\t*\r\n\t\t\t\t\tFROM EDS.DIGITAL_BILLERS_DIM \r\n\t\t\t\t  ) DBD1\r\n\t\t\tON A.[Transaction Type] = DBD1.TXN_TYPE \r\n\t\t\tAND A.[Transaction Type] NOT IN ('BillPay')\t\r\n\t\tLEFT JOIN (SELECT \r\n\t\t\t\t\tCASE \r\n\t\t\t\t\tWHEN PROPRIETARY_TAG IS NOT NULL THEN EBK_BP \r\n\t\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NOT NULL THEN P2B_BP\r\n\t\t\t\t\tWHEN PROPRIETARY_TAG IS NULL AND P2B_TAG IS NULL THEN DEFAULT_FEE_BP\r\n\t\t\t\t\tEND D_FEE\r\n\t\t\t\t\t,\r\n\t\t\t\t\t*\r\n\t\t\t\t\tFROM EDS.DIGITAL_BILLERS_DIM \r\n\t\t\t\t  ) DBD2\r\n\t\t\tON A.[Biller Mnemonic] = DBD2.BILLER_ID \r\n\t\t\tAND A.[Transaction Type] IN ('BillPay')\r\n\t\tWHERE \r\n\t\t\t[Transaction Category] = 'Financial'\r\n\t\t\tAND ISDATE(A.[Transaction Date])=1\r\n\t\tGROUP BY \r\n\t\t\tEOMONTH(CASE WHEN ISDATE(A.[Transaction Date])=1 THEN CAST(A.[Transaction Date] AS DATE) END) ,\r\n\t\t\tB.CIF_ID, \r\n\t\t\tA.[Biller Mnemonic], \r\n\t\t\tA.[Status],\r\n\t\t\tA.[Transaction Currency],\t\r\n\t\t\tA.[Transaction Type], \r\n\t\t\tA.[Transferee Bank],\r\n\t\t\tCOALESCE(DBD2.GROSS_TXN_FEE,DBD1.GROSS_TXN_FEE,DBD2.D_FEE,DBD1.D_FEE),\r\n\t\t\tCOALESCE(DBD2.NET_TXN_FEE,DBD1.NET_TXN_FEE,DBD2.D_FEE,DBD1.D_FEE)\r\n\t) TMP_D30_AGG_TXN\r\n\tGROUP BY\r\n\t\t BANK_ID\r\n\t\t,TXN_DATE\r\n\t\t,CIF_ID\r\n\t\t,BILLER_ID\r\n\t\t,TXN_COUNT\r\n\t\t,TXN_STATUS\r\n\t\t,CRNCY_CODE\r\n\t\t,TXN_AMT_ORIG\r\n\t\t,TXN_AMT_PHP\r\n\t\t,TXN_TYPE\r\n\t\t,RECEIVING_BANK\r\n\t\t,GROSS_TXN_FEE\r\n\t\t,NET_TXN_FEE\r\n\t\t,SOURCE_CODE\r\n)\r\n\r\nINSERT INTO EDS.DIGITAL_FIN_TXN_FACT\r\n(\r\n\t BANK_ID\r\n\t,TXN_DATE\r\n\t,CIF_ID\r\n\t,BILLER_ID\r\n\t,TXN_COUNT\r\n\t,TXN_STATUS\r\n\t,CRNCY_CODE\r\n\t,TXN_AMT_ORIG\r\n\t,TXN_AMT_PHP\r\n\t,TXN_TYPE\r\n\t,RECEIVING_BANK\r\n\t,GROSS_TXN_FEE\r\n\t,NET_TXN_FEE\r\n\t,GROSS_FEE_INCOME\r\n\t,NET_FEE_INCOME\r\n\t,SOURCE_CODE\r\n\t,INSERT_DTTM\r\n)\r\nSELECT \r\n\tCAST(BANK_ID AS varchar(8)) BANK_ID\r\n\t,CAST(TXN_DATE AS date) TXN_DATE\r\n\t,CAST(CIF_ID AS varchar(20)) CIF_ID\r\n\t,CAST(BILLER_ID AS varchar(120)) BILLER_ID\r\n\t,CAST(TXN_COUNT AS bigint) TXN_COUNT\r\n\t,CAST(TXN_STATUS AS varchar(40)) TXN_STATUS\r\n\t,CAST(CRNCY_CODE AS varchar(3)) CRNCY_CODE\r\n\t,CAST(TXN_AMT_ORIG AS numeric(15,5)) TXN_AMT_ORIG\r\n\t,CAST(TXN_AMT_PHP AS numeric(15,5)) TXN_AMT_PHP\r\n\t,CAST(TXN_TYPE AS varchar(120)) TXN_TYPE\r\n\t,CAST(RECEIVING_BANK AS varchar(100)) RECEIVING_BANK\r\n\t,CAST(GROSS_TXN_FEE AS numeric(5,2)) GROSS_TXN_FEE\r\n\t,CAST(NET_TXN_FEE AS numeric(5,2)) NET_TXN_FEE\r\n\t,CAST(GROSS_FEE_INCOME AS numeric(15,5)) GROSS_FEE_INCOME\r\n\t,CAST(NET_FEE_INCOME AS numeric(15,5)) NET_FEE_INCOME\r\n\t,CAST(SOURCE_CODE AS varchar(20)) SOURCE_CODE\r\n\t,CAST(INSERT_DTTM AS datetime) INSERT_DTTM\r\nFROM DIGITAL_FIN_TXN_FACT_MBK\r\n \r\nUNION ALL\r\n \r\nSELECT \r\n\tCAST(BANK_ID AS varchar(8)) BANK_ID\r\n\t,CAST(TXN_DATE AS date) TXN_DATE\r\n\t,CAST(CIF_ID AS varchar(20)) CIF_ID\r\n\t,CAST(BILLER_ID AS varchar(120)) BILLER_ID\r\n\t,CAST(TXN_COUNT AS bigint) TXN_COUNT\r\n\t,CAST(TXN_STATUS AS varchar(40)) TXN_STATUS\r\n\t,CAST(CRNCY_CODE AS varchar(3)) CRNCY_CODE\r\n\t,CAST(TXN_AMT_ORIG AS numeric(15,5)) TXN_AMT_ORIG\r\n\t,CAST(TXN_AMT_PHP AS numeric(15,5)) TXN_AMT_PHP\r\n\t,CAST(TXN_TYPE AS varchar(120)) TXN_TYPE\r\n\t,CAST(RECEIVING_BANK AS varchar(100)) RECEIVING_BANK\r\n\t,CAST(GROSS_TXN_FEE AS numeric(5,2)) GROSS_TXN_FEE\r\n\t,CAST(NET_TXN_FEE AS numeric(5,2)) NET_TXN_FEE\r\n\t,CAST(GROSS_FEE_INCOME AS numeric(15,5)) GROSS_FEE_INCOME\r\n\t,CAST(NET_FEE_INCOME AS numeric(15,5)) NET_FEE_INCOME\r\n\t,CAST(SOURCE_CODE AS varchar(20)) SOURCE_CODE\r\n\t,CAST(INSERT_DTTM AS datetime) INSERT_DTTM\r\nFROM DIGITAL_FIN_TXN_FACT_RIB\r\n \r\nUNION ALL\r\n \r\nSELECT \r\n\tCAST(BANK_ID AS varchar(8)) BANK_ID\r\n\t,CAST(TXN_DATE AS date) TXN_DATE\r\n\t,CAST(CIF_ID AS varchar(20)) CIF_ID\r\n\t,CAST(BILLER_ID AS varchar(120)) BILLER_ID\r\n\t,CAST(TXN_COUNT AS bigint) TXN_COUNT\r\n\t,CAST(TXN_STATUS AS varchar(40)) TXN_STATUS\r\n\t,CAST(CRNCY_CODE AS varchar(3)) CRNCY_CODE\r\n\t,CAST(TXN_AMT_ORIG AS numeric(15,5)) TXN_AMT_ORIG\r\n\t,CAST(TXN_AMT_PHP AS numeric(15,5)) TXN_AMT_PHP\r\n\t,CAST(TXN_TYPE AS varchar(120)) TXN_TYPE\r\n\t,CAST(RECEIVING_BANK AS varchar(100)) RECEIVING_BANK\r\n\t,CAST(GROSS_TXN_FEE AS numeric(5,2)) GROSS_TXN_FEE\r\n\t,CAST(NET_TXN_FEE AS numeric(5,2)) NET_TXN_FEE\r\n\t,CAST(GROSS_FEE_INCOME AS numeric(15,5)) GROSS_FEE_INCOME\r\n\t,CAST(NET_FEE_INCOME AS numeric(15,5)) NET_FEE_INCOME\r\n\t,CAST(SOURCE_CODE AS varchar(20)) SOURCE_CODE\r\n\t,CAST(INSERT_DTTM AS datetime) INSERT_DTTM\r\nFROM DIGITAL_FIN_TXN_FACT_D30"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "select fulldate\nfrom \n    eds.eds_ctl ect\ninner join \n    eds.date_dim dd\n    on \n    ect.DEPOSITS_Date=dd.previous_business_day and dd.business_day_flag='Y'\n",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "Get Process Date Failed",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "No Process date retrieved, Terminating execution.",
+								"errorCode": "100"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"tables": {
+				"type": "string"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "DEP"
+			}
+		},
+		"variables": {
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"CheckFEstatus": {
+				"type": "String",
+				"defaultValue": "True"
+			},
+			"Source": {
+				"type": "String",
+				"defaultValue": "DEP"
+			},
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-02-28T01:28:30Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,59 @@
+{
+	"name": "Patch_AtmCustomerRelatedCustomer",
+	"properties": {
+		"activities": [
+			{
+				"name": "ALTER SP_AtmCustomerRelatedCustomer_ATM",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_AtmCustomerRelatedCustomer_ATM] AS\r\nBEGIN\r\n\r\n--GET DELTA FROM BUSC\r\nWITH TEMP_BNKM_AtmCustomerRelatedCustomer\r\nAS\r\n(\r\nSELECT\r\nBAC.CLT_ID AS AtmCustomerId\r\n,BAC.CLT_CIF_NUMBER AS RelatedCustomerId\r\n,'Previous Card' AS RelationshipTypeId\r\n,BAC.CLT_CREATED_TS  AS PeriodStartTimestamp\r\n,'9999-12-31' AS PeriodEndTimestamp\r\n,NULL AS RelatedPaymentCardNote\r\n,BAC.BNK_CODE AS FinancialInstitutionId\r\n,'ATM' AS SourceSystemCode\r\n,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS [InsertDttm]\r\nFROM BUSC.ATM_CLIENT BAC\r\nWHERE  BAC.ISLATEST = '1'\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_AtmCustomerRelatedCustomer FROM TEMP_BNKM_AtmCustomerRelatedCustomer;\r\n\r\n\r\n--CHECK IF THERE IS DELTA\r\nWITH TEMP_BNKM_AtmCustomerRelatedCustomer_SRC\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5', CONCAT(\r\nCONVERT(VARCHAR,AtmCustomerId)\r\n,CONVERT(VARCHAR,RelatedCustomerId)\r\n)) HASHROW, AtmCustomerId, RelatedCustomerId, RelationshipTypeId, FinancialInstitutionId, SourceSystemCode\r\nFROM #TEMP_BNKM_AtmCustomerRelatedCustomer \r\n),\r\n\r\n\r\nTEMP_BNKM_AtmCustomerRelatedCustomer_TGT\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5', CONCAT(\r\nCONVERT(VARCHAR,AtmCustomerId)\r\n,CONVERT(VARCHAR,RelatedCustomerId)\r\n)) HASHROW, AtmCustomerId, RelatedCustomerId, RelationshipTypeId, FinancialInstitutionId, SourceSystemCode\r\nFROM BNKM.AtmCustomerRelatedCustomer\r\nWHERE PeriodEndTimestamp = '9999-12-31' AND SourceSystemCode = 'ATM'\r\n),\r\n\r\nTEMP_BNKM_AtmCustomerRelatedCustomer_DELTA\r\nAS\r\n(\r\nSELECT\r\nSRC.HASHROW AS SRC_HR\r\n,TGT.HASHROW AS TGT_HR\r\n,ISNULL(SRC.AtmCustomerId, TGT.AtmCustomerId) AS AtmCustomerId\r\n,ISNULL(SRC.RelatedCustomerId, TGT.RelatedCustomerId) AS RelatedCustomerId\r\n,ISNULL(SRC.RelationshipTypeId, TGT.RelationshipTypeId) AS RelationshipTypeId\r\n,ISNULL(SRC.FinancialInstitutionId, TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n,ISNULL(SRC.SourceSystemCode, TGT.SourceSystemCode) AS SourceSystemCode\r\n,CASE\r\n    WHEN TGT.HASHROW IS NULL THEN 'INSERT'\r\n    WHEN SRC.HASHROW <>  TGT.HASHROW THEN 'UPDATE'\r\n    ELSE NULL END AS RECORD_STATUS\r\n\r\nFROM TEMP_BNKM_AtmCustomerRelatedCustomer_SRC SRC\r\nLEFT JOIN TEMP_BNKM_AtmCustomerRelatedCustomer_TGT TGT\r\nON SRC.AtmCustomerId = TGT.AtmCustomerId\r\nAND SRC.RelatedCustomerId = TGT.RelatedCustomerId\r\nAND SRC.RelationshipTypeId = TGT.RelationshipTypeId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_AtmCustomerRelatedCustomer_DELTA FROM TEMP_BNKM_AtmCustomerRelatedCustomer_DELTA;\r\n\r\nUPDATE TGT\r\nSET\r\nAtmCustomerId = SRC.AtmCustomerId\r\n,RelatedCustomerId = SRC.RelatedCustomerId\r\n,RelationshipTypeId = SRC.RelationshipTypeId\r\n,PeriodStartTimestamp = SRC.PeriodStartTimestamp\r\n,PeriodEndTimestamp = SRC.PeriodEndTimestamp\r\n,RelatedPaymentCardNote = SRC.RelatedPaymentCardNote\r\nFROM BNKM.AtmCustomerRelatedCustomer TGT\r\nJOIN #TEMP_BNKM_AtmCustomerRelatedCustomer_DELTA DELTA \r\nON DELTA.AtmCustomerId = TGT.AtmCustomerId \r\nAND DELTA.RelatedCustomerId = TGT.RelatedCustomerId \r\nAND DELTA.RelationshipTypeId = TGT.RelationshipTypeId \r\nAND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId \r\nAND DELTA.SourceSystemCode = TGT.SourceSystemCode \r\nAND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_AtmCustomerRelatedCustomer SRC \r\nON SRC.AtmCustomerId = TGT.AtmCustomerId\r\nAND SRC.RelatedCustomerId = TGT.RelatedCustomerId\r\nAND SRC.RelationshipTypeId = TGT.RelationshipTypeId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE TGT.PeriodEndTimestamp = '9999-12-31';\r\n\r\n\r\n--INSERT TO BNKM\r\n\r\nINSERT INTO BNKM.AtmCustomerRelatedCustomer\r\n(\r\nAtmCustomerId\r\n,RelatedCustomerId\r\n,RelationshipTypeId\r\n,PeriodStartTimestamp\r\n,PeriodEndTimestamp\r\n,RelatedPaymentCardNote\r\n,FinancialInstitutionId\r\n,SourceSystemCode\r\n,WORKFLOWID\r\n,TASKRUNID\r\n,INSERTDTTM\r\n)\r\n\r\nSELECT\r\nSRC.AtmCustomerId\r\n,SRC.RelatedCustomerId\r\n,SRC.RelationshipTypeId\r\n,SRC.PeriodStartTimestamp\r\n,SRC.PeriodEndTimestamp\r\n,SRC.RelatedPaymentCardNote\r\n,SRC.FinancialInstitutionId\r\n,'ATM' AS SourceSystemCode\r\n,0 AS WORKFLOWID\r\n,0 AS TASKRUNID\r\n,SRC.INSERTDTTM\r\nFROM #TEMP_BNKM_AtmCustomerRelatedCustomer SRC\r\nJOIN #TEMP_BNKM_AtmCustomerRelatedCustomer_DELTA DELTA\t \r\nON  DELTA.AtmCustomerId = SRC.AtmCustomerId \r\nAND DELTA.RelatedCustomerId = SRC.RelatedCustomerId\r\nAND DELTA.RelationshipTypeId = SRC.RelationshipTypeId \r\nAND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId \r\nAND DELTA.SourceSystemCode = SRC.SourceSystemCode \r\nWHERE DELTA.RECORD_STATUS IN ('INSERT');\r\n\r\nDROP TABLE #TEMP_BNKM_AtmCustomerRelatedCustomer;\r\nDROP TABLE #TEMP_BNKM_AtmCustomerRelatedCustomer_DELTA;\r\n\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Execute Patch",
+				"type": "ExecutePipeline",
+				"dependsOn": [],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Patch",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"table": "BNKM.AtmCustomerRelatedCustomer",
+						"col": "PeriodEndTimestamp"
+					}
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-02-20T01:29:09Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

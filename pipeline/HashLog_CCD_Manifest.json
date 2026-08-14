@@ -1,0 +1,102 @@
+{
+	"name": "HashLog_CCD_Manifest",
+	"properties": {
+		"description": "GAM_EAB_YTD",
+		"activities": [
+			{
+				"name": "CCD_CBCEXCTDBP",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@contains(pipeline().parameters.tables,'CCD_CBCEXCTDBP')",
+						"type": "Expression"
+					},
+					"ifTrueActivities": [
+						{
+							"name": "HashLog_CCD_CBCEXCTDBP",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testsqlpool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"type": "NonQuery",
+										"text": "\r\n-------------------------CCD_CBCEXCTDBP----------------------------------\r\n\r\nWITH CTE1 \r\nAS(\r\nSELECT convert(numeric(25,5),COUNT(*)) COUNT_tgt\r\n, isnull(sum(convert(numeric(25,5),TXN_AMT)),0) TXN_AMT_tgt\r\n, isnull(sum(convert(numeric(25,5),TXN_PRE_ORG_AMT)),0) TXN_PRE_ORG_AMT_tgt\r\n, isnull(sum(convert(numeric(25,5),TXN_ORG_AMT)),0) TXN_ORG_AMT_tgt\r\n, isnull(sum(convert(numeric(25,5),TXN_SETL_AMT)),0) TXN_SETL_AMT_tgt\r\n, FILE_NAME, INSERT_DTTM \r\nFROM d360.STG_CCD_CBCEXCTDBP WHERE H = 'D'\r\nGROUP BY FILE_NAME, INSERT_DTTM\r\n\r\n)\r\n,\r\nCTE2 AS (\r\nSELECT REPLACE(H,'F-','') COUNT_src\r\n, TXN_AMT TXN_AMT_src\r\n, TXN_PRE_ORG_AMT TXN_PRE_ORG_AMT_src\r\n, TXN_ORG_AMT TXN_ORG_AMT_src\r\n, TXN_SETL_AMT TXN_SETL_AMT_src\r\n, FILE_NAME, INSERT_DTTM FROM d360.STG_CCD_CBCEXCTDBP WHERE H <> 'D'\r\n)\r\n,\r\nCTE12 as (\r\nSELECT COUNT_SRC, COUNT_TGT\r\n,TXN_AMT_tgt\r\n,TXN_PRE_ORG_AMT_tgt\r\n,TXN_ORG_AMT_tgt\r\n,TXN_SETL_AMT_tgt\r\n,TXN_AMT_src\r\n,TXN_PRE_ORG_AMT_src\r\n,TXN_ORG_AMT_src\r\n,TXN_SETL_AMT_src\r\n, A.FILE_NAME, A.INSERT_DTTM, CONVERT(DATE,(left(right(A.FILE_NAME, 12),8))) DATE FROM CTE1 A\r\nJOIN CTE2 B ON A.FILE_NAME = B.FILE_NAME AND A.INSERT_DTTM = B.INSERT_DTTM\r\n)\r\n\r\nINSERT INTO [d360].[HASH_LOG_TBL]\r\nSELECT \r\nFILE_NAME\r\n,DATE\r\n,insert_dttm\r\n,REPLACE(METRICS,'_SRC','') METRICS\r\n,SRC\r\n,TGT \r\n\r\nFROM\r\n(\r\nSELECT CAST(COUNT_SRC AS NUMERIC(25,5)) COUNT_SRC\r\n,CAST(COUNT_TGT AS NUMERIC(25,5)) COUNT_TGT\r\n,CAST(TXN_AMT_tgt AS NUMERIC(25,5)) TXN_AMT_tgt\r\n,CAST(TXN_PRE_ORG_AMT_tgt AS NUMERIC(25,5)) TXN_PRE_ORG_AMT_tgt\r\n,CAST(TXN_ORG_AMT_tgt AS NUMERIC(25,5)) TXN_ORG_AMT_tgt\r\n,CAST(TXN_SETL_AMT_tgt AS NUMERIC(25,5)) TXN_SETL_AMT_tgt\r\n,CAST(TXN_AMT_src AS NUMERIC(25,5)) TXN_AMT_src\r\n,CAST(TXN_PRE_ORG_AMT_src AS NUMERIC(25,5)) TXN_PRE_ORG_AMT_src\r\n,CAST(TXN_ORG_AMT_src AS NUMERIC(25,5)) TXN_ORG_AMT_src\r\n,CAST(TXN_SETL_AMT_src AS NUMERIC(25,5)) TXN_SETL_AMT_src\r\n,FILE_NAME\r\n,INSERT_DTTM\r\n,[DATE]\r\nFROM CTE12\r\n) pvt\r\n\r\nUNPIVOT\r\n(\r\nSRC FOR METRICS IN (COUNT_SRC\r\n,TXN_AMT_src\r\n,TXN_PRE_ORG_AMT_src\r\n,TXN_ORG_AMT_src\r\n,TXN_SETL_AMT_src\r\n )\r\n) pvt1\r\n\r\nUNPIVOT\r\n(\r\nTGT For METRICS2 IN (COUNT_TGT\r\n,TXN_AMT_tgt\r\n,TXN_PRE_ORG_AMT_tgt\r\n,TXN_ORG_AMT_tgt\r\n,TXN_SETL_AMT_tgt\r\n )\r\n) pvt2\r\n \r\nWHERE REPLACE(METRICS,'_SRC','') = REPLACE(METRICS2,'_TGT','');"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CCD_CBCEXTXLGP",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@contains(pipeline().parameters.tables,'CCD_CBCEXTXLGP')",
+						"type": "Expression"
+					},
+					"ifTrueActivities": [
+						{
+							"name": "HashLog_CCD_CBCEXTXLGP",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testsqlpool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"type": "NonQuery",
+										"text": "\r\n-------------------------CCD_CBCEXTXLGP----------------------------------\r\nWITH CTE1 \r\nAS(\r\nSELECT convert(numeric(25,5),COUNT(*)) COUNT_tgt\r\n, isnull(sum(convert(numeric(25,5),TRAN_AMT)),0) TRAN_AMT_tgt\r\n, isnull(sum(convert(numeric(25,5),BILLING_AMT)),0) BILLING_AMT_tgt\r\n, isnull(sum(convert(numeric(25,5),ACCT_BILLING_AMT)),0) ACCT_BILLING_AMT_tgt\r\n, isnull(sum(convert(numeric(25,5),CUST_AMT)),0) CUST_AMT_tgt\r\n, isnull(sum(convert(numeric(25,5),CORP_CUST_AMT)),0) CORP_CUST_AMT_tgt\r\n, isnull(sum(convert(numeric(25,5),LOCAL_TRAN_AMT)),0) LOCAL_TRAN_AMT_tgt\r\n, isnull(sum(convert(numeric(25,5),ACTUAL_TRAN_AMT)),0) ACTUAL_TRAN_AMT_tgt\r\n, isnull(sum(convert(numeric(25,5),ACTUAL_SETL_AMT)),0) ACTUAL_SETL_AMT_tgt\r\n, isnull(sum(convert(numeric(25,5),ACTUAL_BILLING_AMT)),0) ACTUAL_BILLING_AMT_tgt\r\n, isnull(sum(convert(numeric(25,5),ATM_FEE_TXN)),0) ATM_FEE_TXN_tgt\r\n, isnull(sum(convert(numeric(25,5),ATM_FEE_CH_BILLING)),0) ATM_FEE_CH_BILLING_tgt\r\n, isnull(sum(convert(numeric(25,5),PREPAID_CARD_FEE_AMT)),0) PREPAID_CARD_FEE_AMT_tgt\r\n, isnull(sum(convert(numeric(25,5),TLOG_LOYLT_SALE_AMT)),0) TLOG_LOYLT_SALE_AMT_tgt\r\n, isnull(sum(convert(numeric(25,5),TLOG_LOYLT_REDEEM_PTS)),0) TLOG_LOYLT_REDEEM_PTS_tgt\r\n, isnull(sum(convert(numeric(25,5),TLOG_LOYLT_REDEEM_AMT)),0) TLOG_LOYLT_REDEEM_AMT_tgt\r\n, isnull(sum(convert(numeric(25,5),TLOG_LOYLT_AWARD_PTS)),0) TLOG_LOYLT_AWARD_PTS_tgt\r\n, isnull(sum(convert(numeric(25,5),TLOG_LOYLT_AWARD_AMT)),0) TLOG_LOYLT_AWARD_AMT_tgt\r\n, isnull(sum(convert(numeric(25,5),TLOG_LOYLT_PTS_BAL)),0) TLOG_LOYLT_PTS_BAL_tgt\r\n, isnull(sum(convert(numeric(25,5),AVAIL_CR_BEFORE)),0) AVAIL_CR_BEFORE_tgt\r\n, FILE_NAME, INSERT_DTTM \r\nFROM d360.STG_CCD_CBCEXTXLGP WHERE H = 'D'\r\nGROUP BY FILE_NAME, INSERT_DTTM\r\n\r\n)\r\n,\r\nCTE2 AS (\r\nSELECT REPLACE(H,'F-','') COUNT_src\r\n, TRAN_AMT TRAN_AMT_src\r\n, BILLING_AMT BILLING_AMT_src\r\n, ACCT_BILLING_AMT ACCT_BILLING_AMT_src\r\n, CUST_AMT CUST_AMT_src\r\n, CORP_CUST_AMT CORP_CUST_AMT_src\r\n, LOCAL_TRAN_AMT LOCAL_TRAN_AMT_src\r\n, ACTUAL_TRAN_AMT ACTUAL_TRAN_AMT_src\r\n, ACTUAL_SETL_AMT ACTUAL_SETL_AMT_src\r\n, ACTUAL_BILLING_AMT ACTUAL_BILLING_AMT_src\r\n, ATM_FEE_TXN ATM_FEE_TXN_src\r\n, ATM_FEE_CH_BILLING ATM_FEE_CH_BILLING_src\r\n, PREPAID_CARD_FEE_AMT PREPAID_CARD_FEE_AMT_src\r\n, TLOG_LOYLT_SALE_AMT TLOG_LOYLT_SALE_AMT_src\r\n, TLOG_LOYLT_REDEEM_PTS TLOG_LOYLT_REDEEM_PTS_src\r\n, TLOG_LOYLT_REDEEM_AMT TLOG_LOYLT_REDEEM_AMT_src\r\n, TLOG_LOYLT_AWARD_PTS TLOG_LOYLT_AWARD_PTS_src\r\n, TLOG_LOYLT_AWARD_AMT TLOG_LOYLT_AWARD_AMT_src\r\n, TLOG_LOYLT_PTS_BAL TLOG_LOYLT_PTS_BAL_src\r\n, AVAIL_CR_BEFORE AVAIL_CR_BEFORE_src\r\n, FILE_NAME, INSERT_DTTM FROM d360.STG_CCD_CBCEXTXLGP WHERE H <> 'D'\r\n)\r\n,\r\nCTE12 as (\r\nSELECT COUNT_SRC, COUNT_TGT\r\n,TRAN_AMT_tgt\r\n,BILLING_AMT_tgt\r\n,ACCT_BILLING_AMT_tgt\r\n,CUST_AMT_tgt\r\n,CORP_CUST_AMT_tgt\r\n,LOCAL_TRAN_AMT_tgt\r\n,ACTUAL_TRAN_AMT_tgt\r\n,ACTUAL_SETL_AMT_tgt\r\n,ACTUAL_BILLING_AMT_tgt\r\n,ATM_FEE_TXN_tgt\r\n,ATM_FEE_CH_BILLING_tgt\r\n,PREPAID_CARD_FEE_AMT_tgt\r\n,TLOG_LOYLT_SALE_AMT_tgt\r\n,TLOG_LOYLT_REDEEM_PTS_tgt\r\n,TLOG_LOYLT_REDEEM_AMT_tgt\r\n,TLOG_LOYLT_AWARD_PTS_tgt\r\n,TLOG_LOYLT_AWARD_AMT_tgt\r\n,TLOG_LOYLT_PTS_BAL_tgt\r\n,AVAIL_CR_BEFORE_tgt\r\n,TRAN_AMT_src\r\n,BILLING_AMT_src\r\n,ACCT_BILLING_AMT_src\r\n,CUST_AMT_src\r\n,CORP_CUST_AMT_src\r\n,LOCAL_TRAN_AMT_src\r\n,ACTUAL_TRAN_AMT_src\r\n,ACTUAL_SETL_AMT_src\r\n,ACTUAL_BILLING_AMT_src\r\n,ATM_FEE_TXN_src\r\n,ATM_FEE_CH_BILLING_src\r\n,PREPAID_CARD_FEE_AMT_src\r\n,TLOG_LOYLT_SALE_AMT_src\r\n,TLOG_LOYLT_REDEEM_PTS_src\r\n,TLOG_LOYLT_REDEEM_AMT_src\r\n,TLOG_LOYLT_AWARD_PTS_src\r\n,TLOG_LOYLT_AWARD_AMT_src\r\n,TLOG_LOYLT_PTS_BAL_src\r\n,AVAIL_CR_BEFORE_src\r\n, A.FILE_NAME, A.INSERT_DTTM, CONVERT(DATE,(left(right(A.FILE_NAME, 12),8))) DATE FROM CTE1 A\r\nJOIN CTE2 B ON A.FILE_NAME = B.FILE_NAME AND A.INSERT_DTTM = B.INSERT_DTTM\r\n)\r\n\r\nINSERT INTO [d360].[HASH_LOG_TBL]\r\nSELECT \r\nFILE_NAME\r\n,DATE\r\n,insert_dttm\r\n,REPLACE(METRICS,'_SRC','') METRICS\r\n,SRC\r\n,TGT \r\n\r\nFROM\r\n(\r\nSELECT CAST(COUNT_SRC AS NUMERIC(25,5)) COUNT_SRC\r\n,CAST(COUNT_TGT AS NUMERIC(25,5)) COUNT_TGT\r\n,CAST(TRAN_AMT_tgt AS NUMERIC(25,5)) TRAN_AMT_tgt\r\n,CAST(BILLING_AMT_tgt AS NUMERIC(25,5)) BILLING_AMT_tgt\r\n,CAST(ACCT_BILLING_AMT_tgt AS NUMERIC(25,5)) ACCT_BILLING_AMT_tgt\r\n,CAST(CUST_AMT_tgt AS NUMERIC(25,5)) CUST_AMT_tgt\r\n,CAST(CORP_CUST_AMT_tgt AS NUMERIC(25,5)) CORP_CUST_AMT_tgt\r\n,CAST(LOCAL_TRAN_AMT_tgt AS NUMERIC(25,5)) LOCAL_TRAN_AMT_tgt\r\n,CAST(ACTUAL_TRAN_AMT_tgt AS NUMERIC(25,5)) ACTUAL_TRAN_AMT_tgt\r\n,CAST(ACTUAL_SETL_AMT_tgt AS NUMERIC(25,5)) ACTUAL_SETL_AMT_tgt\r\n,CAST(ACTUAL_BILLING_AMT_tgt AS NUMERIC(25,5)) ACTUAL_BILLING_AMT_tgt\r\n,CAST(ATM_FEE_TXN_tgt AS NUMERIC(25,5)) ATM_FEE_TXN_tgt\r\n,CAST(ATM_FEE_CH_BILLING_tgt AS NUMERIC(25,5)) ATM_FEE_CH_BILLING_tgt\r\n,CAST(PREPAID_CARD_FEE_AMT_tgt AS NUMERIC(25,5)) PREPAID_CARD_FEE_AMT_tgt\r\n,CAST(TLOG_LOYLT_SALE_AMT_tgt AS NUMERIC(25,5)) TLOG_LOYLT_SALE_AMT_tgt\r\n,CAST(TLOG_LOYLT_REDEEM_PTS_tgt AS NUMERIC(25,5)) TLOG_LOYLT_REDEEM_PTS_tgt\r\n,CAST(TLOG_LOYLT_REDEEM_AMT_tgt AS NUMERIC(25,5)) TLOG_LOYLT_REDEEM_AMT_tgt\r\n,CAST(TLOG_LOYLT_AWARD_PTS_tgt AS NUMERIC(25,5)) TLOG_LOYLT_AWARD_PTS_tgt\r\n,CAST(TLOG_LOYLT_AWARD_AMT_tgt AS NUMERIC(25,5)) TLOG_LOYLT_AWARD_AMT_tgt\r\n,CAST(TLOG_LOYLT_PTS_BAL_tgt AS NUMERIC(25,5)) TLOG_LOYLT_PTS_BAL_tgt\r\n,CAST(AVAIL_CR_BEFORE_tgt AS NUMERIC(25,5)) AVAIL_CR_BEFORE_tgt\r\n,CAST(TRAN_AMT_src AS NUMERIC(25,5)) TRAN_AMT_src\r\n,CAST(BILLING_AMT_src AS NUMERIC(25,5)) BILLING_AMT_src\r\n,CAST(ACCT_BILLING_AMT_src AS NUMERIC(25,5)) ACCT_BILLING_AMT_src\r\n,CAST(CUST_AMT_src AS NUMERIC(25,5)) CUST_AMT_src\r\n,CAST(CORP_CUST_AMT_src AS NUMERIC(25,5)) CORP_CUST_AMT_src\r\n,CAST(LOCAL_TRAN_AMT_src AS NUMERIC(25,5)) LOCAL_TRAN_AMT_src\r\n,CAST(ACTUAL_TRAN_AMT_src AS NUMERIC(25,5)) ACTUAL_TRAN_AMT_src\r\n,CAST(ACTUAL_SETL_AMT_src AS NUMERIC(25,5)) ACTUAL_SETL_AMT_src\r\n,CAST(ACTUAL_BILLING_AMT_src AS NUMERIC(25,5)) ACTUAL_BILLING_AMT_src\r\n,CAST(ATM_FEE_TXN_src AS NUMERIC(25,5)) ATM_FEE_TXN_src\r\n,CAST(ATM_FEE_CH_BILLING_src AS NUMERIC(25,5)) ATM_FEE_CH_BILLING_src\r\n,CAST(PREPAID_CARD_FEE_AMT_src AS NUMERIC(25,5)) PREPAID_CARD_FEE_AMT_src\r\n,CAST(TLOG_LOYLT_SALE_AMT_src AS NUMERIC(25,5)) TLOG_LOYLT_SALE_AMT_src\r\n,CAST(TLOG_LOYLT_REDEEM_PTS_src AS NUMERIC(25,5)) TLOG_LOYLT_REDEEM_PTS_src\r\n,CAST(TLOG_LOYLT_REDEEM_AMT_src AS NUMERIC(25,5)) TLOG_LOYLT_REDEEM_AMT_src\r\n,CAST(TLOG_LOYLT_AWARD_PTS_src AS NUMERIC(25,5)) TLOG_LOYLT_AWARD_PTS_src\r\n,CAST(TLOG_LOYLT_AWARD_AMT_src AS NUMERIC(25,5)) TLOG_LOYLT_AWARD_AMT_src\r\n,CAST(TLOG_LOYLT_PTS_BAL_src AS NUMERIC(25,5)) TLOG_LOYLT_PTS_BAL_src\r\n,CAST(AVAIL_CR_BEFORE_src AS NUMERIC(25,5)) AVAIL_CR_BEFORE_src\r\n,FILE_NAME\r\n,INSERT_DTTM\r\n,[DATE]\r\nFROM CTE12\r\n) pvt\r\n\r\nUNPIVOT\r\n(\r\nSRC FOR METRICS IN (COUNT_SRC\r\n,TRAN_AMT_src\r\n,BILLING_AMT_src\r\n,ACCT_BILLING_AMT_src\r\n,CUST_AMT_src\r\n,CORP_CUST_AMT_src\r\n,LOCAL_TRAN_AMT_src\r\n,ACTUAL_TRAN_AMT_src\r\n,ACTUAL_SETL_AMT_src\r\n,ACTUAL_BILLING_AMT_src\r\n,ATM_FEE_TXN_src\r\n,ATM_FEE_CH_BILLING_src\r\n,PREPAID_CARD_FEE_AMT_src\r\n,TLOG_LOYLT_SALE_AMT_src\r\n,TLOG_LOYLT_REDEEM_PTS_src\r\n,TLOG_LOYLT_REDEEM_AMT_src\r\n,TLOG_LOYLT_AWARD_PTS_src\r\n,TLOG_LOYLT_AWARD_AMT_src\r\n,TLOG_LOYLT_PTS_BAL_src\r\n,AVAIL_CR_BEFORE_src\r\n )\r\n) pvt1\r\n\r\nUNPIVOT\r\n(\r\nTGT For METRICS2 IN (COUNT_TGT\r\n,TRAN_AMT_tgt\r\n,BILLING_AMT_tgt\r\n,ACCT_BILLING_AMT_tgt\r\n,CUST_AMT_tgt\r\n,CORP_CUST_AMT_tgt\r\n,LOCAL_TRAN_AMT_tgt\r\n,ACTUAL_TRAN_AMT_tgt\r\n,ACTUAL_SETL_AMT_tgt\r\n,ACTUAL_BILLING_AMT_tgt\r\n,ATM_FEE_TXN_tgt\r\n,ATM_FEE_CH_BILLING_tgt\r\n,PREPAID_CARD_FEE_AMT_tgt\r\n,TLOG_LOYLT_SALE_AMT_tgt\r\n,TLOG_LOYLT_REDEEM_PTS_tgt\r\n,TLOG_LOYLT_REDEEM_AMT_tgt\r\n,TLOG_LOYLT_AWARD_PTS_tgt\r\n,TLOG_LOYLT_AWARD_AMT_tgt\r\n,TLOG_LOYLT_PTS_BAL_tgt\r\n,AVAIL_CR_BEFORE_tgt\r\n )\r\n) pvt2\r\n \r\nWHERE REPLACE(METRICS,'_SRC','') = REPLACE(METRICS2,'_TGT','');"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"tables": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-05-14T05:21:25Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

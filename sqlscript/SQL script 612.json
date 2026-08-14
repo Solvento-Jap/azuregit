@@ -1,0 +1,20 @@
+{
+	"name": "SQL script 612",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "\nCREATE PROC [OM].[SP_TASK_START] @task_name [varchar](100),@pipeline_runid [VARCHAR](50),@data_layer [nvarchar](150),@process_date [datetime] AS\n\nBEGIN\n\n\t\tBEGIN\n\n\t\t\tDECLARE @FLAG_CNT [NUMERIC](15,0)\n\t\t\tDECLARE @FLAG_INIT_CNT [NUMERIC](15,0)\n\t\t\t\n\t\t\tSELECT \n\t\t\t\t@FLAG_INIT_CNT=COUNT(*) \n\t\t\tFROM \n\t\t\t\t(SELECT TOP 1 TASK_NAME FROM OM.OM_TASK_RUN WHERE\n\t\t\t\tTASK_NAME=UPPER(@task_name) AND PROCESS_DATE < @process_date ) OTR\n\n\t\t\t\t\n\n\t\t\tSELECT \n\t\t\t\t@FLAG_CNT=COUNT(*) \n\t\t\tFROM \n\t\t\t\tEDS.DATE_DIM DD\n\t\t\tINNER JOIN\n\t\t\t\tOM.OM_TASK_RUN OTR\n\t\t\t\tON\n\t\t\t\tDD.FULLDATE=@process_date\n\t\t\t\tAND \n\t\t\t\tDD.PREVIOUS_BUSINESS_DAY=OTR.PROCESS_DATE\n\t\t\tINNER JOIN\n\t\t\t\tOM.OM_STATUS OS\n\t\t\t\tON\n\t\t\t\tOS.STATUS_ID=OTR.STATUS_ID\n\t\t\tWHERE\n\t\t\t\tOS.STATUS='SUCCESSFUL'\n\t\t\t\tAND OTR.TASK_NAME=UPPER(@task_name)\n\t\t\t\t\n\n\t\t\tIF(@FLAG_CNT<1 AND @FLAG_INIT_CNT>0)\n\t\t\t   BEGIN\n\n\t\t\t\t   DECLARE @errmsg NVARCHAR(2048) = 'CURRENT JOB '+@task_name+' STATUS IS NOT YET SUCCESSFUL FOR LATEST BUSINESS DATE IN EDS_CTL TABLE. PLEASE CHECK OM.OM_TASK_RUN AND EDS.EDS_CTL TABLE';   \n  \n\t\t\t\t   THROW 60000, @errmsg, 1;  \n\t\t\t   END\n\n\n\t\tEND\n\n  \n\t   BEGIN\n\t\t\tDELETE\n\t\t\tFROM \n\t\t\t\t[OM].[OM_TASK_RUN] \n\t\t\tWHERE\n\t\t\t\tTASK_NAME = UPPER(@task_name) AND\n\t\t\t\tPROCESS_DATE = @process_date AND\n\t\t\t\tSTATUS_ID <> (SELECT STATUS_ID FROM OM.OM_STATUS WHERE STATUS = 'SUCCESSFUL')\n\t\t\t\t\n\t\t   ---START TASK\n\t\t\tINSERT INTO \n\t\t\t[OM].[OM_TASK_RUN] \n\t\t\t(\n\t\t\t\tTASK_RUN_ID,\n\t\t\t\tTASK_NAME,\n\t\t\t\tPIPELINE_RUNID,\n\t\t\t\tSTATUS_ID,\n\t\t\t\tDATA_LAYER,\n\t\t\t\tPROCESS_DATE,\n\t\t\t\tSTART_DATETIME,\n\t\t\t\tEND_DATETIME,\n\t\t\t\tCREATE_DATETIME\n\t\t\t)\n\t\t\tSELECT  \n\t\t\t\t concat(@pipeline_runid,'-',UPPER(@task_name))\n\t\t\t\t,UPPER(@task_name)\n\t\t\t\t,@pipeline_runid\n\t\t\t\t,(SELECT STATUS_ID FROM OM.OM_STATUS WHERE STATUS = 'RUNNING')\n\t\t\t\t,UPPER(@data_layer)\n\t\t\t\t,@process_date\n\t\t\t\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime)\n\t\t\t\t,NULL\n\t\t\t\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime)\t\t\n\t   END\n\t\nEND\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

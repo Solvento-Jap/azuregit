@@ -1,0 +1,380 @@
+{
+	"name": "Create_External_directory_references",
+	"properties": {
+		"activities": [
+			{
+				"name": "Sample_File_to_Create_Directory",
+				"type": "Copy",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "\nSELECT TOP 1\n    OT.SOURCE_CODE,\n    OT.SCHEMA_NAME,\n    OTR.DATA_LAYER,\n    OTR.TASK_NAME,\n    OTD.DEPENDENT_TASK_NAME,\n    CAST(OTR.PROCESS_DATE AS DATE) PROCESS_DATE,\n    OS.STATUS,\n    OTR.START_DATETIME,\n    OTR.END_DATETIME\nFROM\n    OM.OM_TASK_RUN OTR\nLEFT JOIN\n    OM.OM_STATUS OS ON OTR.STATUS_ID = OS.STATUS_ID\nLEFT JOIN\n    OM.OM_TASK_DEPENDENCY OTD ON OTR.TASK_NAME = OTD.TASK_NAME\nLEFT JOIN\n    OM.OM_TASKS OT ON OTR.TASK_NAME = OT.TASK_NAME\nLEFT JOIN\n    EDS.DATE_DIM DD ON OTR.PROCESS_DATE = DD.FULLDATE\nWHERE\n    DD.BUSINESS_DAY_FLAG = 'Y'\n\tAND OTR.PROCESS_DATE IN (SELECT TOP 6 FullDate FROM EDS.DATE_DIM WHERE FULLDATE<CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AND BUSINESS_DAY_FLAG = 'Y' ORDER BY FULLDATE DESC )\nORDER BY\n    START_DATETIME DESC, PROCESS_DATE DESC, TASK_NAME;",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "DelimitedTextSink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"formatSettings": {
+							"type": "DelimitedTextWriteSettings",
+							"quoteAllText": true,
+							"fileExtension": ".txt"
+						}
+					},
+					"enableStaging": false,
+					"translator": {
+						"type": "TabularTranslator",
+						"mappings": [
+							{
+								"source": {
+									"name": "SOURCE_CODE",
+									"type": "String",
+									"physicalType": "varchar"
+								},
+								"sink": {
+									"name": "SOURCE_CODE",
+									"type": "String",
+									"physicalType": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "SCHEMA_NAME",
+									"type": "String",
+									"physicalType": "varchar"
+								},
+								"sink": {
+									"name": "SCHEMA_NAME",
+									"type": "String",
+									"physicalType": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "DATA_LAYER",
+									"type": "String",
+									"physicalType": "nvarchar"
+								},
+								"sink": {
+									"name": "DATA_LAYER",
+									"type": "String",
+									"physicalType": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "TASK_NAME",
+									"type": "String",
+									"physicalType": "varchar"
+								},
+								"sink": {
+									"name": "TASK_NAME",
+									"type": "String",
+									"physicalType": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "DEPENDENT_TASK_NAME",
+									"type": "String",
+									"physicalType": "varchar"
+								},
+								"sink": {
+									"name": "DEPENDENT_TASK_NAME",
+									"type": "String",
+									"physicalType": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "PROCESS_DATE",
+									"type": "DateTime",
+									"physicalType": "date"
+								},
+								"sink": {
+									"name": "PROCESS_DATE",
+									"type": "String",
+									"physicalType": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "STATUS",
+									"type": "String",
+									"physicalType": "varchar"
+								},
+								"sink": {
+									"name": "STATUS",
+									"type": "String",
+									"physicalType": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "START_DATETIME",
+									"type": "DateTime",
+									"physicalType": "datetime"
+								},
+								"sink": {
+									"name": "START_DATETIME",
+									"type": "String",
+									"physicalType": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "END_DATETIME",
+									"type": "DateTime",
+									"physicalType": "datetime"
+								},
+								"sink": {
+									"name": "END_DATETIME",
+									"type": "String",
+									"physicalType": "String"
+								}
+							}
+						],
+						"typeConversion": true,
+						"typeConversionSettings": {
+							"allowDataTruncation": true,
+							"treatBooleanAsNumber": false
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_OM_VAL",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "OM_TASK_RUN"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": "JOB_EXECUTION_STATUS.csv",
+							"SourceCode": {
+								"value": "@concat(variables('Filepath'),pipeline().parameters.FolderPath)",
+								"type": "Expression"
+							}
+						}
+					}
+				]
+			},
+			{
+				"name": "Delete_Sample_File",
+				"type": "Delete",
+				"dependsOn": [
+					{
+						"activity": "Sample_File_to_Create_Directory",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "adls_src_decrypted",
+						"type": "DatasetReference",
+						"parameters": {
+							"folderpath": {
+								"value": "@concat(variables('Filepath'),pipeline().parameters.FolderPath)",
+								"type": "Expression"
+							},
+							"filename": " "
+						}
+					},
+					"logStorageSettings": {
+						"linkedServiceName": {
+							"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+							"type": "LinkedServiceReference"
+						},
+						"path": "data360/dev/Delete_Logs"
+					},
+					"enableLogging": true,
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"wildcardFileName": "*",
+						"enablePartitionDiscovery": false
+					}
+				}
+			},
+			{
+				"name": "create_external_reference",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Delete_Sample_File",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\n---Create external DataSource\r\nCREATE EXTERNAL DATA SOURCE Datasource_sqlpool_ext\r\nWITH\r\n(\r\n    LOCATION = 'abfss://data360@cbcd360devstoacct01sg.dfs.core.windows.net'\r\n);\r\n\r\n---Create external File format\r\nCREATE EXTERNAL FILE FORMAT csv3\r\nWITH (\r\n    FORMAT_TYPE = DELIMITEDTEXT,\r\n    FORMAT_OPTIONS (FIELD_TERMINATOR= '|', FIRST_ROW = 2, DATE_FORMAT = 'yyyy-MM-dd')\r\n    \r\n);\r\n\r\n---Create external table\r\nCREATE EXTERNAL TABLE [d360].[TOP_CORP_PH]\r\n( \r\n\t[YEAR] [numeric](10,0)  NULL,\r\n\t[RANK] [numeric](10,0)  NULL,\r\n\t[COMPANY_NAME] [varchar](150)  NULL,\r\n\t[GROSS_REVENUE] [VARCHAR](18)  NULL,\r\n\t[Source] [varchar](50)  NULL\r\n)\r\nWITH (DATA_SOURCE = [Datasource_sqlpool_ext], LOCATION = N'dev/decrypted/EXTERNAL/DID/', FILE_FORMAT = [csv3], REJECT_TYPE = VALUE, REJECT_VALUE = 0 );\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Load_XLS_to_CSV",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "create_external_reference",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "ExcelSource",
+						"storeSettings": {
+							"type": "AzureBlobFSReadSettings",
+							"recursive": true,
+							"enablePartitionDiscovery": false
+						}
+					},
+					"sink": {
+						"type": "DelimitedTextSink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"formatSettings": {
+							"type": "DelimitedTextWriteSettings",
+							"quoteAllText": true,
+							"fileExtension": ".txt"
+						}
+					},
+					"enableStaging": false,
+					"translator": {
+						"type": "TabularTranslator",
+						"typeConversion": true,
+						"typeConversionSettings": {
+							"allowDataTruncation": true,
+							"treatBooleanAsNumber": false
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "adls_xls",
+						"type": "DatasetReference",
+						"parameters": {
+							"FilePath": {
+								"value": "@pipeline().parameters.SrcFilePath",
+								"type": "Expression"
+							},
+							"FileName": {
+								"value": "@pipeline().parameters.SrcFileName",
+								"type": "Expression"
+							},
+							"SheetIndex": {
+								"value": "@pipeline().parameters.SrcSheetIndex",
+								"type": "Expression"
+							}
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "decrypt_csv_pipe_delimited",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat(pipeline().parameters.csvFileName,'.csv')",
+								"type": "Expression"
+							},
+							"Filepath": {
+								"value": "@concat(variables('Filepath'),pipeline().parameters.FolderPath)",
+								"type": "Expression"
+							}
+						}
+					}
+				]
+			}
+		],
+		"parameters": {
+			"FolderPath": {
+				"type": "string",
+				"defaultValue": "EXTERNAL/DID"
+			},
+			"SrcFileName": {
+				"type": "string",
+				"defaultValue": "Top_1000_Corporations.xls"
+			},
+			"SrcFilePath": {
+				"type": "string",
+				"defaultValue": "dev/decrypted"
+			},
+			"SrcSheetIndex": {
+				"type": "int",
+				"defaultValue": 0
+			},
+			"csvFileName": {
+				"type": "string",
+				"defaultValue": "Top_1000_Corporations"
+			}
+		},
+		"variables": {
+			"Filepath": {
+				"type": "String",
+				"defaultValue": "dev/decrypted/"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-08-15T08:30:49Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

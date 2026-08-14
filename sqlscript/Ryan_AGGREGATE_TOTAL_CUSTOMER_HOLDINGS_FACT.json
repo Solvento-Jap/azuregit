@@ -1,0 +1,20 @@
+{
+	"name": "Ryan_AGGREGATE_TOTAL_CUSTOMER_HOLDINGS_FACT",
+	"properties": {
+		"folder": {
+			"name": "Ryan"
+		},
+		"content": {
+			"query": "\n\n\nCREATE PROC [DW].[SP_AGGREGATE_TOTAL_CUSTOMER_HOLDINGS_FACT] @DateProcessed date  AS\nBEGIN\n\nDECLARE @DateProcessed date \nset @DateProcessed = '2023-08-01';\n\nTRUNCATE TABLE dw.AGGREGATE_TOTAL_CUSTOMER_HOLDINGS_FACT;\n\nwith DEPOSITS_FACT AS(\n    SELECT * FROM DW.DEPOSITS_FACT WHERE AS_OF_DATE =  @DateProcessed\n)\n \n\nINSERT INTO dw.AGGREGATE_TOTAL_CUSTOMER_HOLDINGS_FACT\nSELECT A.*\n,CASE WHEN Deposits_Year_To_Date_Average_Daily_Balance <= 0 THEN 'MM' \n      WHEN Deposits_Year_To_Date_Average_Daily_Balance >= 10000000 THEN 'VIP'\n      ELSE MarketSegmentName END AS MarketSegment\n,0 AS WorkFlowId\n,0 AS TaskRunId\n,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\nFROM (\nSELECT\n DC.CustomerSK AS CustomerSK\n,DC.CustomerID AS CustomerID\n,DC.GlobalCIF AS GlobalCIF\n,DC.FCBSCIF AS FCBSCIF\n,DC.BankSK AS BankSK\n,DC.SourceSystemCode AS SourceSystemCode\n,@DateProcessed AS as_of_date\n,SUM(CASE WHEN DCA.ShareIndicator = 'Y' THEN DEP_F.Outstanding_Balance_PHP ELSE 0 END) AS Deposits_Outstanding_Balance\n,SUM(CASE WHEN DCA.ShareIndicator = 'Y' THEN DEP_F.Previous_Monthend_Average_Daily_Balance_PHP ELSE 0 END) AS Deposits_Previous_Monthend_Average_Daily_Balance\n,SUM(CASE WHEN DCA.ShareIndicator = 'Y' THEN DEP_F.Year_To_Date_Average_Daily_Balance_PHP ELSE 0 END) AS Deposits_Year_To_Date_Average_Daily_Balance\n,SUM(CASE WHEN DCA.ShareIndicator = 'Y' THEN DEP_F.Year_To_Date_Average_Daily_Balance_PHP ELSE 0 END) AS Total_Relationship_Balance\nFROM DW.DIMCUSTOMER DC\nLEFT JOIN DW.DIMCUSTOMERACCOUNT DCA ON DC.CUSTOMERSK = DCA.CUSTOMERSK\nLEFT JOIN DW.DIMACCOUNT DA ON DCA.ACCOUNTSK = DA.ACCOUNTSK\nLEFT JOIN DEPOSITS_FACT DEP_F ON DCA.AccountID = DEP_F.FORACID \nWHERE isnull(DA.ACCOUNTSTATUS,'1') not in ('Closed')\nAND @DateProcessed BETWEEN DC.ValidStartDate AND DC.ValidEndDate\nAND @DateProcessed BETWEEN DCA.ValidStartDate AND DCA.ValidEndDate\nAND @DateProcessed BETWEEN DA.ValidStartDate AND DA.ValidEndDate\nGROUP BY  DC.CustomerSK \n,DC.CustomerID \n,DC.GlobalCIF \n,DC.FCBSCIF \n,DC.BankSK \n,DC.SourceSystemCode ) A\nLEFT JOIN DW.DimMarketSegment DMS ON DMS.LowerLimit <= A.Deposits_Year_To_Date_Average_Daily_Balance AND A.Deposits_Year_To_Date_Average_Daily_Balance < DMS.UpperLimit\n\nEND\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

@@ -1,0 +1,39 @@
+{
+	"name": "CUSTOMERACCOUNT_TRU_COUNT",
+	"properties": {
+		"activities": [
+			{
+				"name": "CUSTOMERACCOUNT_TRU_COUNT",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "--FOR TRU RECORDS FILTER\nWITH CustomerAccountBalance_LNS AS (\nSELECT \n\n\tMAX(Timestamp) AS Timestamp\n\t,CustomerAccountId\n\t,FinancialInstitutionId\n    ,BalancetypeId\n\tFROM BNKM.CustomerAccountBalance\n\tWHERE BalancetypeId = 'Clear Balance Amount'\n    GROUP BY CustomerAccountId, FinancialInstitutionId, BalancetypeId\n)\n, FINANCIALPRODUCTAPPLICATION \nAS(\n    SELECT A.* FROM BNKM.FinancialProductApplication A\n\tJOIN (SELECT FinancialProductId, FinancialInstitutionId,FcbsApplicationId, SourceSystemCode, MAX(Timestamp) Timestamp FROM BNKM.FinancialProductApplication GROUP BY FinancialProductId, FinancialInstitutionId, FcbsApplicationId, SourceSystemCode ) B\n\tON A.FinancialProductId = B.FinancialProductId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.SourceSystemCode = B.SourceSystemCode AND A.FcbsApplicationId = B.FcbsApplicationId  AND A.Timestamp = B.Timestamp\n)\n, CoreCustomerAccountProfitCostCenter \nAS(\n    SELECT A.* FROM BNKM.CoreCustomerAccountProfitCostCenter A\n\tJOIN (SELECT CustomerAccountId, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CoreCustomerAccountProfitCostCenter GROUP BY CustomerAccountId, FinancialInstitutionId ) B\n\tON A.CustomerAccountId = B.CustomerAccountId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n    WHERE A.ProfitCostCenterTypeId = 'Account PCC Code 1'\n)\n, CORECUSTOMERACCOUNTPAYROLL\nAS(\n    SELECT A.* FROM BNKM.CORECUSTOMERACCOUNTPAYROLL A\n\tJOIN (SELECT CUSTOMERACCOUNTID, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CORECUSTOMERACCOUNTPAYROLL GROUP BY CUSTOMERACCOUNTID, FinancialInstitutionId ) B\n\tON A.CUSTOMERACCOUNTID = B.CUSTOMERACCOUNTID AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n)\n\n\n\n\n\n, TEMP_DW_DIMACCOUNT \nAS(\n\tSELECT \n\t BCA.CustomerAccountId AS AccountID\n\t,BCA.CustomerAccountName AS AccountName\n\t,BCA.CustomerAccountOpenedDate AS AccountOpenedDate\n\t,BCAS.CustomerAccountStatusTypeId AS AccountStatus\n\t,CASE \n\t\t WHEN BCAF.FINANCIALPRODUCTID IN ('00013','01013') OR BCCA.EmployeePayrollAccountIndicator = 'Y' \n\t\t THEN 'Y' ELSE 'N' END AS PayrollIndicator\n\t,BCA.IsoCurrencyCode AS CurrencyCode\n\t,BCCC.ProfitCostCenterId AS ProfitCostCode\n\t,DDB.BankSK AS BankSK\n\t,-1 AS BranchSK\n\t,BCA.SourceSystemCode AS SourceSystemCode\n\t,1 AS CurrentIndicator\n\t,GETDATE() AS ValidStartDate\n\t,'9999-12-31' AS ValidEndDate\n\t,0 AS WorkFlowId\n\t,0 AS TaskRunId\n\t,GETDATE() AS InsertDttm\n\n\tFROM (SELECT CA.CustomerAccountId,CA.CustomerAccountName,CA.CustomerAccountOpenedDate,CA.IsoCurrencyCode,CA.SourceSystemCode,CA.FINANCIALINSTITUTIONID,CA.BRANCHID\n\tFROM (SELECT ROW_NUMBER() OVER (PARTITION BY CustomerAccountId ORDER BY CustomerAccountName) AS RN, CustomerAccountId, CustomerAccountName, CustomerAccountOpenedDate, IsoCurrencyCode, SourceSystemCode, FINANCIALINSTITUTIONID, BRANCHID \n\tFROM BNKM.CustomerAccount) CA\n\tWHERE CA.RN = 1) BCA \n\tLEFT JOIN BNKM.CUSTOMERACCOUNTFINANCIALPRODUCT BCAF ON BCA.CUSTOMERACCOUNTID = convert(varchar,BCAF.CUSTOMERACCOUNTID) AND BCAF.SourceSystemCode = BCA.SourceSystemCode  AND BCA.FinancialInstitutionId = BCAF.FinancialInstitutionId AND (BCAF.PERIODENDDATE IS NULL OR BCAF.PERIODENDDATE = '1900-01-01' ) --NO DATA\n\tLEFT JOIN BNKM.CUSTOMERACCOUNTSTATUS BCAS ON BCA.CustomerAccountId = BCAS.CustomerAccountId AND BCAS.SourceSystemCode = BCA.SourceSystemCode AND BCAS.FINANCIALINSTITUTIONID = BCA.FINANCIALINSTITUTIONID AND (BCAS.PeriodEndTimestamp IS NULL OR BCAS.PeriodEndTimestamp = '1900-01-01' )\n\tLEFT JOIN CORECUSTOMERACCOUNTPAYROLL BCCA ON BCA.CUSTOMERACCOUNTID = BCCA.CUSTOMERACCOUNTID AND BCA.FINANCIALINSTITUTIONID = BCCA.FINANCIALINSTITUTIONID AND BCA.SourceSystemCode = BCCA.SourceSystemCode\n\tLEFT JOIN DW.DimBank DDB ON BCA.FINANCIALINSTITUTIONID = DDB.BANKID\n\tLEFT JOIN CoreCustomerAccountProfitCostCenter BCCC ON BCA.CustomerAccountId = BCCC.CustomerAccountId AND BCA.FinancialInstitutionId = BCCC.FinancialInstitutionId AND BCA.SourceSystemCode = BCCC.SourceSystemCode AND BCCC.ProfitCostCenterTypeId = 'Account PCC Code 1'\n\t--LEFT JOIN DW.DimBranch DDBRAN ON BCA.BRANCHID = DDBRAN.BRANCHID AND DDBRAN.CurrentIndicator = 1 \n\tWHERE BCA.SourceSystemCode = 'TRU'\n\tGROUP BY \n\tBCA.CustomerAccountId\n\t,BCA.CustomerAccountName\n\t,BCA.CustomerAccountOpenedDate\n\t,BCAS.CustomerAccountStatusTypeId\n\t,BCAF.FINANCIALPRODUCTID\n\t,BCCA.EmployeePayrollAccountIndicator\n\t,BCA.IsoCurrencyCode\n\t,DDB.BankSK\n\t,BCA.SourceSystemCode\n\t,BCCC.ProfitCostCenterId\n\n) SELECT COUNT(DISTINCT AccountID) AS Total FROM TEMP_DW_DIMACCOUNT WHERE CurrentIndicator = 1 AND SourceSystemCode = 'TRU'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-02-01T11:06:34Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

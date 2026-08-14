@@ -1,0 +1,162 @@
+{
+	"name": "df_Log_Hash_dep_ACCOUNTLIEN",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference"
+					},
+					"name": "source1"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "SQLPool_tgt_Logstable",
+						"type": "DatasetReference"
+					},
+					"name": "sink1"
+				}
+			],
+			"transformations": [
+				{
+					"name": "filter1"
+				},
+				{
+					"name": "derivedColumn1"
+				},
+				{
+					"name": "unpivot1"
+				},
+				{
+					"name": "filter3"
+				},
+				{
+					"name": "aggregate1"
+				},
+				{
+					"name": "join1"
+				},
+				{
+					"name": "derivedColumn2"
+				},
+				{
+					"name": "derivedColumn3"
+				},
+				{
+					"name": "aggregate2"
+				},
+				{
+					"name": "filter4"
+				},
+				{
+					"name": "sort1"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          H as string,",
+				"          ACID as string,",
+				"          B2K_TYPE as string,",
+				"          B2K_ID as string,",
+				"          ENTITY_CRE_FLG as string,",
+				"          DEL_FLG as string,",
+				"          LIEN_AMT as string,",
+				"          LIEN_REMARKS as string,",
+				"          LCHG_USER_ID as string,",
+				"          LCHG_TIME as string,",
+				"          RCRE_USER_ID as string,",
+				"          RCRE_TIME as string,",
+				"          LIEN_REASON_CODE as string,",
+				"          LIEN_EXPIRY_DATE as string,",
+				"          TS_CNT as string,",
+				"          ALT_CRNCY_CODE as string,",
+				"          BANK_ID as string,",
+				"          LIEN_START_DATE as string,",
+				"          REQUESTED_BY_DESC as string,",
+				"          REQUEST_DEPARTMENT as string,",
+				"          CONTACT_NUM as string,",
+				"          FUTURE_ULIEN_AMT as string,",
+				"          SOL_ID as string,",
+				"          USER_ID as string,",
+				"          LIEN_EVENT_REF_NUM as string,",
+				"          LIEN_EVENT_MISC_INFO as string,",
+				"          LIEN_TIME_ZONE as string,",
+				"          FILE_NAME as string,",
+				"          insert_dttm as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table',",
+				"     staged: true,",
+				"     partitionBy('roundRobin', 3)) ~> source1",
+				"source1 filter(H !='D') ~> filter1",
+				"filter1 derive(Date = toDate(left(right(FILE_NAME, 12),8),'yyyyMMdd'),",
+				"          Count_src = dropLeft(H,2),",
+				"          FUTURE_ULIEN_AMT_src = FUTURE_ULIEN_AMT,",
+				"          LIEN_AMT_src = LIEN_AMT,",
+				"          TS_CNT_src = TS_CNT) ~> derivedColumn1",
+				"join1 unpivot(output(",
+				"          Metrics as string,",
+				"          Source as string,",
+				"          Target as string",
+				"     ),",
+				"     ungroupBy(source1@FILE_NAME,",
+				"          Date,",
+				"          insert_dttm),",
+				"     lateral: true,",
+				"     ignoreNullPivots: true) ~> unpivot1",
+				"source1 filter(H == 'D') ~> filter3",
+				"filter3 aggregate(groupBy(FILE_NAME),",
+				"     Count_tgt = toString(count(H)),",
+				"          FUTURE_ULIEN_AMT_tgt = toString(sum(toDouble(FUTURE_ULIEN_AMT))),",
+				"          LIEN_AMT_tgt = toString(sum(toDouble(LIEN_AMT))),",
+				"          TS_CNT_tgt = toString(sum(toDouble(TS_CNT)))) ~> aggregate1",
+				"derivedColumn1, aggregate1 join(source1@FILE_NAME == aggregate1@FILE_NAME,",
+				"     joinType:'inner',",
+				"     matchType:'exact',",
+				"     ignoreSpaces: false,",
+				"     broadcast: 'auto')~> join1",
+				"unpivot1 derive(Source = case(like(Metrics, '%src%')  , Source, ''),",
+				"          Target = case(like(Metrics, '%tgt%')  , Source, '')) ~> derivedColumn2",
+				"derivedColumn2 derive(Metrics = case(like(Metrics,'%src%'), replace(Metrics, '_src', ''), replace(Metrics, '_tgt', ''))) ~> derivedColumn3",
+				"derivedColumn3 aggregate(groupBy(FILE_NAME,",
+				"          Date,",
+				"          Metrics,",
+				"          insert_dttm),",
+				"     Source = sum(toFloat(Source)),",
+				"          Target = sum(toFloat(Target))) ~> aggregate2",
+				"aggregate2 filter(Metrics!= 'H' && Metrics!='SOURCE_CODE' && Metrics!='BANK_CODE' && Metrics!='FileName' && Metrics!= 'TABLE_NAME') ~> filter4",
+				"filter4 sort(asc(Date, true),",
+				"     asc(FILE_NAME, true),",
+				"     asc(Metrics, true)) ~> sort1",
+				"sort1 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          ID as integer,",
+				"          File_name as string,",
+				"          Date as date,",
+				"          Load_date as timestamp,",
+				"          Metrics as string,",
+				"          Source as decimal(16,4),",
+				"          Target as decimal(16,4)",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     staged: true,",
+				"     allowCopyCommand: true,",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     partitionBy('roundRobin', 3)) ~> sink1"
+			]
+		}
+	}
+}

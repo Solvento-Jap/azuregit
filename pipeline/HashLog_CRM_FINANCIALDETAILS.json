@@ -1,0 +1,39 @@
+{
+	"name": "HashLog_CRM_FINANCIALDETAILS",
+	"properties": {
+		"activities": [
+			{
+				"name": "HashLog_CRM_FINANCIALDETAILS",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nWITH CTE1 \r\nAS(\r\nSELECT convert(NUMERIC(25,5),COUNT(*)) COUNT_tgt\r\n, isnull(sum(convert(NUMERIC(25,5),GROSS_GEARING_RATIO)),0) GROSS_GEARING_RATIO_tgt\r\n, isnull(sum(convert(NUMERIC(25,5),GROSS_PROFIT)),0) GROSS_PROFIT_tgt\r\n, isnull(sum(convert(NUMERIC(25,5),NET_GEARING_RATIO)),0) NET_GEARING_RATIO_tgt\r\n, isnull(sum(convert(NUMERIC(25,5),NET_PROFIT_RATIO)),0) NET_PROFIT_RATIO_tgt\r\n, isnull(sum(convert(NUMERIC(25,5),PROFIT_INT_DEP_TAXES)),0) PROFIT_INT_DEP_TAXES_tgt\r\n, isnull(sum(convert(NUMERIC(25,5),SG_RECEIPTS)),0) SG_RECEIPTS_tgt\r\n, isnull(sum(convert(NUMERIC(25,5),TANG_FIX_ASSETS)),0) TANG_FIX_ASSETS_tgt\r\n\r\n, FILE_NAME, INSERT_DTTM \r\nFROM d360.STG_EDS_CRM_FINANCIALDETAILS WHERE H = 'D'\r\nGROUP BY FILE_NAME, INSERT_DTTM\r\n)\r\n,\r\nCTE2 AS (\r\nSELECT REPLACE(H,'F-','') COUNT_src\r\n, GROSS_GEARING_RATIO GROSS_GEARING_RATIO_src\r\n, GROSS_PROFIT GROSS_PROFIT_src\r\n, NET_GEARING_RATIO NET_GEARING_RATIO_src\r\n, NET_PROFIT_RATIO NET_PROFIT_RATIO_src\r\n, PROFIT_INT_DEP_TAXES PROFIT_INT_DEP_TAXES_src\r\n, SG_RECEIPTS SG_RECEIPTS_src\r\n, TANG_FIX_ASSETS TANG_FIX_ASSETS_src\r\n\r\n, FILE_NAME, INSERT_DTTM FROM d360.STG_EDS_CRM_FINANCIALDETAILS WHERE H <> 'D'\r\n)\r\n,\r\nCTE12 as (\r\nSELECT COUNT_SRC, COUNT_TGT\r\n, GROSS_GEARING_RATIO_tgt\r\n, GROSS_PROFIT_tgt\r\n, NET_GEARING_RATIO_tgt\r\n, NET_PROFIT_RATIO_tgt\r\n, PROFIT_INT_DEP_TAXES_tgt\r\n, SG_RECEIPTS_tgt\r\n, TANG_FIX_ASSETS_tgt\r\n, GROSS_GEARING_RATIO_src\r\n, GROSS_PROFIT_src\r\n, NET_GEARING_RATIO_src\r\n, NET_PROFIT_RATIO_src\r\n, PROFIT_INT_DEP_TAXES_src\r\n, SG_RECEIPTS_src\r\n, TANG_FIX_ASSETS_src\r\n\r\n, A.FILE_NAME, A.INSERT_DTTM, CONVERT(DATE,(left(right(A.FILE_NAME, 12),8))) DATE FROM CTE1 A\r\nJOIN CTE2 B ON A.FILE_NAME = B.FILE_NAME AND A.INSERT_DTTM = B.INSERT_DTTM\r\n)\r\n\r\nINSERT INTO [EDS].[EDS_HASH_LOG_TBL]\r\nSELECT \r\nFILE_NAME\r\n,DATE\r\n,insert_dttm\r\n,REPLACE(METRICS,'_SRC','') METRICS\r\n,SRC\r\n,TGT \r\n\r\nFROM\r\n(\r\nSELECT \r\n  CAST(COUNT_SRC AS NUMERIC(25,5)) COUNT_SRC\r\n, CAST(COUNT_TGT AS NUMERIC(25,5)) COUNT_TGT\r\n, CAST(GROSS_GEARING_RATIO_tgt AS NUMERIC(25,5)) GROSS_GEARING_RATIO_tgt\r\n, CAST(GROSS_PROFIT_tgt AS NUMERIC(25,5)) GROSS_PROFIT_tgt\r\n, CAST(NET_GEARING_RATIO_tgt AS NUMERIC(25,5)) NET_GEARING_RATIO_tgt\r\n, CAST(NET_PROFIT_RATIO_tgt AS NUMERIC(25,5)) NET_PROFIT_RATIO_tgt\r\n, CAST(PROFIT_INT_DEP_TAXES_tgt AS NUMERIC(25,5)) PROFIT_INT_DEP_TAXES_tgt\r\n, CAST(SG_RECEIPTS_tgt AS NUMERIC(25,5)) SG_RECEIPTS_tgt\r\n, CAST(TANG_FIX_ASSETS_tgt AS NUMERIC(25,5)) TANG_FIX_ASSETS_tgt\r\n, CAST(GROSS_GEARING_RATIO_src AS NUMERIC(25,5)) GROSS_GEARING_RATIO_src\r\n, CAST(GROSS_PROFIT_src AS NUMERIC(25,5)) GROSS_PROFIT_src\r\n, CAST(NET_GEARING_RATIO_src AS NUMERIC(25,5)) NET_GEARING_RATIO_src\r\n, CAST(NET_PROFIT_RATIO_src AS NUMERIC(25,5)) NET_PROFIT_RATIO_src\r\n, CAST(PROFIT_INT_DEP_TAXES_src AS NUMERIC(25,5)) PROFIT_INT_DEP_TAXES_src\r\n, CAST(SG_RECEIPTS_src AS NUMERIC(25,5)) SG_RECEIPTS_src\r\n, CAST(TANG_FIX_ASSETS_src AS NUMERIC(25,5)) TANG_FIX_ASSETS_src\r\n, FILE_NAME\r\n, INSERT_DTTM\r\n, DATE\r\nFROM CTE12\r\n) pvt\r\n\r\nUNPIVOT\r\n(\r\nSRC FOR METRICS IN (COUNT_SRC\r\n, GROSS_GEARING_RATIO_src\r\n, GROSS_PROFIT_src\r\n, NET_GEARING_RATIO_src\r\n, NET_PROFIT_RATIO_src\r\n, PROFIT_INT_DEP_TAXES_src\r\n, SG_RECEIPTS_src\r\n, TANG_FIX_ASSETS_src\r\n)\r\n) pvt1\r\n\r\nUNPIVOT\r\n(\r\nTGT For METRICS2 IN (COUNT_TGT\r\n, GROSS_GEARING_RATIO_tgt\r\n, GROSS_PROFIT_tgt\r\n, NET_GEARING_RATIO_tgt\r\n, NET_PROFIT_RATIO_tgt\r\n, PROFIT_INT_DEP_TAXES_tgt\r\n, SG_RECEIPTS_tgt\r\n, TANG_FIX_ASSETS_tgt\r\n)\r\n) pvt2\r\n \r\nWHERE REPLACE(METRICS,'_SRC','') = REPLACE(METRICS2,'_TGT','');"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-07-24T04:06:53Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

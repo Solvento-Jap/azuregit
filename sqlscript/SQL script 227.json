@@ -1,0 +1,20 @@
+{
+	"name": "SQL script 227",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "--------------GET DELTA FROM BUSC\nWITH TEMP_BNKM_CUSTOMERMARITALSTATUS AS (\nSELECT \n\tBCC.ORGKEY as CustomerID\n    ,BCC.TMDATE AS PeriodStartDate\n\t,NULL as PeriodEndDate\n\t,BCC.MARITAL_STATUS as MaritalStatusID\n\t,NULL as CustomerMaritalStatusNote\n\t,BCC.INSERT_DTTM AS InsertDttm\n\t,BCCD.RECORD_STATUS\nFROM BUSC.CRM_DEMOGRAPHIC_DELTA BCCD\nLEFT JOIN BUSC.CRM_DEMOGRAPHIC BCC\nON BCCD.DEMOGRAPHICID = BCC.DEMOGRAPHICID\n    AND BCCD.BANK_ID = BCC.BANK_ID\n    AND BCC.isLatest = '1'\n)\n\nSELECT * INTO #TEMP_BNKM_CUSTOMERMARITALSTATUS FROM TEMP_BNKM_CUSTOMERMARITALSTATUS;\n\n\n-------------CHECK IF THERE IS DELTA \n\nWITH TEMP_BNKM_CUSTOMERMARITALSTATUS_SRC AS (\n    SELECT \n        HASHBYTES('MD5',CONCAT(CustomerID, MaritalStatusID)) AS HASHROW\n        ,CustomerID\n\t\t,RECORD_STATUS\n    FROM #TEMP_BNKM_CUSTOMERMARITALSTATUS\n    WHERE RECORD_STATUS = 'UPDATE'\n)\n\n,\nTEMP_BNKM_CUSTOMERMARITALSTATUS_TGT AS (\n    SELECT  \n        HASHBYTES('MD5', CONCAT(CustomerID, MaritalStatusID)) AS HASHROW\n        ,CustomerID\n    FROM BNKM.CUSTOMERMARITALSTATUS\n\t-- WHERE SOURCE_CODE = 'CRM'\n)\n\n\n,\nTEMP_BNKM_CUSTOMERMARITALSTATUS_DELTA AS (\n\tSELECT\t\n\t\tSRC.HASHROW AS SRC_HR\n\t\t,TGT.HASHROW AS TGT_HR\n\t\t,ISNULL(SRC.CustomerID,TGT.CustomerID) AS CustomerID\n\t\t,CASE\n\t\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n\t\tELSE NULL END AS RECORD_STATUS\n\t\nFROM TEMP_BNKM_CUSTOMERMARITALSTATUS_SRC\tSRC\nFULL OUTER JOIN TEMP_BNKM_CUSTOMERMARITALSTATUS_TGT\tTGT\nON\tSRC.CustomerID = TGT.CustomerID\nWHERE SRC.HASHROW <> TGT.HASHROW \n)\n\n\nSELECT * INTO #TEMP_BNKM_CUSTOMERMARITALSTATUS_DELTA FROM TEMP_BNKM_CUSTOMERMARITALSTATUS_DELTA;\n\n\n----UPDATE RECORDS to BNKM\nUPDATE TGT \nSET\nPeriodEndDate = CONVERT(DATE,CONVERT(VARCHAR,SRC.PeriodStartDate))\nFROM BNKM.CustomerMaritalStatus TGT\nJOIN #TEMP_BNKM_CUSTOMERMARITALSTATUS_DELTA DELTA ON DELTA.CustomerId = TGT.CustomerId  AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_CUSTOMERMARITALSTATUS SRC ON SRC.CustomerId = TGT.CustomerId \nWHERE TGT.PeriodEndDate IS NULL\n\n\n---INSERT RECORDS WITH UPDATE\nINSERT INTO BNKM.CustomerMaritalStatus  ( \n\t[CustomerId]\n\t,[PeriodStartDate]\n\t,[PeriodEndDate]\n\t,[MaritalStatusId]\n\t,[CustomerMaritalStatusNote]\n\t,[SourceCode]\n\t,[WorkFlowId]\n\t,[TaskRunId]\n\t,[InsertDttm]\n)\n\nSELECT \n\tSRC.CustomerId AS CustomerId\n    ,CONVERT(DATE,CONVERT(varchar,PeriodStartDate)) AS PeriodStartDate\n\t,NULL AS PeriodEndDate\n    ,SRC.MaritalStatusId AS MaritalStatusId\n    ,NULL AS CustomerMaritalStatusNote\n\t,'CRM' AS SourceCode\n\t,0 AS WorkFlowId\n\t,0 AS TaskRunId\n\t,InsertDttm AS InsertDttm\nFROM #TEMP_BNKM_CustomerMaritalStatus SRC\nJOIN #TEMP_BNKM_CustomerMaritalStatus_DELTA DELTA ON  DELTA.RECORD_STATUS = 'UPDATE' AND DELTA.CustomerId = SRC.CustomerId\n\n\n\n-------INSERT TO BNKM\nINSERT INTO BNKM.CUSTOMERMARITALSTATUS (\n\t[CustomerId]\n\t,[PeriodStartDate]\n\t,[PeriodEndDate]\n\t,[MaritalStatusId]\n\t,[CustomerMaritalStatusNote]\n\t,[SourceCode]\n\t,[WorkFlowId]\n\t,[TaskRunId]\n\t,[InsertDttm]\n)\nSELECT     \n\tCustomerId AS CustomerId\n    ,CONVERT(DATE,CONVERT(varchar,PeriodStartDate)) AS PeriodStartDate\n\t,NULL AS PeriodEndDate\n    ,MaritalStatusId AS MaritalStatusId\n    ,NULL AS CustomerMaritalStatusNote\n\t,'CRM' AS SourceCode\n\t,0 AS WorkFlowId\n\t,0 AS TaskRunId\n\t,InsertDttm\nFROM #TEMP_BNKM_CUSTOMERMARITALSTATUS\nWHERE RECORD_STATUS in ('INSERT');\n\n\nDROP TABLE #TEMP_BNKM_CUSTOMERMARITALSTATUS;\nDROP TABLE #TEMP_BNKM_CUSTOMERMARITALSTATUS_DELTA;",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

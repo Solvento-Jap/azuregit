@@ -1,0 +1,20 @@
+{
+	"name": "bnkm_CustomerAction_crm",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "create PROCEDURE BNKM.SP_CUSTOMERACTION_CRM\nAS\nBEGIN\n--------------GET DELTA FROM BUSC\nWITH TEMP_BNKM_CustomerAction AS(\nSELECT\n\tBCA.ORGKEY AS CustomerId\n\t,NULL AS CustomerActionTypeId\n\t,BCA.KYC_DATE AS CustomerActionTimestamp\n\t,NULL AS CustomerActionValue\n\t,NULL AS CustomerActionNote\n\t,BCA.KYC_STATUS AS CustomerActionStatusId\n\t,NULL AS SourcePartyId\n\t,'CRM' AS SourceCode\n\t,BCA.BANK_ID AS FinancialInstitutionId\n\t,0 AS WorkFlowId\n\t,0 AS TaskRunId\n\t,BCA.INSERT_DTTM AS InsertDttm\n\t,BCAD.RECORD_STATUS\nFROM BUSC.CRM_AMLKYC_DELTA BCAD\nLEFT JOIN BUSC.CRM_AMLKYC  BCA\nON \tBCAD.AML_KYC_ID = BCA.AML_KYC_ID AND BCAD.BANK_ID = BCA.BANK_ID AND BCA.isLatest = '1'\nLEFT JOIN (SELECT ORGKEY,MAX(KYC_DATE) KYCDTE FROM BUSC.CRM_AMLKYC WHERE isLatest = '1' GROUP BY ORGKEY ) KYCDTE ON KYCDTE.ORGKEY = BCA.ORGKEY AND KYCDTE.KYCDTE = BCA.KYC_DATE --ADDED FOR DUP\nLEFT JOIN (SELECT ORGKEY,MAX(TMDATE) TMDATE FROM BUSC.CRM_AMLKYC WHERE isLatest = '1' GROUP BY ORGKEY ) TMDATE ON TMDATE.ORGKEY = BCA.ORGKEY AND TMDATE.TMDATE = BCA.TMDATE --ADDED FOR DUP\nWHERE TMDATE.TMDATE IS NOT NULL AND KYCDTE.KYCDTE IS NOT NULL\n\n\n\n)\n\n\nSELECT * INTO #TEMP_BNKM_CustomerAction FROM TEMP_BNKM_CustomerAction;\n\n\n-------------CHECK IF THERE IS DELTA \nWITH TEMP_BNKM_CustomerAction_SRC AS (\n\tSELECT\t\n\t\tHASHBYTES('MD5',CONCAT(CustomerId, CustomerActionTimestamp, CustomerActionStatusId)) AS HASHROW\n\t\t,CustomerId\n\t\t,RECORD_STATUS\n\tFROM #TEMP_BNKM_CustomerAction\n\tWHERE RECORD_STATUS = 'UPDATE'\n)\n\n\n,\nTEMP_BNKM_CustomerAction_TGT AS (\n\tSELECT\t\n\t\tHASHBYTES('MD5',CONCAT(CustomerId, CustomerActionTimestamp, CustomerActionStatusId)) AS HASHROW\n\t\t,CustomerId\n    FROM BNKM.CustomerAction\n\t-- WHERE SOURCE_CODE = 'CRM'\n)\n\n\n,\nTEMP_BNKM_CustomerAction_DELTA AS (\n\tSELECT\n\t\tSRC.HASHROW AS SRC_HR\n\t\t,TGT.HASHROW AS TGT_HR\n\t\t,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\n\t\t,CASE\n\t\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n\t\tELSE NULL END AS RECORD_STATUS\n\tFROM TEMP_BNKM_CustomerAction_SRC\tSRC\n\tFULL OUTER JOIN TEMP_BNKM_CustomerAction_TGT\tTGT\n\tON\tSRC.CustomerId = TGT.CustomerId\n\tWHERE SRC.HASHROW <> TGT.HASHROW \n)\n\n\nSELECT * INTO #TEMP_BNKM_CustomerAction_DELTA FROM TEMP_BNKM_CustomerAction_DELTA;\n\n\n---------UPDATE TO BNKM\nUPDATE TGT \nSET\n\t[CustomerId] = SRC.CustomerId\n\t,[CustomerActionTypeId] = NULL\n\t,[CustomerActionTimestamp] = SRC.CustomerActionTimestamp\n\t,[CustomerActionValue] = NULL\n\t,[CustomerActionNote] = NULL\n\t,[CustomerActionStatusId] = SRC.CustomerActionStatusId\n\t,[SourcePartyId] = NULL\n\t,[SourceCode] = 'CRM'\n\t,[FinancialInstitutionId] = SRC.FinancialInstitutionId\n\t,[WorkFlowId] = 0\n\t,[TaskRunId] = 0\n\t,[InsertDttm] = getDate()\t\nFROM BNKM.CustomerAction TGT\nJOIN #TEMP_BNKM_CustomerAction_DELTA DELTA ON DELTA.CustomerId = TGT.CustomerId AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_CustomerAction SRC ON SRC.CustomerId = TGT.CustomerId;\n\n\n-------INSERT TO BNKM\nINSERT INTO BNKM.CustomerAction (\n\t[CustomerId]\n\t,[CustomerActionTypeId]\n\t,[CustomerActionTimestamp]\n\t,[CustomerActionValue]\n\t,[CustomerActionNote]\n\t,[CustomerActionStatusId]\n\t,[SourcePartyId]\n\t,[SourceCode]\n\t,[FinancialInstitutionId]\n\t,[WorkFlowId]\n\t,[TaskRunId]\n\t,[InsertDttm])\n\nSELECT     \n\t[CustomerId]\n\t,[CustomerActionTypeId]\n\t,[CustomerActionTimestamp]\n\t,[CustomerActionValue]\n\t,[CustomerActionNote]\n\t,[CustomerActionStatusId]\n\t,[SourcePartyId]\n\t,[SourceCode]\n\t,[FinancialInstitutionId]\n\t,[WorkFlowId]\n\t,[TaskRunId]\n\t,[InsertDttm]\nFROM #TEMP_BNKM_CUSTOMERACTION\nWHERE RECORD_STATUS in ('INSERT');\n\n\nDROP TABLE #TEMP_BNKM_CustomerAction;\nDROP TABLE #TEMP_BNKM_CustomerAction_DELTA;\n\nEND\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

@@ -1,0 +1,609 @@
+{
+	"name": "DIMCUST_CRM",
+	"properties": {
+		"activities": [
+			{
+				"name": "DIMCUST_CRM",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'DimCustomer_CRM') \r\nBEGIN\r\n   DROP TABLE DW.DimCustomer_CRM;\r\nEND;\r\n\r\nWith Customer as(\r\n\tSELECT CUSTOMERID,SourceSystemCode,FinancialInstitutionId,SuspendedIndicator FROM BNKM.Customer WHERE SourceSystemCode = 'CRM'\r\n),\r\nCustomerTelephoneNumber as(\r\nSELECT ROW_NUMBER() OVER(PARTITION BY CustomerId ORDER BY PeriodStartTimestamp desc  ) rn, CustomerId,TelephoneNumber,FinancialInstitutionId FROM BNKM.CustomerTelephoneNumber WHERE PreferenceId = 'Y' AND PeriodEndTimestamp = '1900-01-01T00:00:00.0000000'\r\n),\r\nCustomerConsent as(\r\n\tSELECT ROW_NUMBER() OVER(PARTITION BY CustomerId ORDER BY ConsentId  ) rn, CustomerId,ConsentId,FinancialInstitutionId FROM  BNKM.CustomerConsent\r\n),\r\nConsent as(\r\n\tSELECT DISTINCT ConsentId,ConsentName FROM BNKM.Consent\r\n),\r\nCustomerAction as(\r\n\t SELECT distinct A.* FROM BNKM.CustomerAction A\r\n\t JOIN (SELECT CustomerId ,CustomerActionTypeId, FinancialInstitutionId,SourceCode, MAX(CustomerActionTimestamp) CustomerActionTimestamp FROM BNKM.CustomerAction GROUP BY CustomerId ,CustomerActionTypeId, FinancialInstitutionId,SourceCode ) B\r\n\t\tON A.CustomerId = B.CustomerId AND A.CustomerActionTypeId = B.CustomerActionTypeId AND A.FinancialInstitutionId = B.FinancialInstitutionId\r\n\t\tAND A.SourceCode = B.SourceCode AND A.CustomerActionTimestamp = B.CustomerActionTimestamp\r\n\tWHERE A.SourceCode = 'CRM'\r\n),\r\nCustomerLocation as(\r\n\tSELECT ROW_NUMBER() OVER(PARTITION BY CustomerId ORDER BY PeriodStartTimestamp desc ) rn, CustomerId,LocationId,FinancialInstitutionId FROM BNKM.CustomerLocation WHERE PreferenceId = 'Y' AND PeriodEndTimestamp = '2099-12-31T00:00:00.0000000' \r\n),\r\nLocation as(\r\n\tSELECT LocationId,LocationAddressLine1,LocationAddressLine2,LocationZipCode,CountryId ,LocationCity,LocationStateId,FinancialInstitutionId  FROM BNKM.Location\r\n),\r\nCustomerEmail as(\r\n\tSELECT ROW_NUMBER() OVER(PARTITION BY CustomerId ORDER BY PeriodStartTimestamp desc ) rn, CustomerId,EmailTypeId,EmailAddress,FinancialInstitutionId FROM BNKM.CustomerEmail WHERE PreferenceId = 'Y' AND PeriodEndTimestamp = '1900-01-01'\r\n),\r\nCity as(\r\n\tSELECT CityId,CityName,FinancialInstitutionId FROM BNKM.City\r\n),\r\nSTATE as(\r\n\tSELECT StateId,StateName,FinancialInstitutionId FROM BNKM.[STATE]\r\n),\r\nCustomerEmployment as(\r\n\tSELECT row_number() over(partition by customerid,FinancialInstitutionId order by customerid,JobTitleId) rn, CustomerId,CONVERT(VARCHAR(64),EmployerId,1) EmployerId,JobTitleId,FinancialInstitutionId FROM BNKM.CustomerEmployment WHERE PeriodEndDate IS NULL\r\n),\r\nEmployer as(\r\n\tSELECT row_number() over(partition by EmployerId,FinancialInstitutionId order by EmployerId,EmployerName) rn, EmployerId,EmployerName,EmployerAddressLine1,EmployerAddressLine2,CityId,StateId,ZipCode,Country,AnzsicClassCode,FinancialInstitutionId FROM BNKM.Employer\r\n),\r\nCountry  as(\r\n\tSELECT CountryId,IsoCountryName FROM BNKM.Country\r\n),\r\nAnzsicClass as(\r\n\tSELECT AnzsicClassCode,AnzsicClassName FROM BNKM.AnzsicClass\r\n),\r\nJobTitle as(\r\n\tSELECT JobTitleId,JobTitleName,FinancialInstitutionId FROM BNKM.JobTitle \r\n),\r\nCustomerCountryOfCitizenship as(\r\n\tSELECT ROW_NUMBER() OVER (PARTITION BY CustomerId ORDER BY PeriodStartDate DESC) AS RN, NationalityId, CustomerId FROM BNKM.CustomerCountryOfCitizenship\r\n),\r\nCustomerCountryOfCitizenshipRN as(\r\n\tSELECT CCC.NationalityId, CCC.CustomerId FROM CustomerCountryOfCitizenship CCC\r\n    WHERE CCC.RN = 1\r\n\t),\r\nNationality as(\r\n\tSELECT NationalityId, NationalityName FROM BNKM.Nationality)\r\n\r\n\r\n\r\n SELECT DISTINCT BC.CUSTOMERID \r\n    ,BCTN.TelephoneNumber               AS MobileNumber\r\n    ,BCE.EmailAddress                   AS Email\r\n    ,BLOC.LocationAddressLine1          AS AddressLine1\r\n    ,BLOC.LocationAddressLine2          AS AddressLine2\r\n    ,BCTY.CityName                      AS City\r\n    ,BSTT.StateName                     AS Province\r\n    ,BLOC.LocationZipCode               AS ZipCode\r\n    ,BLOC.CountryId                     AS Country\r\n\t,BN.NationalityName                 AS Nationality\r\n    ,BCST.ConsentName                   AS DataPrivacyConsent\r\n    ,BACT.CustomerActionTimestamp       AS LastKYCDate\r\n    ,BC.SuspendedIndicator              AS SuspendedIndicator\r\n    ,BEMP.EmployerName                  AS EmployerName\r\n    ,BEMP.EmployerAddressLine1          AS OfficeAddressLine1\r\n    ,BEMP.EmployerAddressLine2          AS OfficeAddressLine2\r\n    ,BCTY2.CityName                     AS OfficeCity\r\n    ,BSTT2.StateName                    AS OfficeProvince\r\n    ,BEMP.ZipCode                       AS OfficeZipCode\r\n    ,BCTRY.IsoCountryName               AS OfficeCountry\r\n    ,BAZC.AnzsicClassName               AS Industry\r\n    ,BJT.JobTitleName                   AS Occupation\r\n    ,BC.SourceSystemCode                AS SourceSystemCode\r\n    ,BC.FinancialInstitutionId          AS FinancialInstitutionId\r\n\tinto DW.DimCustomer_CRM\r\n    FROM Customer BC\r\n    LEFT JOIN CustomerTelephoneNumber BCTN ON BC.CustomerId = BCTN.CustomerId  AND BC.FinancialInstitutionId = BCTN.FinancialInstitutionId AND BCTN.RN = 1\r\n    LEFT JOIN CustomerConsent BCC ON BC.CustomerId = BCC.CustomerId  AND BC.FinancialInstitutionId = BCC.FinancialInstitutionId AND BCC.RN = 1--WITH ISSUE PK ON CONSENTID\r\n    LEFT JOIN Consent BCST ON BCC.ConsentId = BCST.ConsentId --CRM\r\n    LEFT JOIN (SELECT CustomerId ,CustomerActionTypeId, MAX(CustomerActionTimestamp) AS CustomerActionTimestamp, FinancialInstitutionId,SourceCode FROM CustomerAction GROUP BY CustomerId ,CustomerActionTypeId, FinancialInstitutionId,SourceCode) BACT ON BC.CustomerId = BACT.CustomerId AND BC.FinancialInstitutionId = BACT.FinancialInstitutionId\r\n    LEFT JOIN CustomerLocation BCL ON BC.CustomerId = BCL.CustomerId AND BC.FinancialInstitutionId = BCL.FinancialInstitutionId AND BCL.RN = 1--duplicates\r\n    LEFT JOIN Location BLOC ON BCL.LocationId = BLOC.LocationId AND BCL.FinancialInstitutionId = BLOC.FinancialInstitutionId\r\n    LEFT JOIN CustomerEmail BCE ON BC.CustomerId = BCE.CustomerId AND BC.FinancialInstitutionId = BCE.FinancialInstitutionId AND BCE.RN = 1\r\n    LEFT JOIN City BCTY ON BLOC.LocationCity = BCTY.CityId AND BC.FinancialInstitutionId = BCTY.FinancialInstitutionId\r\n    LEFT JOIN STATE BSTT   ON BLOC.LocationStateId = BSTT.StateId AND BC.FinancialInstitutionId = BSTT.FinancialInstitutionId\r\n    LEFT JOIN CustomerEmployment BCEMP ON BC.CustomerId = BCEMP.CustomerId AND BC.FinancialInstitutionId = BCEMP.FinancialInstitutionId  AND BCEMP.RN = 1\r\n    LEFT JOIN Employer BEMP ON BCEMP.EmployerId = BEMP.EmployerId AND BCEMP.FinancialInstitutionId = BEMP.FinancialInstitutionId AND BEMP.RN = 1\r\n    LEFT JOIN City BCTY2 ON CONVERT(VARCHAR,BEMP.CityId) = CONVERT(VARCHAR,BCTY2.CityId) AND BCTY2.FinancialInstitutionId = BEMP.FinancialInstitutionId    \r\n    LEFT JOIN STATE BSTT2   ON CONVERT(VARCHAR,BEMP.StateId) = convert(varchar,BSTT2.StateId) AND BEMP.FinancialInstitutionId = BSTT2.FinancialInstitutionId\r\n    LEFT JOIN Country BCTRY ON  BEMP.Country = convert(varchar,BCTRY.CountryId) \r\n    LEFT JOIN AnzsicClass BAZC ON BEMP.AnzsicClassCode = BAZC.AnzsicClassCode \r\n    LEFT JOIN JobTitle  BJT ON BCEMP.JobTitleId = BJT.JobTitleId AND BC.FinancialInstitutionId = BJT.FinancialInstitutionId\r\n    LEFT JOIN CustomerCountryOfCitizenshipRN BCCC ON BC.CustomerId = BCCC.CustomerId\r\n    LEFT JOIN Nationality BN ON BCCC.NationalityId = BN.NationalityId\r\n    WHERE BC.SourceSystemCode = 'CRM'\r\n    and BC.CustomerId ='R01249371'\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DimCustomer_CRM",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "DIMCUST_CRM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH\r\nCustomerSK\r\nas (\r\n    SELECT ISNULL(MAX(CustomerSK),0) RN FROM DW.DimCustomer \r\n),\r\nCustomerRelatedParty as(\r\n\tSELECT DISTINCT * FROM BNKM.CustomerRelatedParty where PeriodEndTimestamp is null\r\n),\r\nCustomerMaritalStatus as(\r\n\tSELECT CustomerId, MaritalStatusId from BNKM.CustomerMaritalStatus WHERE PeriodEndDate IS NULL\r\n),\r\nAtmCustomerRelatedCustomer as(\r\nSELECT DISTINCT RelatedCustomerId FROM BNKM.AtmCustomerRelatedCustomer where PeriodEndTimestamp IS NULL\r\n),\r\nCustomerAccountMBK as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'MBK'\r\n),\r\nCustomerAccountRIB as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'RIB'\r\n),\r\nBusinessOnlineBankingAccount as(\r\n\tSELECT DISTINCT CustomerAccountId FROM BNKM.BusinessOnlineBankingAccount\r\n),\r\nCustomerAccountParticipation as(\r\n\tSELECT DISTINCT CoreCustomerId FROM BNKM.CustomerAccountParticipation BCAP\r\n    JOIN BusinessOnlineBankingAccount BOBA ON BCAP.CustomerAccountId = BOBA.CustomerAccountId AND BCAP.SourceSystemCode IN ('DEP','LNS')\r\n),\r\nDCTemp as(\r\n     SELECT DISTINCT\r\n BC.CustomerId AS CustomerID\r\n--,BIC.IndividualCustomerName AS CustomerName\r\n--,CASE WHEN BCT.CustomerTypeName = 'Individual' THEN 'Retail' ELSE BCT.CustomerTypeName END  AS CustomerType\r\n--,BIC.DateOfBirth AS DateOfBirth\r\n--,BMS.MaritalStatusName AS MaritalStatus\r\n--,BG.GenderName AS Gender\r\n,TMPCCS.MobileNumber AS MobileNumber\r\n,TMPCCS.Email AS Email\r\n,TMPCCS.AddressLine1 AS AddressLine1\r\n,TMPCCS.AddressLine2 AS AddressLine2\r\n,TMPCCS.City AS City\r\n,TMPCCS.Province AS Province\r\n,TMPCCS.ZipCode AS ZipCode\r\n,TMPCCS.Country AS Country\r\n,TMPCCS.Nationality AS Nationality\r\n,TMPCCS.DataPrivacyConsent AS DataPrivacyConsent --change to null due to issue in duplicate for customer consent\r\n,TMPCCS.LastKYCDate AS LastKYCDate\r\n,TMPCCS.SuspendedIndicator AS SuspendedIndicator\r\n,BC.CustomerEstablishedDate AS RelationshipStartDate\r\n--,BCRP.PartyId AS GlobalCIF\r\n--,CASE WHEN BCRC.RelatedCustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS ATMEnrollmentIndicator\r\n--,CASE WHEN BCA.CustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS MobileBankingEnrollmentIndicator --MBK\r\n--,CASE WHEN BCA2.CustomerId IS NOT NULL OR BCAP.CoreCustomerId IS NOT NULL \r\n--THEN 'Y' ELSE 'N' END AS OnlineBankingEnrollmentIndicator --RIB/BOB\r\n--,GenerationalCohortSK AS GenerationalCohortSK\r\n,TMPCCS.EmployerName\r\n,TMPCCS.OfficeAddressLine1\r\n,TMPCCS.OfficeAddressLine2\r\n,TMPCCS.OfficeCity\r\n,TMPCCS.OfficeProvince\r\n,TMPCCS.OfficeZipCode\r\n,TMPCCS.OfficeCountry\r\n,TMPCCS.Industry\r\n,TMPCCS.Occupation\r\n--,DDB.BankSK AS BankSK\r\n,BC.BranchId AS BranchSK\r\n--,1 AS CurrentIndicator\r\n--,GETDATE() AS ValidStartDate\r\n--,convert(date,'9999-01-01') AS ValidEndDate\r\n,BC.SourceSystemCode AS SourceSystemCode\r\n--,0 AS WorkFlowId\r\n--,0 AS TaskRunId\r\n--,GETDATE() AS InsertDttm\r\nFROM BNKM.Customer BC\r\nJOIN DW.DimCustomer_CRM TMPCCS ON BC.CustomerId = TMPCCS.CUSTOMERID AND BC.FinancialInstitutionId = TMPCCS.FinancialInstitutionId\r\n--JOIN BNKM.IndividualCustomer BIC ON BC.CustomerId  = BIC.CustomerId\r\n--LEFT JOIN CustomerRelatedParty  BCRP ON BC.CustomerId = BCRP.CustomerId AND BC.FinancialInstitutionId = BCRP.FinancialInstitutionId\r\n--LEFT JOIN BNKM.CustomerType BCT ON BC.CustomerTypeId= CONVERT(VARCHAR,BCT.CustomerTypeId) AND BC.FinancialInstitutionId = BCT.FinancialInstitutionId\r\n--LEFT JOIN CustomerMaritalStatus BCMS ON BC.CustomerId = BCMS.CustomerId\r\n--\r\n--LEFT JOIN BNKM.MaritalStatus BMS ON BCMS.MaritalStatusId  = convert(varchar,BMS.MaritalStatusId)\r\n--LEFT JOIN BNKM.Gender BG ON BIC.GenderId = convert(varchar,BG.GenderId)\r\n--\r\n--LEFT JOIN AtmCustomerRelatedCustomer BCRC ON BC.CustomerId = BCRC.RelatedCustomerId \r\n--LEFT JOIN CustomerAccountMBK BCA ON BC.CustomerId = CONVERT(VARCHAR,BCA.CustomerId)  --MBK\r\n--LEFT JOIN CustomerAccountRIB BCA2 ON BC.CustomerId = CONVERT(VARCHAR,BCA2.CustomerId)  --RIB\r\n--LEFT JOIN CustomerAccountParticipation BCAP ON BCAP.CoreCustomerId = BC.CoreCustomerId \r\n--LEFT JOIN DW.DimBank DDB ON BC.FinancialInstitutionId = DDB.BankID\r\n--LEFT JOIN DW.DimGenerationalCohort DGC ON YEAR(BIC.DateOfBirth)>= DGC.LowerLimit  AND YEAR(BIC.DateOfBirth) <= DGC.UpperLimit \r\nWHERE BC.SourceSystemCode = 'CRM'\r\n)\r\nSELECT count(1) cnt from DCTemp where CustomerId ='R01249371'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "IndividualCustomer",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "DimCustomer_CRM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH\r\nCustomerSK\r\nas (\r\n    SELECT ISNULL(MAX(CustomerSK),0) RN FROM DW.DimCustomer \r\n),\r\nCustomerRelatedParty as(\r\n\tSELECT DISTINCT * FROM BNKM.CustomerRelatedParty where PeriodEndTimestamp is null\r\n),\r\nCustomerMaritalStatus as(\r\n\tSELECT CustomerId, MaritalStatusId from BNKM.CustomerMaritalStatus WHERE PeriodEndDate IS NULL\r\n),\r\nAtmCustomerRelatedCustomer as(\r\nSELECT DISTINCT RelatedCustomerId FROM BNKM.AtmCustomerRelatedCustomer where PeriodEndTimestamp IS NULL\r\n),\r\nCustomerAccountMBK as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'MBK'\r\n),\r\nCustomerAccountRIB as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'RIB'\r\n),\r\nBusinessOnlineBankingAccount as(\r\n\tSELECT DISTINCT CustomerAccountId FROM BNKM.BusinessOnlineBankingAccount\r\n),\r\nCustomerAccountParticipation as(\r\n\tSELECT DISTINCT CoreCustomerId FROM BNKM.CustomerAccountParticipation BCAP\r\n    JOIN BusinessOnlineBankingAccount BOBA ON BCAP.CustomerAccountId = BOBA.CustomerAccountId AND BCAP.SourceSystemCode IN ('DEP','LNS')\r\n),\r\nDCTemp as(\r\n     SELECT DISTINCT\r\n BC.CustomerId AS CustomerID\r\n,BIC.IndividualCustomerName AS CustomerName\r\n--,CASE WHEN BCT.CustomerTypeName = 'Individual' THEN 'Retail' ELSE BCT.CustomerTypeName END  AS CustomerType\r\n,BIC.DateOfBirth AS DateOfBirth\r\n--,BMS.MaritalStatusName AS MaritalStatus\r\n--,BG.GenderName AS Gender\r\n,TMPCCS.MobileNumber AS MobileNumber\r\n,TMPCCS.Email AS Email\r\n,TMPCCS.AddressLine1 AS AddressLine1\r\n,TMPCCS.AddressLine2 AS AddressLine2\r\n,TMPCCS.City AS City\r\n,TMPCCS.Province AS Province\r\n,TMPCCS.ZipCode AS ZipCode\r\n,TMPCCS.Country AS Country\r\n,TMPCCS.Nationality AS Nationality\r\n,TMPCCS.DataPrivacyConsent AS DataPrivacyConsent --change to null due to issue in duplicate for customer consent\r\n,TMPCCS.LastKYCDate AS LastKYCDate\r\n,TMPCCS.SuspendedIndicator AS SuspendedIndicator\r\n,BC.CustomerEstablishedDate AS RelationshipStartDate\r\n--,BCRP.PartyId AS GlobalCIF\r\n--,CASE WHEN BCRC.RelatedCustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS ATMEnrollmentIndicator\r\n--,CASE WHEN BCA.CustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS MobileBankingEnrollmentIndicator --MBK\r\n--,CASE WHEN BCA2.CustomerId IS NOT NULL OR BCAP.CoreCustomerId IS NOT NULL \r\n--THEN 'Y' ELSE 'N' END AS OnlineBankingEnrollmentIndicator --RIB/BOB\r\n--,GenerationalCohortSK AS GenerationalCohortSK\r\n,TMPCCS.EmployerName\r\n,TMPCCS.OfficeAddressLine1\r\n,TMPCCS.OfficeAddressLine2\r\n,TMPCCS.OfficeCity\r\n,TMPCCS.OfficeProvince\r\n,TMPCCS.OfficeZipCode\r\n,TMPCCS.OfficeCountry\r\n,TMPCCS.Industry\r\n,TMPCCS.Occupation\r\n--,DDB.BankSK AS BankSK\r\n,BC.BranchId AS BranchSK\r\n--,1 AS CurrentIndicator\r\n--,GETDATE() AS ValidStartDate\r\n--,convert(date,'9999-01-01') AS ValidEndDate\r\n,BC.SourceSystemCode AS SourceSystemCode\r\n--,0 AS WorkFlowId\r\n--,0 AS TaskRunId\r\n--,GETDATE() AS InsertDttm\r\nFROM BNKM.Customer BC\r\nJOIN DW.DimCustomer_CRM TMPCCS ON BC.CustomerId = TMPCCS.CUSTOMERID AND BC.FinancialInstitutionId = TMPCCS.FinancialInstitutionId\r\nJOIN BNKM.IndividualCustomer BIC ON BC.CustomerId  = BIC.CustomerId\r\n--LEFT JOIN CustomerRelatedParty  BCRP ON BC.CustomerId = BCRP.CustomerId AND BC.FinancialInstitutionId = BCRP.FinancialInstitutionId\r\n--LEFT JOIN BNKM.CustomerType BCT ON BC.CustomerTypeId= CONVERT(VARCHAR,BCT.CustomerTypeId) AND BC.FinancialInstitutionId = BCT.FinancialInstitutionId\r\n--LEFT JOIN CustomerMaritalStatus BCMS ON BC.CustomerId = BCMS.CustomerId\r\n--\r\n--LEFT JOIN BNKM.MaritalStatus BMS ON BCMS.MaritalStatusId  = convert(varchar,BMS.MaritalStatusId)\r\n--LEFT JOIN BNKM.Gender BG ON BIC.GenderId = convert(varchar,BG.GenderId)\r\n--\r\n--LEFT JOIN AtmCustomerRelatedCustomer BCRC ON BC.CustomerId = BCRC.RelatedCustomerId \r\n--LEFT JOIN CustomerAccountMBK BCA ON BC.CustomerId = CONVERT(VARCHAR,BCA.CustomerId)  --MBK\r\n--LEFT JOIN CustomerAccountRIB BCA2 ON BC.CustomerId = CONVERT(VARCHAR,BCA2.CustomerId)  --RIB\r\n--LEFT JOIN CustomerAccountParticipation BCAP ON BCAP.CoreCustomerId = BC.CoreCustomerId \r\n--LEFT JOIN DW.DimBank DDB ON BC.FinancialInstitutionId = DDB.BankID\r\n--LEFT JOIN DW.DimGenerationalCohort DGC ON YEAR(BIC.DateOfBirth)>= DGC.LowerLimit  AND YEAR(BIC.DateOfBirth) <= DGC.UpperLimit \r\nWHERE BC.SourceSystemCode = 'CRM'\r\n)\r\nSELECT CustomerID\r\n,CustomerName\r\n,DateOfBirth\r\n,MobileNumber\r\n,Email\r\n,AddressLine1\r\n,AddressLine2\r\n,City\r\n,Province\r\n,ZipCode\r\n,Country\r\n,Nationality\r\n,DataPrivacyConsent \r\n,LastKYCDate\r\n,SuspendedIndicator\r\n,RelationshipStartDate\r\n,EmployerName\r\n,OfficeAddressLine1\r\n,OfficeAddressLine2\r\n,OfficeCity\r\n,OfficeProvince\r\n,OfficeZipCode\r\n,OfficeCountry\r\n,Industry\r\n,Occupation\r\n,BranchSK\r\n,SourceSystemCode\r\n from DCTemp where CustomerId ='R01249371'\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CustomerRelatedParty",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "IndividualCustomer_copy1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH\r\nCustomerSK\r\nas (\r\n    SELECT ISNULL(MAX(CustomerSK),0) RN FROM DW.DimCustomer \r\n),\r\nCustomerRelatedParty as(\r\n\tSELECT DISTINCT * FROM BNKM.CustomerRelatedParty where PeriodEndTimestamp is null\r\n),\r\nCustomerMaritalStatus as(\r\n\tSELECT CustomerId, MaritalStatusId from BNKM.CustomerMaritalStatus WHERE PeriodEndDate IS NULL\r\n),\r\nAtmCustomerRelatedCustomer as(\r\nSELECT DISTINCT RelatedCustomerId FROM BNKM.AtmCustomerRelatedCustomer where PeriodEndTimestamp IS NULL\r\n),\r\nCustomerAccountMBK as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'MBK'\r\n),\r\nCustomerAccountRIB as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'RIB'\r\n),\r\nBusinessOnlineBankingAccount as(\r\n\tSELECT DISTINCT CustomerAccountId FROM BNKM.BusinessOnlineBankingAccount\r\n),\r\nCustomerAccountParticipation as(\r\n\tSELECT DISTINCT CoreCustomerId FROM BNKM.CustomerAccountParticipation BCAP\r\n    JOIN BusinessOnlineBankingAccount BOBA ON BCAP.CustomerAccountId = BOBA.CustomerAccountId AND BCAP.SourceSystemCode IN ('DEP','LNS')\r\n),\r\nDCTemp as(\r\n     SELECT DISTINCT\r\n BC.CustomerId AS CustomerID\r\n,BIC.IndividualCustomerName AS CustomerName\r\n--,CASE WHEN BCT.CustomerTypeName = 'Individual' THEN 'Retail' ELSE BCT.CustomerTypeName END  AS CustomerType\r\n,BIC.DateOfBirth AS DateOfBirth\r\n--,BMS.MaritalStatusName AS MaritalStatus\r\n--,BG.GenderName AS Gender\r\n,TMPCCS.MobileNumber AS MobileNumber\r\n,TMPCCS.Email AS Email\r\n,TMPCCS.AddressLine1 AS AddressLine1\r\n,TMPCCS.AddressLine2 AS AddressLine2\r\n,TMPCCS.City AS City\r\n,TMPCCS.Province AS Province\r\n,TMPCCS.ZipCode AS ZipCode\r\n,TMPCCS.Country AS Country\r\n,TMPCCS.Nationality AS Nationality\r\n,TMPCCS.DataPrivacyConsent AS DataPrivacyConsent --change to null due to issue in duplicate for customer consent\r\n,TMPCCS.LastKYCDate AS LastKYCDate\r\n,TMPCCS.SuspendedIndicator AS SuspendedIndicator\r\n,BC.CustomerEstablishedDate AS RelationshipStartDate\r\n,BCRP.PartyId AS GlobalCIF\r\n--,CASE WHEN BCRC.RelatedCustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS ATMEnrollmentIndicator\r\n--,CASE WHEN BCA.CustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS MobileBankingEnrollmentIndicator --MBK\r\n--,CASE WHEN BCA2.CustomerId IS NOT NULL OR BCAP.CoreCustomerId IS NOT NULL \r\n--THEN 'Y' ELSE 'N' END AS OnlineBankingEnrollmentIndicator --RIB/BOB\r\n--,GenerationalCohortSK AS GenerationalCohortSK\r\n,TMPCCS.EmployerName\r\n,TMPCCS.OfficeAddressLine1\r\n,TMPCCS.OfficeAddressLine2\r\n,TMPCCS.OfficeCity\r\n,TMPCCS.OfficeProvince\r\n,TMPCCS.OfficeZipCode\r\n,TMPCCS.OfficeCountry\r\n,TMPCCS.Industry\r\n,TMPCCS.Occupation\r\n--,DDB.BankSK AS BankSK\r\n,BC.BranchId AS BranchSK\r\n--,1 AS CurrentIndicator\r\n--,GETDATE() AS ValidStartDate\r\n--,convert(date,'9999-01-01') AS ValidEndDate\r\n,BC.SourceSystemCode AS SourceSystemCode\r\n--,0 AS WorkFlowId\r\n--,0 AS TaskRunId\r\n--,GETDATE() AS InsertDttm\r\nFROM BNKM.Customer BC\r\nJOIN DW.DimCustomer_CRM TMPCCS ON BC.CustomerId = TMPCCS.CUSTOMERID AND BC.FinancialInstitutionId = TMPCCS.FinancialInstitutionId\r\nJOIN BNKM.IndividualCustomer BIC ON BC.CustomerId  = BIC.CustomerId\r\nLEFT JOIN CustomerRelatedParty  BCRP ON BC.CustomerId = BCRP.CustomerId AND BC.FinancialInstitutionId = BCRP.FinancialInstitutionId\r\n--LEFT JOIN BNKM.CustomerType BCT ON BC.CustomerTypeId= CONVERT(VARCHAR,BCT.CustomerTypeId) AND BC.FinancialInstitutionId = BCT.FinancialInstitutionId\r\n--LEFT JOIN CustomerMaritalStatus BCMS ON BC.CustomerId = BCMS.CustomerId\r\n--\r\n--LEFT JOIN BNKM.MaritalStatus BMS ON BCMS.MaritalStatusId  = convert(varchar,BMS.MaritalStatusId)\r\n--LEFT JOIN BNKM.Gender BG ON BIC.GenderId = convert(varchar,BG.GenderId)\r\n--\r\n--LEFT JOIN AtmCustomerRelatedCustomer BCRC ON BC.CustomerId = BCRC.RelatedCustomerId \r\n--LEFT JOIN CustomerAccountMBK BCA ON BC.CustomerId = CONVERT(VARCHAR,BCA.CustomerId)  --MBK\r\n--LEFT JOIN CustomerAccountRIB BCA2 ON BC.CustomerId = CONVERT(VARCHAR,BCA2.CustomerId)  --RIB\r\n--LEFT JOIN CustomerAccountParticipation BCAP ON BCAP.CoreCustomerId = BC.CoreCustomerId \r\n--LEFT JOIN DW.DimBank DDB ON BC.FinancialInstitutionId = DDB.BankID\r\n--LEFT JOIN DW.DimGenerationalCohort DGC ON YEAR(BIC.DateOfBirth)>= DGC.LowerLimit  AND YEAR(BIC.DateOfBirth) <= DGC.UpperLimit \r\nWHERE BC.SourceSystemCode = 'CRM'\r\n)\r\nSELECT count(1) cnt from DCTemp where CustomerId ='R01249371'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CustomerType",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "CustomerRelatedParty",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH\r\nCustomerSK\r\nas (\r\n    SELECT ISNULL(MAX(CustomerSK),0) RN FROM DW.DimCustomer \r\n),\r\nCustomerRelatedParty as(\r\n\tSELECT DISTINCT * FROM BNKM.CustomerRelatedParty where PeriodEndTimestamp is null\r\n),\r\nCustomerMaritalStatus as(\r\n\tSELECT CustomerId, MaritalStatusId from BNKM.CustomerMaritalStatus WHERE PeriodEndDate IS NULL\r\n),\r\nAtmCustomerRelatedCustomer as(\r\nSELECT DISTINCT RelatedCustomerId FROM BNKM.AtmCustomerRelatedCustomer where PeriodEndTimestamp IS NULL\r\n),\r\nCustomerAccountMBK as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'MBK'\r\n),\r\nCustomerAccountRIB as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'RIB'\r\n),\r\nBusinessOnlineBankingAccount as(\r\n\tSELECT DISTINCT CustomerAccountId FROM BNKM.BusinessOnlineBankingAccount\r\n),\r\nCustomerAccountParticipation as(\r\n\tSELECT DISTINCT CoreCustomerId FROM BNKM.CustomerAccountParticipation BCAP\r\n    JOIN BusinessOnlineBankingAccount BOBA ON BCAP.CustomerAccountId = BOBA.CustomerAccountId AND BCAP.SourceSystemCode IN ('DEP','LNS')\r\n),\r\nDCTemp as(\r\n     SELECT DISTINCT\r\n BC.CustomerId AS CustomerID\r\n,BIC.IndividualCustomerName AS CustomerName\r\n,CASE WHEN BCT.CustomerTypeName = 'Individual' THEN 'Retail' ELSE BCT.CustomerTypeName END  AS CustomerType\r\n,BIC.DateOfBirth AS DateOfBirth\r\n--,BMS.MaritalStatusName AS MaritalStatus\r\n--,BG.GenderName AS Gender\r\n,TMPCCS.MobileNumber AS MobileNumber\r\n,TMPCCS.Email AS Email\r\n,TMPCCS.AddressLine1 AS AddressLine1\r\n,TMPCCS.AddressLine2 AS AddressLine2\r\n,TMPCCS.City AS City\r\n,TMPCCS.Province AS Province\r\n,TMPCCS.ZipCode AS ZipCode\r\n,TMPCCS.Country AS Country\r\n,TMPCCS.Nationality AS Nationality\r\n,TMPCCS.DataPrivacyConsent AS DataPrivacyConsent --change to null due to issue in duplicate for customer consent\r\n,TMPCCS.LastKYCDate AS LastKYCDate\r\n,TMPCCS.SuspendedIndicator AS SuspendedIndicator\r\n,BC.CustomerEstablishedDate AS RelationshipStartDate\r\n,BCRP.PartyId AS GlobalCIF\r\n--,CASE WHEN BCRC.RelatedCustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS ATMEnrollmentIndicator\r\n--,CASE WHEN BCA.CustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS MobileBankingEnrollmentIndicator --MBK\r\n--,CASE WHEN BCA2.CustomerId IS NOT NULL OR BCAP.CoreCustomerId IS NOT NULL \r\n--THEN 'Y' ELSE 'N' END AS OnlineBankingEnrollmentIndicator --RIB/BOB\r\n--,GenerationalCohortSK AS GenerationalCohortSK\r\n,TMPCCS.EmployerName\r\n,TMPCCS.OfficeAddressLine1\r\n,TMPCCS.OfficeAddressLine2\r\n,TMPCCS.OfficeCity\r\n,TMPCCS.OfficeProvince\r\n,TMPCCS.OfficeZipCode\r\n,TMPCCS.OfficeCountry\r\n,TMPCCS.Industry\r\n,TMPCCS.Occupation\r\n--,DDB.BankSK AS BankSK\r\n,BC.BranchId AS BranchSK\r\n--,1 AS CurrentIndicator\r\n--,GETDATE() AS ValidStartDate\r\n--,convert(date,'9999-01-01') AS ValidEndDate\r\n,BC.SourceSystemCode AS SourceSystemCode\r\n--,0 AS WorkFlowId\r\n--,0 AS TaskRunId\r\n--,GETDATE() AS InsertDttm\r\nFROM BNKM.Customer BC\r\nJOIN DW.DimCustomer_CRM TMPCCS ON BC.CustomerId = TMPCCS.CUSTOMERID AND BC.FinancialInstitutionId = TMPCCS.FinancialInstitutionId\r\nJOIN BNKM.IndividualCustomer BIC ON BC.CustomerId  = BIC.CustomerId\r\nLEFT JOIN CustomerRelatedParty  BCRP ON BC.CustomerId = BCRP.CustomerId AND BC.FinancialInstitutionId = BCRP.FinancialInstitutionId\r\nLEFT JOIN BNKM.CustomerType BCT ON BC.CustomerTypeId= CONVERT(VARCHAR,BCT.CustomerTypeId) AND BC.FinancialInstitutionId = BCT.FinancialInstitutionId\r\n--LEFT JOIN CustomerMaritalStatus BCMS ON BC.CustomerId = BCMS.CustomerId\r\n--\r\n--LEFT JOIN BNKM.MaritalStatus BMS ON BCMS.MaritalStatusId  = convert(varchar,BMS.MaritalStatusId)\r\n--LEFT JOIN BNKM.Gender BG ON BIC.GenderId = convert(varchar,BG.GenderId)\r\n--\r\n--LEFT JOIN AtmCustomerRelatedCustomer BCRC ON BC.CustomerId = BCRC.RelatedCustomerId \r\n--LEFT JOIN CustomerAccountMBK BCA ON BC.CustomerId = CONVERT(VARCHAR,BCA.CustomerId)  --MBK\r\n--LEFT JOIN CustomerAccountRIB BCA2 ON BC.CustomerId = CONVERT(VARCHAR,BCA2.CustomerId)  --RIB\r\n--LEFT JOIN CustomerAccountParticipation BCAP ON BCAP.CoreCustomerId = BC.CoreCustomerId \r\n--LEFT JOIN DW.DimBank DDB ON BC.FinancialInstitutionId = DDB.BankID\r\n--LEFT JOIN DW.DimGenerationalCohort DGC ON YEAR(BIC.DateOfBirth)>= DGC.LowerLimit  AND YEAR(BIC.DateOfBirth) <= DGC.UpperLimit \r\nWHERE BC.SourceSystemCode = 'CRM'\r\n)\r\nSELECT count(1) cnt from DCTemp where CustomerId ='R01249371'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CustomerMaritalStatus",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "CustomerType",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH\r\nCustomerSK\r\nas (\r\n    SELECT ISNULL(MAX(CustomerSK),0) RN FROM DW.DimCustomer \r\n),\r\nCustomerRelatedParty as(\r\n\tSELECT DISTINCT * FROM BNKM.CustomerRelatedParty where PeriodEndTimestamp is null\r\n),\r\nCustomerMaritalStatus as(\r\n\tSELECT CustomerId, MaritalStatusId from BNKM.CustomerMaritalStatus WHERE PeriodEndDate IS NULL\r\n),\r\nAtmCustomerRelatedCustomer as(\r\nSELECT DISTINCT RelatedCustomerId FROM BNKM.AtmCustomerRelatedCustomer where PeriodEndTimestamp IS NULL\r\n),\r\nCustomerAccountMBK as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'MBK'\r\n),\r\nCustomerAccountRIB as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'RIB'\r\n),\r\nBusinessOnlineBankingAccount as(\r\n\tSELECT DISTINCT CustomerAccountId FROM BNKM.BusinessOnlineBankingAccount\r\n),\r\nCustomerAccountParticipation as(\r\n\tSELECT DISTINCT CoreCustomerId FROM BNKM.CustomerAccountParticipation BCAP\r\n    JOIN BusinessOnlineBankingAccount BOBA ON BCAP.CustomerAccountId = BOBA.CustomerAccountId AND BCAP.SourceSystemCode IN ('DEP','LNS')\r\n),\r\nDCTemp as(\r\n     SELECT DISTINCT\r\n BC.CustomerId AS CustomerID\r\n,BIC.IndividualCustomerName AS CustomerName\r\n,CASE WHEN BCT.CustomerTypeName = 'Individual' THEN 'Retail' ELSE BCT.CustomerTypeName END  AS CustomerType\r\n,BIC.DateOfBirth AS DateOfBirth\r\n--,BMS.MaritalStatusName AS MaritalStatus\r\n--,BG.GenderName AS Gender\r\n,TMPCCS.MobileNumber AS MobileNumber\r\n,TMPCCS.Email AS Email\r\n,TMPCCS.AddressLine1 AS AddressLine1\r\n,TMPCCS.AddressLine2 AS AddressLine2\r\n,TMPCCS.City AS City\r\n,TMPCCS.Province AS Province\r\n,TMPCCS.ZipCode AS ZipCode\r\n,TMPCCS.Country AS Country\r\n,TMPCCS.Nationality AS Nationality\r\n,TMPCCS.DataPrivacyConsent AS DataPrivacyConsent --change to null due to issue in duplicate for customer consent\r\n,TMPCCS.LastKYCDate AS LastKYCDate\r\n,TMPCCS.SuspendedIndicator AS SuspendedIndicator\r\n,BC.CustomerEstablishedDate AS RelationshipStartDate\r\n,BCRP.PartyId AS GlobalCIF\r\n--,CASE WHEN BCRC.RelatedCustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS ATMEnrollmentIndicator\r\n--,CASE WHEN BCA.CustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS MobileBankingEnrollmentIndicator --MBK\r\n--,CASE WHEN BCA2.CustomerId IS NOT NULL OR BCAP.CoreCustomerId IS NOT NULL \r\n--THEN 'Y' ELSE 'N' END AS OnlineBankingEnrollmentIndicator --RIB/BOB\r\n--,GenerationalCohortSK AS GenerationalCohortSK\r\n,TMPCCS.EmployerName\r\n,TMPCCS.OfficeAddressLine1\r\n,TMPCCS.OfficeAddressLine2\r\n,TMPCCS.OfficeCity\r\n,TMPCCS.OfficeProvince\r\n,TMPCCS.OfficeZipCode\r\n,TMPCCS.OfficeCountry\r\n,TMPCCS.Industry\r\n,TMPCCS.Occupation\r\n--,DDB.BankSK AS BankSK\r\n,BC.BranchId AS BranchSK\r\n--,1 AS CurrentIndicator\r\n--,GETDATE() AS ValidStartDate\r\n--,convert(date,'9999-01-01') AS ValidEndDate\r\n,BC.SourceSystemCode AS SourceSystemCode\r\n--,0 AS WorkFlowId\r\n--,0 AS TaskRunId\r\n--,GETDATE() AS InsertDttm\r\nFROM BNKM.Customer BC\r\nJOIN DW.DimCustomer_CRM TMPCCS ON BC.CustomerId = TMPCCS.CUSTOMERID AND BC.FinancialInstitutionId = TMPCCS.FinancialInstitutionId\r\nJOIN BNKM.IndividualCustomer BIC ON BC.CustomerId  = BIC.CustomerId\r\nLEFT JOIN CustomerRelatedParty  BCRP ON BC.CustomerId = BCRP.CustomerId AND BC.FinancialInstitutionId = BCRP.FinancialInstitutionId\r\nLEFT JOIN BNKM.CustomerType BCT ON BC.CustomerTypeId= CONVERT(VARCHAR,BCT.CustomerTypeId) AND BC.FinancialInstitutionId = BCT.FinancialInstitutionId\r\nLEFT JOIN CustomerMaritalStatus BCMS ON BC.CustomerId = BCMS.CustomerId\r\n\r\n--LEFT JOIN BNKM.MaritalStatus BMS ON BCMS.MaritalStatusId  = convert(varchar,BMS.MaritalStatusId)\r\n--LEFT JOIN BNKM.Gender BG ON BIC.GenderId = convert(varchar,BG.GenderId)\r\n--\r\n--LEFT JOIN AtmCustomerRelatedCustomer BCRC ON BC.CustomerId = BCRC.RelatedCustomerId \r\n--LEFT JOIN CustomerAccountMBK BCA ON BC.CustomerId = CONVERT(VARCHAR,BCA.CustomerId)  --MBK\r\n--LEFT JOIN CustomerAccountRIB BCA2 ON BC.CustomerId = CONVERT(VARCHAR,BCA2.CustomerId)  --RIB\r\n--LEFT JOIN CustomerAccountParticipation BCAP ON BCAP.CoreCustomerId = BC.CoreCustomerId \r\n--LEFT JOIN DW.DimBank DDB ON BC.FinancialInstitutionId = DDB.BankID\r\n--LEFT JOIN DW.DimGenerationalCohort DGC ON YEAR(BIC.DateOfBirth)>= DGC.LowerLimit  AND YEAR(BIC.DateOfBirth) <= DGC.UpperLimit \r\nWHERE BC.SourceSystemCode = 'CRM'\r\n)\r\nSELECT count(1) cnt from DCTemp where CustomerId ='R01249371'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "MaritalStatus",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "CustomerMaritalStatus",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH\r\nCustomerSK\r\nas (\r\n    SELECT ISNULL(MAX(CustomerSK),0) RN FROM DW.DimCustomer \r\n),\r\nCustomerRelatedParty as(\r\n\tSELECT DISTINCT * FROM BNKM.CustomerRelatedParty where PeriodEndTimestamp is null\r\n),\r\nCustomerMaritalStatus as(\r\n\tSELECT ROW_NUMBER() OVER(PARTITION BY CustomerId ORDER BY PeriodStartDate desc ) rn, CustomerId, MaritalStatusId from BNKM.CustomerMaritalStatus WHERE PeriodEndDate IS NULL\r\n),\r\nAtmCustomerRelatedCustomer as(\r\nSELECT DISTINCT RelatedCustomerId FROM BNKM.AtmCustomerRelatedCustomer where PeriodEndTimestamp IS NULL\r\n),\r\nCustomerAccountMBK as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'MBK'\r\n),\r\nCustomerAccountRIB as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'RIB'\r\n),\r\nBusinessOnlineBankingAccount as(\r\n\tSELECT DISTINCT CustomerAccountId FROM BNKM.BusinessOnlineBankingAccount\r\n),\r\nCustomerAccountParticipation as(\r\n\tSELECT DISTINCT CoreCustomerId FROM BNKM.CustomerAccountParticipation BCAP\r\n    JOIN BusinessOnlineBankingAccount BOBA ON BCAP.CustomerAccountId = BOBA.CustomerAccountId AND BCAP.SourceSystemCode IN ('DEP','LNS')\r\n),\r\nDCTemp as(\r\n     SELECT DISTINCT\r\n BC.CustomerId AS CustomerID\r\n,BIC.IndividualCustomerName AS CustomerName\r\n,CASE WHEN BCT.CustomerTypeName = 'Individual' THEN 'Retail' ELSE BCT.CustomerTypeName END  AS CustomerType\r\n,BIC.DateOfBirth AS DateOfBirth\r\n,BMS.MaritalStatusName AS MaritalStatus\r\n--,BG.GenderName AS Gender\r\n,TMPCCS.MobileNumber AS MobileNumber\r\n,TMPCCS.Email AS Email\r\n,TMPCCS.AddressLine1 AS AddressLine1\r\n,TMPCCS.AddressLine2 AS AddressLine2\r\n,TMPCCS.City AS City\r\n,TMPCCS.Province AS Province\r\n,TMPCCS.ZipCode AS ZipCode\r\n,TMPCCS.Country AS Country\r\n,TMPCCS.Nationality AS Nationality\r\n,TMPCCS.DataPrivacyConsent AS DataPrivacyConsent --change to null due to issue in duplicate for customer consent\r\n,TMPCCS.LastKYCDate AS LastKYCDate\r\n,TMPCCS.SuspendedIndicator AS SuspendedIndicator\r\n,BC.CustomerEstablishedDate AS RelationshipStartDate\r\n,BCRP.PartyId AS GlobalCIF\r\n--,CASE WHEN BCRC.RelatedCustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS ATMEnrollmentIndicator\r\n--,CASE WHEN BCA.CustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS MobileBankingEnrollmentIndicator --MBK\r\n--,CASE WHEN BCA2.CustomerId IS NOT NULL OR BCAP.CoreCustomerId IS NOT NULL \r\n--THEN 'Y' ELSE 'N' END AS OnlineBankingEnrollmentIndicator --RIB/BOB\r\n--,GenerationalCohortSK AS GenerationalCohortSK\r\n,TMPCCS.EmployerName\r\n,TMPCCS.OfficeAddressLine1\r\n,TMPCCS.OfficeAddressLine2\r\n,TMPCCS.OfficeCity\r\n,TMPCCS.OfficeProvince\r\n,TMPCCS.OfficeZipCode\r\n,TMPCCS.OfficeCountry\r\n,TMPCCS.Industry\r\n,TMPCCS.Occupation\r\n--,DDB.BankSK AS BankSK\r\n,BC.BranchId AS BranchSK\r\n--,1 AS CurrentIndicator\r\n--,GETDATE() AS ValidStartDate\r\n--,convert(date,'9999-01-01') AS ValidEndDate\r\n,BC.SourceSystemCode AS SourceSystemCode\r\n--,0 AS WorkFlowId\r\n--,0 AS TaskRunId\r\n--,GETDATE() AS InsertDttm\r\nFROM BNKM.Customer BC\r\nJOIN DW.DimCustomer_CRM TMPCCS ON BC.CustomerId = TMPCCS.CUSTOMERID AND BC.FinancialInstitutionId = TMPCCS.FinancialInstitutionId\r\nJOIN BNKM.IndividualCustomer BIC ON BC.CustomerId  = BIC.CustomerId\r\nLEFT JOIN CustomerRelatedParty  BCRP ON BC.CustomerId = BCRP.CustomerId AND BC.FinancialInstitutionId = BCRP.FinancialInstitutionId\r\nLEFT JOIN BNKM.CustomerType BCT ON BC.CustomerTypeId= CONVERT(VARCHAR,BCT.CustomerTypeId) AND BC.FinancialInstitutionId = BCT.FinancialInstitutionId\r\nLEFT JOIN CustomerMaritalStatus BCMS ON BC.CustomerId = BCMS.CustomerId and BCMS.RN=1\r\nLEFT JOIN BNKM.MaritalStatus BMS ON BCMS.MaritalStatusId  = convert(varchar,BMS.MaritalStatusId)\r\n--LEFT JOIN BNKM.Gender BG ON BIC.GenderId = convert(varchar,BG.GenderId)\r\n--\r\n--LEFT JOIN AtmCustomerRelatedCustomer BCRC ON BC.CustomerId = BCRC.RelatedCustomerId \r\n--LEFT JOIN CustomerAccountMBK BCA ON BC.CustomerId = CONVERT(VARCHAR,BCA.CustomerId)  --MBK\r\n--LEFT JOIN CustomerAccountRIB BCA2 ON BC.CustomerId = CONVERT(VARCHAR,BCA2.CustomerId)  --RIB\r\n--LEFT JOIN CustomerAccountParticipation BCAP ON BCAP.CoreCustomerId = BC.CoreCustomerId \r\n--LEFT JOIN DW.DimBank DDB ON BC.FinancialInstitutionId = DDB.BankID\r\n--LEFT JOIN DW.DimGenerationalCohort DGC ON YEAR(BIC.DateOfBirth)>= DGC.LowerLimit  AND YEAR(BIC.DateOfBirth) <= DGC.UpperLimit \r\nWHERE BC.SourceSystemCode = 'CRM'\r\n)\r\nSELECT CustomerID\r\n,CustomerName\r\n,CustomerType\r\n,DateOfBirth\r\n,MaritalStatus\r\n, MobileNumber\r\n,Email\r\n,AddressLine1\r\n,AddressLine2\r\n,City\r\n,Province\r\n,ZipCode\r\n,Country\r\n,Nationality\r\n,DataPrivacyConsent \r\n,LastKYCDate\r\n,SuspendedIndicator\r\n,RelationshipStartDate\r\n,GlobalCIF\r\n,EmployerName\r\n,OfficeAddressLine1\r\n,OfficeAddressLine2\r\n,OfficeCity\r\n,OfficeProvince\r\n,OfficeZipCode\r\n,OfficeCountry\r\n,Industry\r\n,Occupation\r\n,BranchSK\r\n,SourceSystemCode from DCTemp where CustomerId ='R01249371'\r\n\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Gender",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "MaritalStatus_copy1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH\r\nCustomerSK\r\nas (\r\n    SELECT ISNULL(MAX(CustomerSK),0) RN FROM DW.DimCustomer \r\n),\r\nCustomerRelatedParty as(\r\n\tSELECT DISTINCT * FROM BNKM.CustomerRelatedParty where PeriodEndTimestamp is null\r\n),\r\nCustomerMaritalStatus as(\r\n\tSELECT CustomerId, MaritalStatusId from BNKM.CustomerMaritalStatus WHERE PeriodEndDate IS NULL\r\n),\r\nAtmCustomerRelatedCustomer as(\r\nSELECT DISTINCT RelatedCustomerId FROM BNKM.AtmCustomerRelatedCustomer where PeriodEndTimestamp IS NULL\r\n),\r\nCustomerAccountMBK as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'MBK'\r\n),\r\nCustomerAccountRIB as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'RIB'\r\n),\r\nBusinessOnlineBankingAccount as(\r\n\tSELECT DISTINCT CustomerAccountId FROM BNKM.BusinessOnlineBankingAccount\r\n),\r\nCustomerAccountParticipation as(\r\n\tSELECT DISTINCT CoreCustomerId FROM BNKM.CustomerAccountParticipation BCAP\r\n    JOIN BusinessOnlineBankingAccount BOBA ON BCAP.CustomerAccountId = BOBA.CustomerAccountId AND BCAP.SourceSystemCode IN ('DEP','LNS')\r\n),\r\nDCTemp as(\r\n     SELECT DISTINCT\r\n BC.CustomerId AS CustomerID\r\n,BIC.IndividualCustomerName AS CustomerName\r\n,CASE WHEN BCT.CustomerTypeName = 'Individual' THEN 'Retail' ELSE BCT.CustomerTypeName END  AS CustomerType\r\n,BIC.DateOfBirth AS DateOfBirth\r\n,BMS.MaritalStatusName AS MaritalStatus\r\n,BG.GenderName AS Gender\r\n,TMPCCS.MobileNumber AS MobileNumber\r\n,TMPCCS.Email AS Email\r\n,TMPCCS.AddressLine1 AS AddressLine1\r\n,TMPCCS.AddressLine2 AS AddressLine2\r\n,TMPCCS.City AS City\r\n,TMPCCS.Province AS Province\r\n,TMPCCS.ZipCode AS ZipCode\r\n,TMPCCS.Country AS Country\r\n,TMPCCS.Nationality AS Nationality\r\n,TMPCCS.DataPrivacyConsent AS DataPrivacyConsent --change to null due to issue in duplicate for customer consent\r\n,TMPCCS.LastKYCDate AS LastKYCDate\r\n,TMPCCS.SuspendedIndicator AS SuspendedIndicator\r\n,BC.CustomerEstablishedDate AS RelationshipStartDate\r\n,BCRP.PartyId AS GlobalCIF\r\n--,CASE WHEN BCRC.RelatedCustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS ATMEnrollmentIndicator\r\n--,CASE WHEN BCA.CustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS MobileBankingEnrollmentIndicator --MBK\r\n--,CASE WHEN BCA2.CustomerId IS NOT NULL OR BCAP.CoreCustomerId IS NOT NULL \r\n--THEN 'Y' ELSE 'N' END AS OnlineBankingEnrollmentIndicator --RIB/BOB\r\n--,GenerationalCohortSK AS GenerationalCohortSK\r\n,TMPCCS.EmployerName\r\n,TMPCCS.OfficeAddressLine1\r\n,TMPCCS.OfficeAddressLine2\r\n,TMPCCS.OfficeCity\r\n,TMPCCS.OfficeProvince\r\n,TMPCCS.OfficeZipCode\r\n,TMPCCS.OfficeCountry\r\n,TMPCCS.Industry\r\n,TMPCCS.Occupation\r\n--,DDB.BankSK AS BankSK\r\n,BC.BranchId AS BranchSK\r\n--,1 AS CurrentIndicator\r\n--,GETDATE() AS ValidStartDate\r\n--,convert(date,'9999-01-01') AS ValidEndDate\r\n,BC.SourceSystemCode AS SourceSystemCode\r\n--,0 AS WorkFlowId\r\n--,0 AS TaskRunId\r\n--,GETDATE() AS InsertDttm\r\nFROM BNKM.Customer BC\r\nJOIN DW.DimCustomer_CRM TMPCCS ON BC.CustomerId = TMPCCS.CUSTOMERID AND BC.FinancialInstitutionId = TMPCCS.FinancialInstitutionId\r\nJOIN BNKM.IndividualCustomer BIC ON BC.CustomerId  = BIC.CustomerId\r\nLEFT JOIN CustomerRelatedParty  BCRP ON BC.CustomerId = BCRP.CustomerId AND BC.FinancialInstitutionId = BCRP.FinancialInstitutionId\r\nLEFT JOIN BNKM.CustomerType BCT ON BC.CustomerTypeId= CONVERT(VARCHAR,BCT.CustomerTypeId) AND BC.FinancialInstitutionId = BCT.FinancialInstitutionId\r\nLEFT JOIN CustomerMaritalStatus BCMS ON BC.CustomerId = BCMS.CustomerId\r\n\r\nLEFT JOIN BNKM.MaritalStatus BMS ON BCMS.MaritalStatusId  = convert(varchar,BMS.MaritalStatusId)\r\nLEFT JOIN BNKM.Gender BG ON BIC.GenderId = convert(varchar,BG.GenderId)\r\n--\r\n--LEFT JOIN AtmCustomerRelatedCustomer BCRC ON BC.CustomerId = BCRC.RelatedCustomerId \r\n--LEFT JOIN CustomerAccountMBK BCA ON BC.CustomerId = CONVERT(VARCHAR,BCA.CustomerId)  --MBK\r\n--LEFT JOIN CustomerAccountRIB BCA2 ON BC.CustomerId = CONVERT(VARCHAR,BCA2.CustomerId)  --RIB\r\n--LEFT JOIN CustomerAccountParticipation BCAP ON BCAP.CoreCustomerId = BC.CoreCustomerId \r\n--LEFT JOIN DW.DimBank DDB ON BC.FinancialInstitutionId = DDB.BankID\r\n--LEFT JOIN DW.DimGenerationalCohort DGC ON YEAR(BIC.DateOfBirth)>= DGC.LowerLimit  AND YEAR(BIC.DateOfBirth) <= DGC.UpperLimit \r\nWHERE BC.SourceSystemCode = 'CRM'\r\n)\r\nSELECT count(1) cnt from DCTemp where CustomerId ='R01249371'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "AtmCustomerRelatedCustomer",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Gender",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH\r\nCustomerSK\r\nas (\r\n    SELECT ISNULL(MAX(CustomerSK),0) RN FROM DW.DimCustomer \r\n),\r\nCustomerRelatedParty as(\r\n\tSELECT DISTINCT * FROM BNKM.CustomerRelatedParty where PeriodEndTimestamp is null\r\n),\r\nCustomerMaritalStatus as(\r\n\tSELECT CustomerId, MaritalStatusId from BNKM.CustomerMaritalStatus WHERE PeriodEndDate IS NULL\r\n),\r\nAtmCustomerRelatedCustomer as(\r\nSELECT DISTINCT RelatedCustomerId FROM BNKM.AtmCustomerRelatedCustomer where PeriodEndTimestamp IS NULL\r\n),\r\nCustomerAccountMBK as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'MBK'\r\n),\r\nCustomerAccountRIB as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'RIB'\r\n),\r\nBusinessOnlineBankingAccount as(\r\n\tSELECT DISTINCT CustomerAccountId FROM BNKM.BusinessOnlineBankingAccount\r\n),\r\nCustomerAccountParticipation as(\r\n\tSELECT DISTINCT CoreCustomerId FROM BNKM.CustomerAccountParticipation BCAP\r\n    JOIN BusinessOnlineBankingAccount BOBA ON BCAP.CustomerAccountId = BOBA.CustomerAccountId AND BCAP.SourceSystemCode IN ('DEP','LNS')\r\n),\r\nDCTemp as(\r\n     SELECT DISTINCT\r\n BC.CustomerId AS CustomerID\r\n,BIC.IndividualCustomerName AS CustomerName\r\n,CASE WHEN BCT.CustomerTypeName = 'Individual' THEN 'Retail' ELSE BCT.CustomerTypeName END  AS CustomerType\r\n,BIC.DateOfBirth AS DateOfBirth\r\n,BMS.MaritalStatusName AS MaritalStatus\r\n,BG.GenderName AS Gender\r\n,TMPCCS.MobileNumber AS MobileNumber\r\n,TMPCCS.Email AS Email\r\n,TMPCCS.AddressLine1 AS AddressLine1\r\n,TMPCCS.AddressLine2 AS AddressLine2\r\n,TMPCCS.City AS City\r\n,TMPCCS.Province AS Province\r\n,TMPCCS.ZipCode AS ZipCode\r\n,TMPCCS.Country AS Country\r\n,TMPCCS.Nationality AS Nationality\r\n,TMPCCS.DataPrivacyConsent AS DataPrivacyConsent --change to null due to issue in duplicate for customer consent\r\n,TMPCCS.LastKYCDate AS LastKYCDate\r\n,TMPCCS.SuspendedIndicator AS SuspendedIndicator\r\n,BC.CustomerEstablishedDate AS RelationshipStartDate\r\n,BCRP.PartyId AS GlobalCIF\r\n,CASE WHEN BCRC.RelatedCustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS ATMEnrollmentIndicator\r\n--,CASE WHEN BCA.CustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS MobileBankingEnrollmentIndicator --MBK\r\n--,CASE WHEN BCA2.CustomerId IS NOT NULL OR BCAP.CoreCustomerId IS NOT NULL \r\n--THEN 'Y' ELSE 'N' END AS OnlineBankingEnrollmentIndicator --RIB/BOB\r\n--,GenerationalCohortSK AS GenerationalCohortSK\r\n,TMPCCS.EmployerName\r\n,TMPCCS.OfficeAddressLine1\r\n,TMPCCS.OfficeAddressLine2\r\n,TMPCCS.OfficeCity\r\n,TMPCCS.OfficeProvince\r\n,TMPCCS.OfficeZipCode\r\n,TMPCCS.OfficeCountry\r\n,TMPCCS.Industry\r\n,TMPCCS.Occupation\r\n--,DDB.BankSK AS BankSK\r\n,BC.BranchId AS BranchSK\r\n--,1 AS CurrentIndicator\r\n--,GETDATE() AS ValidStartDate\r\n--,convert(date,'9999-01-01') AS ValidEndDate\r\n,BC.SourceSystemCode AS SourceSystemCode\r\n--,0 AS WorkFlowId\r\n--,0 AS TaskRunId\r\n--,GETDATE() AS InsertDttm\r\nFROM BNKM.Customer BC\r\nJOIN DW.DimCustomer_CRM TMPCCS ON BC.CustomerId = TMPCCS.CUSTOMERID AND BC.FinancialInstitutionId = TMPCCS.FinancialInstitutionId\r\nJOIN BNKM.IndividualCustomer BIC ON BC.CustomerId  = BIC.CustomerId\r\nLEFT JOIN CustomerRelatedParty  BCRP ON BC.CustomerId = BCRP.CustomerId AND BC.FinancialInstitutionId = BCRP.FinancialInstitutionId\r\nLEFT JOIN BNKM.CustomerType BCT ON BC.CustomerTypeId= CONVERT(VARCHAR,BCT.CustomerTypeId) AND BC.FinancialInstitutionId = BCT.FinancialInstitutionId\r\nLEFT JOIN CustomerMaritalStatus BCMS ON BC.CustomerId = BCMS.CustomerId\r\n\r\nLEFT JOIN BNKM.MaritalStatus BMS ON BCMS.MaritalStatusId  = convert(varchar,BMS.MaritalStatusId)\r\nLEFT JOIN BNKM.Gender BG ON BIC.GenderId = convert(varchar,BG.GenderId)\r\n--\r\nLEFT JOIN AtmCustomerRelatedCustomer BCRC ON BC.CustomerId = BCRC.RelatedCustomerId \r\n--LEFT JOIN CustomerAccountMBK BCA ON BC.CustomerId = CONVERT(VARCHAR,BCA.CustomerId)  --MBK\r\n--LEFT JOIN CustomerAccountRIB BCA2 ON BC.CustomerId = CONVERT(VARCHAR,BCA2.CustomerId)  --RIB\r\n--LEFT JOIN CustomerAccountParticipation BCAP ON BCAP.CoreCustomerId = BC.CoreCustomerId \r\n--LEFT JOIN DW.DimBank DDB ON BC.FinancialInstitutionId = DDB.BankID\r\n--LEFT JOIN DW.DimGenerationalCohort DGC ON YEAR(BIC.DateOfBirth)>= DGC.LowerLimit  AND YEAR(BIC.DateOfBirth) <= DGC.UpperLimit \r\nWHERE BC.SourceSystemCode = 'CRM'\r\n)\r\nSELECT count(1) cnt from DCTemp where CustomerId ='R01249371'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CustomerAccountMBK",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "AtmCustomerRelatedCustomer",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH\r\nCustomerSK\r\nas (\r\n    SELECT ISNULL(MAX(CustomerSK),0) RN FROM DW.DimCustomer \r\n),\r\nCustomerRelatedParty as(\r\n\tSELECT DISTINCT * FROM BNKM.CustomerRelatedParty where PeriodEndTimestamp is null\r\n),\r\nCustomerMaritalStatus as(\r\n\tSELECT CustomerId, MaritalStatusId from BNKM.CustomerMaritalStatus WHERE PeriodEndDate IS NULL\r\n),\r\nAtmCustomerRelatedCustomer as(\r\nSELECT DISTINCT RelatedCustomerId FROM BNKM.AtmCustomerRelatedCustomer where PeriodEndTimestamp IS NULL\r\n),\r\nCustomerAccountMBK as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'MBK'\r\n),\r\nCustomerAccountRIB as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'RIB'\r\n),\r\nBusinessOnlineBankingAccount as(\r\n\tSELECT DISTINCT CustomerAccountId FROM BNKM.BusinessOnlineBankingAccount\r\n),\r\nCustomerAccountParticipation as(\r\n\tSELECT DISTINCT CoreCustomerId FROM BNKM.CustomerAccountParticipation BCAP\r\n    JOIN BusinessOnlineBankingAccount BOBA ON BCAP.CustomerAccountId = BOBA.CustomerAccountId AND BCAP.SourceSystemCode IN ('DEP','LNS')\r\n),\r\nDCTemp as(\r\n     SELECT DISTINCT\r\n BC.CustomerId AS CustomerID\r\n,BIC.IndividualCustomerName AS CustomerName\r\n,CASE WHEN BCT.CustomerTypeName = 'Individual' THEN 'Retail' ELSE BCT.CustomerTypeName END  AS CustomerType\r\n,BIC.DateOfBirth AS DateOfBirth\r\n,BMS.MaritalStatusName AS MaritalStatus\r\n,BG.GenderName AS Gender\r\n,TMPCCS.MobileNumber AS MobileNumber\r\n,TMPCCS.Email AS Email\r\n,TMPCCS.AddressLine1 AS AddressLine1\r\n,TMPCCS.AddressLine2 AS AddressLine2\r\n,TMPCCS.City AS City\r\n,TMPCCS.Province AS Province\r\n,TMPCCS.ZipCode AS ZipCode\r\n,TMPCCS.Country AS Country\r\n,TMPCCS.Nationality AS Nationality\r\n,TMPCCS.DataPrivacyConsent AS DataPrivacyConsent --change to null due to issue in duplicate for customer consent\r\n,TMPCCS.LastKYCDate AS LastKYCDate\r\n,TMPCCS.SuspendedIndicator AS SuspendedIndicator\r\n,BC.CustomerEstablishedDate AS RelationshipStartDate\r\n,BCRP.PartyId AS GlobalCIF\r\n,CASE WHEN BCRC.RelatedCustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS ATMEnrollmentIndicator\r\n,CASE WHEN BCA.CustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS MobileBankingEnrollmentIndicator --MBK\r\n--,CASE WHEN BCA2.CustomerId IS NOT NULL OR BCAP.CoreCustomerId IS NOT NULL \r\n--THEN 'Y' ELSE 'N' END AS OnlineBankingEnrollmentIndicator --RIB/BOB\r\n--,GenerationalCohortSK AS GenerationalCohortSK\r\n,TMPCCS.EmployerName\r\n,TMPCCS.OfficeAddressLine1\r\n,TMPCCS.OfficeAddressLine2\r\n,TMPCCS.OfficeCity\r\n,TMPCCS.OfficeProvince\r\n,TMPCCS.OfficeZipCode\r\n,TMPCCS.OfficeCountry\r\n,TMPCCS.Industry\r\n,TMPCCS.Occupation\r\n--,DDB.BankSK AS BankSK\r\n,BC.BranchId AS BranchSK\r\n--,1 AS CurrentIndicator\r\n--,GETDATE() AS ValidStartDate\r\n--,convert(date,'9999-01-01') AS ValidEndDate\r\n,BC.SourceSystemCode AS SourceSystemCode\r\n--,0 AS WorkFlowId\r\n--,0 AS TaskRunId\r\n--,GETDATE() AS InsertDttm\r\nFROM BNKM.Customer BC\r\nJOIN DW.DimCustomer_CRM TMPCCS ON BC.CustomerId = TMPCCS.CUSTOMERID AND BC.FinancialInstitutionId = TMPCCS.FinancialInstitutionId\r\nJOIN BNKM.IndividualCustomer BIC ON BC.CustomerId  = BIC.CustomerId\r\nLEFT JOIN CustomerRelatedParty  BCRP ON BC.CustomerId = BCRP.CustomerId AND BC.FinancialInstitutionId = BCRP.FinancialInstitutionId\r\nLEFT JOIN BNKM.CustomerType BCT ON BC.CustomerTypeId= CONVERT(VARCHAR,BCT.CustomerTypeId) AND BC.FinancialInstitutionId = BCT.FinancialInstitutionId\r\nLEFT JOIN CustomerMaritalStatus BCMS ON BC.CustomerId = BCMS.CustomerId\r\n\r\nLEFT JOIN BNKM.MaritalStatus BMS ON BCMS.MaritalStatusId  = convert(varchar,BMS.MaritalStatusId)\r\nLEFT JOIN BNKM.Gender BG ON BIC.GenderId = convert(varchar,BG.GenderId)\r\n--\r\nLEFT JOIN AtmCustomerRelatedCustomer BCRC ON BC.CustomerId = BCRC.RelatedCustomerId \r\nLEFT JOIN CustomerAccountMBK BCA ON BC.CustomerId = CONVERT(VARCHAR,BCA.CustomerId)  --MBK\r\n--LEFT JOIN CustomerAccountRIB BCA2 ON BC.CustomerId = CONVERT(VARCHAR,BCA2.CustomerId)  --RIB\r\n--LEFT JOIN CustomerAccountParticipation BCAP ON BCAP.CoreCustomerId = BC.CoreCustomerId \r\n--LEFT JOIN DW.DimBank DDB ON BC.FinancialInstitutionId = DDB.BankID\r\n--LEFT JOIN DW.DimGenerationalCohort DGC ON YEAR(BIC.DateOfBirth)>= DGC.LowerLimit  AND YEAR(BIC.DateOfBirth) <= DGC.UpperLimit \r\nWHERE BC.SourceSystemCode = 'CRM'\r\n)\r\nSELECT count(1) cnt from DCTemp where CustomerId ='R01249371'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CustomerAccountRIB",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "CustomerAccountMBK",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH\r\nCustomerSK\r\nas (\r\n    SELECT ISNULL(MAX(CustomerSK),0) RN FROM DW.DimCustomer \r\n),\r\nCustomerRelatedParty as(\r\n\tSELECT DISTINCT * FROM BNKM.CustomerRelatedParty where PeriodEndTimestamp is null\r\n),\r\nCustomerMaritalStatus as(\r\n\tSELECT CustomerId, MaritalStatusId from BNKM.CustomerMaritalStatus WHERE PeriodEndDate IS NULL\r\n),\r\nAtmCustomerRelatedCustomer as(\r\nSELECT DISTINCT RelatedCustomerId FROM BNKM.AtmCustomerRelatedCustomer where PeriodEndTimestamp IS NULL\r\n),\r\nCustomerAccountMBK as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'MBK'\r\n),\r\nCustomerAccountRIB as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'RIB'\r\n),\r\nBusinessOnlineBankingAccount as(\r\n\tSELECT DISTINCT CustomerAccountId FROM BNKM.BusinessOnlineBankingAccount\r\n),\r\nCustomerAccountParticipation as(\r\n\tSELECT DISTINCT CoreCustomerId FROM BNKM.CustomerAccountParticipation BCAP\r\n    JOIN BusinessOnlineBankingAccount BOBA ON BCAP.CustomerAccountId = BOBA.CustomerAccountId AND BCAP.SourceSystemCode IN ('DEP','LNS')\r\n),\r\nDCTemp as(\r\n     SELECT DISTINCT\r\n BC.CustomerId AS CustomerID\r\n,BIC.IndividualCustomerName AS CustomerName\r\n,CASE WHEN BCT.CustomerTypeName = 'Individual' THEN 'Retail' ELSE BCT.CustomerTypeName END  AS CustomerType\r\n,BIC.DateOfBirth AS DateOfBirth\r\n,BMS.MaritalStatusName AS MaritalStatus\r\n,BG.GenderName AS Gender\r\n,TMPCCS.MobileNumber AS MobileNumber\r\n,TMPCCS.Email AS Email\r\n,TMPCCS.AddressLine1 AS AddressLine1\r\n,TMPCCS.AddressLine2 AS AddressLine2\r\n,TMPCCS.City AS City\r\n,TMPCCS.Province AS Province\r\n,TMPCCS.ZipCode AS ZipCode\r\n,TMPCCS.Country AS Country\r\n,TMPCCS.Nationality AS Nationality\r\n,TMPCCS.DataPrivacyConsent AS DataPrivacyConsent --change to null due to issue in duplicate for customer consent\r\n,TMPCCS.LastKYCDate AS LastKYCDate\r\n,TMPCCS.SuspendedIndicator AS SuspendedIndicator\r\n,BC.CustomerEstablishedDate AS RelationshipStartDate\r\n,BCRP.PartyId AS GlobalCIF\r\n,CASE WHEN BCRC.RelatedCustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS ATMEnrollmentIndicator\r\n,CASE WHEN BCA.CustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS MobileBankingEnrollmentIndicator --MBK\r\n,CASE WHEN BCA2.CustomerId IS NOT NULL \r\n--OR BCAP.CoreCustomerId IS NOT NULL \r\nTHEN 'Y' ELSE 'N' END AS OnlineBankingEnrollmentIndicator --RIB/BOB\r\n--,GenerationalCohortSK AS GenerationalCohortSK\r\n,TMPCCS.EmployerName\r\n,TMPCCS.OfficeAddressLine1\r\n,TMPCCS.OfficeAddressLine2\r\n,TMPCCS.OfficeCity\r\n,TMPCCS.OfficeProvince\r\n,TMPCCS.OfficeZipCode\r\n,TMPCCS.OfficeCountry\r\n,TMPCCS.Industry\r\n,TMPCCS.Occupation\r\n--,DDB.BankSK AS BankSK\r\n,BC.BranchId AS BranchSK\r\n--,1 AS CurrentIndicator\r\n--,GETDATE() AS ValidStartDate\r\n--,convert(date,'9999-01-01') AS ValidEndDate\r\n,BC.SourceSystemCode AS SourceSystemCode\r\n--,0 AS WorkFlowId\r\n--,0 AS TaskRunId\r\n--,GETDATE() AS InsertDttm\r\nFROM BNKM.Customer BC\r\nJOIN DW.DimCustomer_CRM TMPCCS ON BC.CustomerId = TMPCCS.CUSTOMERID AND BC.FinancialInstitutionId = TMPCCS.FinancialInstitutionId\r\nJOIN BNKM.IndividualCustomer BIC ON BC.CustomerId  = BIC.CustomerId\r\nLEFT JOIN CustomerRelatedParty  BCRP ON BC.CustomerId = BCRP.CustomerId AND BC.FinancialInstitutionId = BCRP.FinancialInstitutionId\r\nLEFT JOIN BNKM.CustomerType BCT ON BC.CustomerTypeId= CONVERT(VARCHAR,BCT.CustomerTypeId) AND BC.FinancialInstitutionId = BCT.FinancialInstitutionId\r\nLEFT JOIN CustomerMaritalStatus BCMS ON BC.CustomerId = BCMS.CustomerId\r\n\r\nLEFT JOIN BNKM.MaritalStatus BMS ON BCMS.MaritalStatusId  = convert(varchar,BMS.MaritalStatusId)\r\nLEFT JOIN BNKM.Gender BG ON BIC.GenderId = convert(varchar,BG.GenderId)\r\n--\r\nLEFT JOIN AtmCustomerRelatedCustomer BCRC ON BC.CustomerId = BCRC.RelatedCustomerId \r\nLEFT JOIN CustomerAccountMBK BCA ON BC.CustomerId = CONVERT(VARCHAR,BCA.CustomerId)  --MBK\r\nLEFT JOIN CustomerAccountRIB BCA2 ON BC.CustomerId = CONVERT(VARCHAR,BCA2.CustomerId)  --RIB\r\n--LEFT JOIN CustomerAccountParticipation BCAP ON BCAP.CoreCustomerId = BC.CoreCustomerId \r\n--LEFT JOIN DW.DimBank DDB ON BC.FinancialInstitutionId = DDB.BankID\r\n--LEFT JOIN DW.DimGenerationalCohort DGC ON YEAR(BIC.DateOfBirth)>= DGC.LowerLimit  AND YEAR(BIC.DateOfBirth) <= DGC.UpperLimit \r\nWHERE BC.SourceSystemCode = 'CRM'\r\n)\r\nSELECT count(1) cnt from DCTemp where CustomerId ='R01249371'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CustomerAccountParticipation",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "CustomerAccountRIB",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH\r\nCustomerSK\r\nas (\r\n    SELECT ISNULL(MAX(CustomerSK),0) RN FROM DW.DimCustomer \r\n),\r\nCustomerRelatedParty as(\r\n\tSELECT DISTINCT * FROM BNKM.CustomerRelatedParty where PeriodEndTimestamp is null\r\n),\r\nCustomerMaritalStatus as(\r\n\tSELECT CustomerId, MaritalStatusId from BNKM.CustomerMaritalStatus WHERE PeriodEndDate IS NULL\r\n),\r\nAtmCustomerRelatedCustomer as(\r\nSELECT DISTINCT RelatedCustomerId FROM BNKM.AtmCustomerRelatedCustomer where PeriodEndTimestamp IS NULL\r\n),\r\nCustomerAccountMBK as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'MBK'\r\n),\r\nCustomerAccountRIB as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'RIB'\r\n),\r\nBusinessOnlineBankingAccount as(\r\n\tSELECT DISTINCT CustomerAccountId FROM BNKM.BusinessOnlineBankingAccount\r\n),\r\nCustomerAccountParticipation as(\r\n\tSELECT DISTINCT CoreCustomerId FROM BNKM.CustomerAccountParticipation BCAP\r\n    JOIN BusinessOnlineBankingAccount BOBA ON BCAP.CustomerAccountId = BOBA.CustomerAccountId AND BCAP.SourceSystemCode IN ('DEP','LNS')\r\n),\r\nDCTemp as(\r\n     SELECT DISTINCT\r\n BC.CustomerId AS CustomerID\r\n,BIC.IndividualCustomerName AS CustomerName\r\n,CASE WHEN BCT.CustomerTypeName = 'Individual' THEN 'Retail' ELSE BCT.CustomerTypeName END  AS CustomerType\r\n,BIC.DateOfBirth AS DateOfBirth\r\n,BMS.MaritalStatusName AS MaritalStatus\r\n,BG.GenderName AS Gender\r\n,TMPCCS.MobileNumber AS MobileNumber\r\n,TMPCCS.Email AS Email\r\n,TMPCCS.AddressLine1 AS AddressLine1\r\n,TMPCCS.AddressLine2 AS AddressLine2\r\n,TMPCCS.City AS City\r\n,TMPCCS.Province AS Province\r\n,TMPCCS.ZipCode AS ZipCode\r\n,TMPCCS.Country AS Country\r\n,TMPCCS.Nationality AS Nationality\r\n,TMPCCS.DataPrivacyConsent AS DataPrivacyConsent --change to null due to issue in duplicate for customer consent\r\n,TMPCCS.LastKYCDate AS LastKYCDate\r\n,TMPCCS.SuspendedIndicator AS SuspendedIndicator\r\n,BC.CustomerEstablishedDate AS RelationshipStartDate\r\n,BCRP.PartyId AS GlobalCIF\r\n,CASE WHEN BCRC.RelatedCustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS ATMEnrollmentIndicator\r\n,CASE WHEN BCA.CustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS MobileBankingEnrollmentIndicator --MBK\r\n,CASE WHEN BCA2.CustomerId IS NOT NULL\r\n OR BCAP.CoreCustomerId IS NOT NULL \r\nTHEN 'Y' ELSE 'N' END AS OnlineBankingEnrollmentIndicator --RIB/BOB\r\n--,GenerationalCohortSK AS GenerationalCohortSK\r\n,TMPCCS.EmployerName\r\n,TMPCCS.OfficeAddressLine1\r\n,TMPCCS.OfficeAddressLine2\r\n,TMPCCS.OfficeCity\r\n,TMPCCS.OfficeProvince\r\n,TMPCCS.OfficeZipCode\r\n,TMPCCS.OfficeCountry\r\n,TMPCCS.Industry\r\n,TMPCCS.Occupation\r\n--,DDB.BankSK AS BankSK\r\n,BC.BranchId AS BranchSK\r\n--,1 AS CurrentIndicator\r\n--,GETDATE() AS ValidStartDate\r\n--,convert(date,'9999-01-01') AS ValidEndDate\r\n,BC.SourceSystemCode AS SourceSystemCode\r\n--,0 AS WorkFlowId\r\n--,0 AS TaskRunId\r\n--,GETDATE() AS InsertDttm\r\nFROM BNKM.Customer BC\r\nJOIN DW.DimCustomer_CRM TMPCCS ON BC.CustomerId = TMPCCS.CUSTOMERID AND BC.FinancialInstitutionId = TMPCCS.FinancialInstitutionId\r\nJOIN BNKM.IndividualCustomer BIC ON BC.CustomerId  = BIC.CustomerId\r\nLEFT JOIN CustomerRelatedParty  BCRP ON BC.CustomerId = BCRP.CustomerId AND BC.FinancialInstitutionId = BCRP.FinancialInstitutionId\r\nLEFT JOIN BNKM.CustomerType BCT ON BC.CustomerTypeId= CONVERT(VARCHAR,BCT.CustomerTypeId) AND BC.FinancialInstitutionId = BCT.FinancialInstitutionId\r\nLEFT JOIN CustomerMaritalStatus BCMS ON BC.CustomerId = BCMS.CustomerId\r\n\r\nLEFT JOIN BNKM.MaritalStatus BMS ON BCMS.MaritalStatusId  = convert(varchar,BMS.MaritalStatusId)\r\nLEFT JOIN BNKM.Gender BG ON BIC.GenderId = convert(varchar,BG.GenderId)\r\n--\r\nLEFT JOIN AtmCustomerRelatedCustomer BCRC ON BC.CustomerId = BCRC.RelatedCustomerId \r\nLEFT JOIN CustomerAccountMBK BCA ON BC.CustomerId = CONVERT(VARCHAR,BCA.CustomerId)  --MBK\r\nLEFT JOIN CustomerAccountRIB BCA2 ON BC.CustomerId = CONVERT(VARCHAR,BCA2.CustomerId)  --RIB\r\nLEFT JOIN CustomerAccountParticipation BCAP ON BCAP.CoreCustomerId = BC.CoreCustomerId \r\n--LEFT JOIN DW.DimBank DDB ON BC.FinancialInstitutionId = DDB.BankID\r\n--LEFT JOIN DW.DimGenerationalCohort DGC ON YEAR(BIC.DateOfBirth)>= DGC.LowerLimit  AND YEAR(BIC.DateOfBirth) <= DGC.UpperLimit \r\nWHERE BC.SourceSystemCode = 'CRM'\r\n)\r\nSELECT count(1) cnt from DCTemp where CustomerId ='R01249371'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DimBank",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "CustomerAccountParticipation",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH\r\nCustomerSK\r\nas (\r\n    SELECT ISNULL(MAX(CustomerSK),0) RN FROM DW.DimCustomer \r\n),\r\nCustomerRelatedParty as(\r\n\tSELECT DISTINCT * FROM BNKM.CustomerRelatedParty where PeriodEndTimestamp is null\r\n),\r\nCustomerMaritalStatus as(\r\n\tSELECT CustomerId, MaritalStatusId from BNKM.CustomerMaritalStatus WHERE PeriodEndDate IS NULL\r\n),\r\nAtmCustomerRelatedCustomer as(\r\nSELECT DISTINCT RelatedCustomerId FROM BNKM.AtmCustomerRelatedCustomer where PeriodEndTimestamp IS NULL\r\n),\r\nCustomerAccountMBK as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'MBK'\r\n),\r\nCustomerAccountRIB as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'RIB'\r\n),\r\nBusinessOnlineBankingAccount as(\r\n\tSELECT DISTINCT CustomerAccountId FROM BNKM.BusinessOnlineBankingAccount\r\n),\r\nCustomerAccountParticipation as(\r\n\tSELECT DISTINCT CoreCustomerId FROM BNKM.CustomerAccountParticipation BCAP\r\n    JOIN BusinessOnlineBankingAccount BOBA ON BCAP.CustomerAccountId = BOBA.CustomerAccountId AND BCAP.SourceSystemCode IN ('DEP','LNS')\r\n),\r\nDCTemp as(\r\n     SELECT DISTINCT\r\n BC.CustomerId AS CustomerID\r\n,BIC.IndividualCustomerName AS CustomerName\r\n,CASE WHEN BCT.CustomerTypeName = 'Individual' THEN 'Retail' ELSE BCT.CustomerTypeName END  AS CustomerType\r\n,BIC.DateOfBirth AS DateOfBirth\r\n,BMS.MaritalStatusName AS MaritalStatus\r\n,BG.GenderName AS Gender\r\n,TMPCCS.MobileNumber AS MobileNumber\r\n,TMPCCS.Email AS Email\r\n,TMPCCS.AddressLine1 AS AddressLine1\r\n,TMPCCS.AddressLine2 AS AddressLine2\r\n,TMPCCS.City AS City\r\n,TMPCCS.Province AS Province\r\n,TMPCCS.ZipCode AS ZipCode\r\n,TMPCCS.Country AS Country\r\n,TMPCCS.Nationality AS Nationality\r\n,TMPCCS.DataPrivacyConsent AS DataPrivacyConsent --change to null due to issue in duplicate for customer consent\r\n,TMPCCS.LastKYCDate AS LastKYCDate\r\n,TMPCCS.SuspendedIndicator AS SuspendedIndicator\r\n,BC.CustomerEstablishedDate AS RelationshipStartDate\r\n,BCRP.PartyId AS GlobalCIF\r\n,CASE WHEN BCRC.RelatedCustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS ATMEnrollmentIndicator\r\n,CASE WHEN BCA.CustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS MobileBankingEnrollmentIndicator --MBK\r\n,CASE WHEN BCA2.CustomerId IS NOT NULL\r\n OR BCAP.CoreCustomerId IS NOT NULL \r\nTHEN 'Y' ELSE 'N' END AS OnlineBankingEnrollmentIndicator --RIB/BOB\r\n--,GenerationalCohortSK AS GenerationalCohortSK\r\n,TMPCCS.EmployerName\r\n,TMPCCS.OfficeAddressLine1\r\n,TMPCCS.OfficeAddressLine2\r\n,TMPCCS.OfficeCity\r\n,TMPCCS.OfficeProvince\r\n,TMPCCS.OfficeZipCode\r\n,TMPCCS.OfficeCountry\r\n,TMPCCS.Industry\r\n,TMPCCS.Occupation\r\n,DDB.BankSK AS BankSK\r\n,BC.BranchId AS BranchSK\r\n--,1 AS CurrentIndicator\r\n--,GETDATE() AS ValidStartDate\r\n--,convert(date,'9999-01-01') AS ValidEndDate\r\n,BC.SourceSystemCode AS SourceSystemCode\r\n--,0 AS WorkFlowId\r\n--,0 AS TaskRunId\r\n--,GETDATE() AS InsertDttm\r\nFROM BNKM.Customer BC\r\nJOIN DW.DimCustomer_CRM TMPCCS ON BC.CustomerId = TMPCCS.CUSTOMERID AND BC.FinancialInstitutionId = TMPCCS.FinancialInstitutionId\r\nJOIN BNKM.IndividualCustomer BIC ON BC.CustomerId  = BIC.CustomerId\r\nLEFT JOIN CustomerRelatedParty  BCRP ON BC.CustomerId = BCRP.CustomerId AND BC.FinancialInstitutionId = BCRP.FinancialInstitutionId\r\nLEFT JOIN BNKM.CustomerType BCT ON BC.CustomerTypeId= CONVERT(VARCHAR,BCT.CustomerTypeId) AND BC.FinancialInstitutionId = BCT.FinancialInstitutionId\r\nLEFT JOIN CustomerMaritalStatus BCMS ON BC.CustomerId = BCMS.CustomerId\r\n\r\nLEFT JOIN BNKM.MaritalStatus BMS ON BCMS.MaritalStatusId  = convert(varchar,BMS.MaritalStatusId)\r\nLEFT JOIN BNKM.Gender BG ON BIC.GenderId = convert(varchar,BG.GenderId)\r\n--\r\nLEFT JOIN AtmCustomerRelatedCustomer BCRC ON BC.CustomerId = BCRC.RelatedCustomerId \r\nLEFT JOIN CustomerAccountMBK BCA ON BC.CustomerId = CONVERT(VARCHAR,BCA.CustomerId)  --MBK\r\nLEFT JOIN CustomerAccountRIB BCA2 ON BC.CustomerId = CONVERT(VARCHAR,BCA2.CustomerId)  --RIB\r\nLEFT JOIN CustomerAccountParticipation BCAP ON BCAP.CoreCustomerId = BC.CoreCustomerId \r\nLEFT JOIN DW.DimBank DDB ON BC.FinancialInstitutionId = DDB.BankID\r\n--LEFT JOIN DW.DimGenerationalCohort DGC ON YEAR(BIC.DateOfBirth)>= DGC.LowerLimit  AND YEAR(BIC.DateOfBirth) <= DGC.UpperLimit \r\nWHERE BC.SourceSystemCode = 'CRM'\r\n)\r\nSELECT count(1) cnt from DCTemp where CustomerId ='R01249371'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DimBank_copy1",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DimBank",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH\r\nCustomerSK\r\nas (\r\n    SELECT ISNULL(MAX(CustomerSK),0) RN FROM DW.DimCustomer \r\n),\r\nCustomerRelatedParty as(\r\n\tSELECT DISTINCT * FROM BNKM.CustomerRelatedParty where PeriodEndTimestamp is null\r\n),\r\nCustomerMaritalStatus as(\r\n\tSELECT  CustomerId, MaritalStatusId from BNKM.CustomerMaritalStatus WHERE PeriodEndDate IS NULL\r\n),\r\nAtmCustomerRelatedCustomer as(\r\nSELECT DISTINCT RelatedCustomerId FROM BNKM.AtmCustomerRelatedCustomer where PeriodEndTimestamp IS NULL\r\n),\r\nCustomerAccountMBK as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'MBK'\r\n),\r\nCustomerAccountRIB as(\r\n\tSELECT DISTINCT CustomerId FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'RIB'\r\n),\r\nBusinessOnlineBankingAccount as(\r\n\tSELECT DISTINCT CustomerAccountId FROM BNKM.BusinessOnlineBankingAccount\r\n),\r\nCustomerAccountParticipation as(\r\n\tSELECT DISTINCT CoreCustomerId FROM BNKM.CustomerAccountParticipation BCAP\r\n    JOIN BusinessOnlineBankingAccount BOBA ON BCAP.CustomerAccountId = BOBA.CustomerAccountId AND BCAP.SourceSystemCode IN ('DEP','LNS')\r\n),\r\nDCTemp as(\r\n     SELECT DISTINCT\r\n BC.CustomerId AS CustomerID\r\n,BIC.IndividualCustomerName AS CustomerName\r\n,CASE WHEN BCT.CustomerTypeName = 'Individual' THEN 'Retail' ELSE BCT.CustomerTypeName END  AS CustomerType\r\n,BIC.DateOfBirth AS DateOfBirth\r\n,BMS.MaritalStatusName AS MaritalStatus\r\n,BG.GenderName AS Gender\r\n,TMPCCS.MobileNumber AS MobileNumber\r\n,TMPCCS.Email AS Email\r\n,TMPCCS.AddressLine1 AS AddressLine1\r\n,TMPCCS.AddressLine2 AS AddressLine2\r\n,TMPCCS.City AS City\r\n,TMPCCS.Province AS Province\r\n,TMPCCS.ZipCode AS ZipCode\r\n,TMPCCS.Country AS Country\r\n,TMPCCS.Nationality AS Nationality\r\n,TMPCCS.DataPrivacyConsent AS DataPrivacyConsent --change to null due to issue in duplicate for customer consent\r\n,TMPCCS.LastKYCDate AS LastKYCDate\r\n,TMPCCS.SuspendedIndicator AS SuspendedIndicator\r\n,BC.CustomerEstablishedDate AS RelationshipStartDate\r\n,BCRP.PartyId AS GlobalCIF\r\n,CASE WHEN BCRC.RelatedCustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS ATMEnrollmentIndicator\r\n,CASE WHEN BCA.CustomerId IS NOT NULL THEN 'Y' ELSE 'N' END AS MobileBankingEnrollmentIndicator --MBK\r\n,CASE WHEN BCA2.CustomerId IS NOT NULL\r\n OR BCAP.CoreCustomerId IS NOT NULL \r\nTHEN 'Y' ELSE 'N' END AS OnlineBankingEnrollmentIndicator --RIB/BOB\r\n--,GenerationalCohortSK AS GenerationalCohortSK\r\n,TMPCCS.EmployerName\r\n,TMPCCS.OfficeAddressLine1\r\n,TMPCCS.OfficeAddressLine2\r\n,TMPCCS.OfficeCity\r\n,TMPCCS.OfficeProvince\r\n,TMPCCS.OfficeZipCode\r\n,TMPCCS.OfficeCountry\r\n,TMPCCS.Industry\r\n,TMPCCS.Occupation\r\n,DDB.BankSK AS BankSK\r\n,BC.BranchId AS BranchSK\r\n--,1 AS CurrentIndicator\r\n--,GETDATE() AS ValidStartDate\r\n--,convert(date,'9999-01-01') AS ValidEndDate\r\n,BC.SourceSystemCode AS SourceSystemCode\r\n--,0 AS WorkFlowId\r\n--,0 AS TaskRunId\r\n--,GETDATE() AS InsertDttm\r\nFROM BNKM.Customer BC\r\nJOIN DW.DimCustomer_CRM TMPCCS ON BC.CustomerId = TMPCCS.CUSTOMERID AND BC.FinancialInstitutionId = TMPCCS.FinancialInstitutionId\r\nJOIN BNKM.IndividualCustomer BIC ON BC.CustomerId  = BIC.CustomerId\r\nLEFT JOIN CustomerRelatedParty  BCRP ON BC.CustomerId = BCRP.CustomerId AND BC.FinancialInstitutionId = BCRP.FinancialInstitutionId\r\nLEFT JOIN BNKM.CustomerType BCT ON BC.CustomerTypeId= CONVERT(VARCHAR,BCT.CustomerTypeId) AND BC.FinancialInstitutionId = BCT.FinancialInstitutionId\r\nLEFT JOIN CustomerMaritalStatus BCMS ON BC.CustomerId = BCMS.CustomerId \r\n\r\nLEFT JOIN BNKM.MaritalStatus BMS ON BCMS.MaritalStatusId  = convert(varchar,BMS.MaritalStatusId)\r\nLEFT JOIN BNKM.Gender BG ON BIC.GenderId = convert(varchar,BG.GenderId)\r\n--\r\nLEFT JOIN AtmCustomerRelatedCustomer BCRC ON BC.CustomerId = BCRC.RelatedCustomerId \r\nLEFT JOIN CustomerAccountMBK BCA ON BC.CustomerId = CONVERT(VARCHAR,BCA.CustomerId)  --MBK\r\nLEFT JOIN CustomerAccountRIB BCA2 ON BC.CustomerId = CONVERT(VARCHAR,BCA2.CustomerId)  --RIB\r\nLEFT JOIN CustomerAccountParticipation BCAP ON BCAP.CoreCustomerId = BC.CoreCustomerId \r\nLEFT JOIN DW.DimBank DDB ON BC.FinancialInstitutionId = DDB.BankID\r\nLEFT JOIN DW.DimGenerationalCohort DGC ON YEAR(BIC.DateOfBirth)>= DGC.LowerLimit  AND YEAR(BIC.DateOfBirth) <= DGC.UpperLimit \r\nWHERE BC.SourceSystemCode = 'CRM'\r\n)\r\nSELECT count(1) cnt from DCTemp where CustomerId ='R01249371'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "IndividualCustomer_copy1",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "IndividualCustomer",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "\r\n\r\n\tSELECT \r\n\t\tBCA.ORGKEY AS CustomerId\r\n\t\t,BCA.NAME AS IndividualCustomerName\r\n         ,BCA.FILE_NAME AS FILENAME\r\n\t\t ,BCA.isLatest AS isLatest\r\n\t\t,BCA.CUST_DOB AS DateOfBirth\r\n\t\t,BCA.DATEOFDEATH AS DateOfDeath\r\n\t\t,BCA.CUST_FIRST_NAME AS FirstName\r\n\t\t,BCA.CUST_MIDDLE_NAME AS MiddleName\r\n\t\t,BCA.CUST_LAST_NAME AS LastName\r\n\t\t\r\n\tFROM  BUSC.CRM_ACCOUNTS BCA \r\n\tLEFT JOIN BUSC.CRM_DEMOGRAPHIC BCD  ON BCD.ORGKEY = BCA.ORGKEY  AND BCD.isLatest = 1\r\n\twhere  BCD.ACCOUNTID <> 0  and BCD.islatest = 1\r\n    and  BCA.ORGKEY ='P00911311'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "MaritalStatus_copy1",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "MaritalStatus",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "select * from bnkm.CustomerMaritalStatus where CustomerId ='R01249371'\r\n\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-10-04T08:42:26Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

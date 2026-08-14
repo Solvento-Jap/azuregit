@@ -1,0 +1,20 @@
+{
+	"name": "ViewRBBDeposit_Retail",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nCREATE VIEW [DW].[ViewRBBDeposit_Retail]\nAS WITH BusinessDate AS (\nSELECT DISTINCT\nMIN(BusinessDateSK) As BusinessDateSk\nFROM (\n    SELECT MAX(BusinessDateSK) BusinessDateSk FROM DW.FactDepositsOutstandingBalance FDOB\n) a )\n\nSELECT DISTINCT\n(SELECT Businessdatesk FROM BusinessDate) AS BusinessDateSk\n,DCA.CustomerSK AS CustomerSK\n,DCA.CustomerID AS CustomerID\n,DCA.AccountSK AS AccountSK\n,DCA.AccountID AS AccountID\n,DDA.AccountName AS AccountName\n,DCA.AccountHolderTypeSK AS AccountHolderTypeSK\n,DDAH.AccountHolderTypeName AS AccountHolderType\n,DDA.AccountStatus AS AccountStatus\n,DDA.ProfitCostCode AS ProfitCostCode\n,DDB.BranchName AS BranchName  \n,DDB.Area AS Area\n,DDB.Region AS Region\n,DP.ProductGroup AS ProductGroup\n,DP.ProductName AS ProductName\n,NULL AS BalanceAmountFull_Original\n,NULL AS BalanceAmountProrated_Original\n,NULL AS PesoConversionRate\n,NULL AS Currency_Original\n,'PHP' AS Currency_Target\n,FDOB.BalanceAmountFull AS BalanceAmountFull\n,FDOB.BalanceAmountProrated AS BalanceAmountProrated\nFROM  DW.DimCustomerAccount DCA\nLEFT JOIN (SELECT AccountName,AccountStatus,ProfitCostCode,AccountSK FROM DW.DimAccount WHERE CurrentIndicator = 1 AND SourceSystemCode = 'DEP')  DDA ON DCA.AccountSK = DDA.AccountSK\nLEFT JOIN (SELECT AccountHolderTypeName, AccountHolderTypeSk FROM DW.DimAccountHolderType --WHERE CurrentIndicator = 1\n) DDAH ON DCA.AccountHolderTypeSK = DDAH.AccountHolderTypeSK\nLEFT JOIN (SELECT BranchName,Area,Region,BranchSk FROM DW.DimBranch WHERE CurrentIndicator = 1) DDB ON DCA.BranchSk = DDB.BranchSk\nLEFT JOIN (SELECT AccountSK, ProductSK FROM DW.DimAccountProduct WHERE CurrentIndicator = 1 AND SourceSystemCode = 'DEP') DDAP ON DCA.AccountSk = DDAP.AccountSK\nLEFT JOIN (SELECT ProductGroup, ProductName, ProductSk FROM DW.DimProduct WHERE CurrentIndicator = 1) DP ON DDAP.ProductSk = DP.ProductSk\nLEFT JOIN (SELECT DISTINCT BusinessDateSK,AccountSk,BalanceAmountFull,BalanceAmountProrated FROM DW.FactDepositsOutstandingBalance WHERE BusinessDateSK = (SELECT BusinessDatesk from BusinessDate)) FDOB ON  DCA.AccountSk = FDOB.Accountsk\nWHERE (FDOB.BusinessDateSK = (SELECT BusinessDatesk from BusinessDate) OR FDOB.BusinessDateSK IS NULL)\nAND DCA.CurrentIndicator = 1 AND DCA.SourceSystemCode = 'DEP'\nAND DCA.CustomerSK IN (Select distinct CustomerSK from dw.dimcustomer\n                        where currentindicator =1 \n                        and customertype = 'Retail');\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

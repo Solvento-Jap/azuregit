@@ -1,0 +1,121 @@
+{
+	"name": "Patch_CustomerOverallCreditRating",
+	"properties": {
+		"activities": [
+			{
+				"name": "ALTER SP_CUSTOMEROVERALLCREDITRATING_CRM",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CUSTOMEROVERALLCREDITRATING_CRM] AS\r\nBEGIN\r\n-------GET DELTA FROM BUSC\r\nWITH TEMP_BNKM_CustomerOverallCreditRating\r\nAS(\r\nSELECT ROW_NUMBER() OVER(PARTITION BY CustomerId, PeriodStartDate, SourceCode,FinancialInstitutionId ORDER BY TMDATE) RN, * FROM (\r\n\tSELECT\r\n  BCM.TMDATE\r\n\t ,BCM.ORGKEY AS CustomerId\r\n    ,BCM.DTDATE1 AS PeriodStartDate\r\n    ,BCM.STRTEXT21 AS CreditRiskId\r\n    ,BCM.STRTEXT27 AS CustomerCreditRatingNote\r\n    ,BCM.STRTEXT20 AS RiskRatingTypeId\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\n    ,BCM.BANK_ID AS FinancialInstitutionId\r\n    ,BCM.MISCELLANEOUSID\r\n    ,BCM.SOURCE_CODE AS SourceCode\r\n\tFROM BUSC.CRM_MISCELLANEOUSINFO BCM\r\n\tWHERE TYPE = 'Risk_Type'\r\n\tAND BCM.isLatest = '1' \r\n\r\nUNION ALL\r\n\r\n    SELECT \r\n    BCC.TMDATE\r\n\t ,BCC.ORGKEY AS CustomerId\r\n    ,BCC.DATE1 AS PeriodStartDate\r\n    ,BCC.STR21 AS CreditRiskId\r\n    ,BCC.STR27 AS CustomerCreditRatingNote\r\n    ,BCC.STR20 AS RiskRatingTypeId\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\n    ,BCC.BANK_ID AS FinancialInstitutionId\r\n    ,BCC.CORP_MISC_ID\r\n    ,BCC.SOURCE_CODE AS SourceCode\r\n\tFROM BUSC.CRM_CORPMISCELLANEOUSINFO  BCC\r\n\tWHERE  TYPE = 'Risk_Type'\r\n\tAND BCC.isLatest = '1' \r\n\r\n  )a\r\n)\r\n\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerOverallCreditRating FROM TEMP_BNKM_CustomerOverallCreditRating WHERE RN = 1;\r\n\r\n-------------CHECK IF THERE IS DELTA \r\nWITH\r\nTEMP_BNKM_CustomerOverallCreditRating_SRC\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nCONVERT(VARCHAR,CustomerId)\r\n,CONVERT(VARCHAR,CreditRiskId)\r\n,CONVERT(VARCHAR,CustomerCreditRatingNote)\r\n,CONVERT(VARCHAR,RiskRatingTypeId)\r\n)) HASHROW, CustomerId,  FinancialInstitutionId, SourceCode \r\nFROM #TEMP_BNKM_CustomerOverallCreditRating\r\n)\r\n--SELECT COUNT(DISTINCT CUSTOMERID) FROM TEMP_BNKM_CustomerOverallCreditRating_SRC\r\n,\r\nTEMP_BNKM_CustomerOverallCreditRating_TGT\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nCONVERT(VARCHAR,CustomerId)\r\n,CONVERT(VARCHAR,CreditRiskId)\r\n,CONVERT(VARCHAR,CustomerCreditRatingNote)\r\n,CONVERT(VARCHAR,RiskRatingTypeId)\r\n)) HASHROW, CustomerId, FinancialInstitutionId, SourceCode \r\nFROM BNKM.CustomerOverallCreditRating WHERE SOURCECODE = 'CRM' AND (PeriodEndDate  = '9999-12-31')\r\n)\r\n,\r\nTEMP_BNKM_CustomerOverallCreditRating_DELTA\r\nAS\r\n(\r\nSELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n\t,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\r\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n\t,ISNULL(SRC.SOURCECODE,TGT.SOURCECODE) AS SOURCECODE\r\n\t,CASE\r\n\t\t WHEN TGT.HASHROW IS NULL THEN 'INSERT'\r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\tELSE NULL END AS RECORD_STATUS\r\n\t\r\nFROM TEMP_BNKM_CustomerOverallCreditRating_SRC\tSRC\r\nLEFT JOIN TEMP_BNKM_CustomerOverallCreditRating_TGT\tTGT\r\nON\tSRC.CustomerId = TGT.CustomerId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SOURCECODE = TGT.SOURCECODE\r\nWHERE SRC.HASHROW <> TGT.HASHROW  OR TGT.HASHROW IS NULL\r\n)\r\nSELECT * INTO #TEMP_BNKM_CustomerOverallCreditRating_DELTA FROM TEMP_BNKM_CustomerOverallCreditRating_DELTA;\r\n\r\nUPDATE TGT \r\nSET\r\n[PeriodEndDate] = convert(date, DATEADD(day, -1, SRC.PeriodStartDate))\r\nFROM BNKM.CustomerOverallCreditRating TGT\r\nJOIN #TEMP_BNKM_CustomerOverallCreditRating_DELTA DELTA \r\nON DELTA.CustomerId = TGT.CustomerId \r\nAND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId \r\nAND DELTA.SOURCECODE = TGT.SOURCECODE \r\nAND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CustomerOverallCreditRating SRC \r\nON SRC.CustomerId = TGT.CustomerId \r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SOURCECODE = TGT.SOURCECODE\r\nWHERE (TGT.PeriodEndDate IS NULL OR TGT.PeriodEndDate  = '9999-12-31' )AND TGT.SOURCECODE = 'CRM';\r\n\r\n\r\n-------------INSERT RECORDS TO BNKM\r\nINSERT INTO BNKM.CustomerOverallCreditRating ( \r\n[CustomerId]\r\n,[CreditRatingAgencyId]\r\n,[PeriodStartDate]\r\n,[PeriodEndDate]\r\n,[CreditRiskId]\r\n,[CustomerCreditRatingNote]\r\n,[RiskRatingTypeId]\r\n,[SourceCode]\r\n,[FinancialInstitutionId]\r\n,[WorkFlowId]\r\n,[TaskRunId]\r\n,[InsertDttm])\r\n\r\nSELECT \r\n  SRC.CustomerId AS CustomerId\r\n, NULL AS CreditRatingAgencyId\r\n, SRC.PeriodStartDate AS PeriodStartDate\r\n, '9999-12-31' AS PeriodEndDate\r\n, SRC.CreditRiskId AS CreditRiskId\r\n, SRC.CustomerCreditRatingNote AS CustomerCreditRatingNote\r\n, SRC.RiskRatingTypeId AS RiskRatingTypeId\r\n, SRC.SourceCode\r\n, SRC.FinancialInstitutionId AS FinancialInstitutionId\r\n, 0 AS WorkFlowId\r\n, 0 AS TaskRunId\r\n, SRC.InsertDttm AS InsertDttm\r\nFROM #TEMP_BNKM_CustomerOverallCreditRating SRC\r\nJOIN #TEMP_BNKM_CustomerOverallCreditRating_DELTA DELTA \r\nON DELTA.CustomerId = SRC.CustomerId \r\nAND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId \r\nAND DELTA.SOURCECODE = SRC.SOURCECODE \r\nWHERE RECORD_STATUS in ('INSERT')\r\n\r\n\r\n\r\nDROP TABLE #TEMP_BNKM_CustomerOverallCreditRating;\r\nDROP TABLE #TEMP_BNKM_CustomerOverallCreditRating_DELTA;\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ALTER SP_CUSTOMEROVERALLCREDITRATING_SEC",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CUSTOMEROVERALLCREDITRATING_SEC] AS\r\nBEGIN\r\n--------------GET DELTA FROM BUSC\r\nWITH\r\nTMP_GET_DATE_CREATED\r\nAS\r\n(\r\n    SELECT BSC.CLTCODE, BSA.DATE_OPEN, BSA.ACCTCODE  FROM BUSC.SEC_TBLACCOUNTS BSA \r\n    JOIN BUSC.SEC_ACCOUNTLINK BSL ON BSA.ACCTCODE = BSL.ACCTKEY AND BSA.ISLATEST = 1 AND BSL.ISLATEST = 1\r\n    JOIN BUSC.SEC_TBLCLIENT BSC ON BSC.CLTCODE = BSL.CLTCODE AND BSC.ISLATEST = 1\r\n)\r\n, \r\nTEMP_BNKM_CustomerOverallCreditRating\r\nAS(\r\n\tSELECT \r\n     BSC.CLTCODE AS CustomerId\r\n    ,CASE WHEN BSC.LASTUPDATED IS NULL\r\n          THEN GDC.DATE_OPEN   \r\n          ELSE BSC.LASTUPDATED END AS PeriodStartDate\r\n    ,RISK_SCORE AS CreditRiskId\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm \r\n    ,BSC.BNK_CODE AS FinancialInstitutionId\r\n    ,BSC.SOURCE_CODE as SourceCode\r\nFROM BUSC.SEC_TBLCLIENT BSC\r\nLEFT JOIN TMP_GET_DATE_CREATED GDC ON BSC.CLTCODE = GDC.CLTCODE\r\nwhere BSC.ISLATEST = 1\r\n\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_CustomerOverallCreditRating FROM TEMP_BNKM_CustomerOverallCreditRating;\r\n\r\n-------------CHECK IF THERE IS DELTA \r\nWITH\r\nTEMP_BNKM_CustomerOverallCreditRating_SRC\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nCONVERT(VARCHAR,CustomerId)\r\n,CONVERT(VARCHAR,CreditRiskId)\r\n))  HASHROW, CustomerId,  FinancialInstitutionId, SourceCode \r\nFROM #TEMP_BNKM_CustomerOverallCreditRating \r\n)\r\n\r\n,\r\nTEMP_BNKM_CustomerOverallCreditRating_TGT\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5',CONCAT(\r\nCONVERT(VARCHAR,CustomerId)\r\n,CONVERT(VARCHAR,CreditRiskId)\r\n))  HASHROW, CustomerId,  FinancialInstitutionId, SourceCode \r\nFROM BNKM.CustomerOverallCreditRating WHERE PeriodEndDate = '9999-12-31' AND SourceCode = 'SEC'\t\r\n)\r\n,\r\nTEMP_BNKM_CustomerOverallCreditRating_DELTA\r\nAS\r\n(\r\nSELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n\t,ISNULL(SRC.CustomerId,TGT.CustomerId) AS CustomerId\r\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n\t,ISNULL(SRC.SOURCECODE,TGT.SOURCECODE) AS SOURCECODE\r\n\t,CASE\r\n     WHEN TGT.HASHROW IS NULL THEN 'INSERT'\r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n\tELSE NULL END AS RECORD_STATUS\r\n\t\r\nFROM TEMP_BNKM_CustomerOverallCreditRating_SRC\tSRC\r\nLEFT JOIN TEMP_BNKM_CustomerOverallCreditRating_TGT\tTGT\r\nON\tSRC.CustomerId = TGT.CustomerId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SOURCECODE = TGT.SOURCECODE\r\nWHERE SRC.HASHROW <> TGT.HASHROW  OR TGT.HASHROW IS NULL\r\n)\r\nSELECT * INTO #TEMP_BNKM_CustomerOverallCreditRating_DELTA FROM TEMP_BNKM_CustomerOverallCreditRating_DELTA;\r\n\r\nUPDATE TGT \r\nSET\r\n[PeriodEndDate] = convert(date, DATEADD(day, -1, SRC.PeriodStartDate))\r\nFROM BNKM.CustomerOverallCreditRating TGT\r\nJOIN #TEMP_BNKM_CustomerOverallCreditRating_DELTA DELTA \r\nON DELTA.CustomerId = TGT.CustomerId \r\nAND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId \r\nAND DELTA.SOURCECODE = TGT.SOURCECODE \r\nAND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_CustomerOverallCreditRating SRC \r\nON SRC.CustomerId = TGT.CustomerId \r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SOURCECODE = TGT.SOURCECODE\r\nWHERE TGT.PeriodEndDate = '9999-12-31' AND TGT.SOURCECODE = 'SEC'\t;\r\n\r\n\r\n-------------INSERT RECORDS TO BNKM\r\nINSERT INTO BNKM.CustomerOverallCreditRating  ( \r\n[CustomerId]\r\n,[CreditRatingAgencyId]\r\n,[PeriodStartDate]\r\n,[PeriodEndDate]\r\n,[CreditRiskId]\r\n,[CustomerCreditRatingNote]\r\n,[RiskRatingTypeId]\r\n,[SourceCode]\r\n,[FinancialInstitutionId]\r\n,[WorkFlowId]\r\n,[TaskRunId]\r\n,[InsertDttm])\r\n\r\nSELECT \r\nDistinct\r\n  SRC.CustomerId AS CustomerId\r\n, NULL AS CreditRatingAgencyId\r\n, SRC.PeriodStartDate AS PeriodStartDate\r\n, '9999-12-31' AS PeriodEndDate\r\n, SRC.CreditRiskId AS CreditRiskId\r\n, NULL AS CustomerCreditRatingNote\r\n, NULL AS RiskRatingTypeId\r\n, SRC.SourceCode\r\n, SRC.FinancialInstitutionId AS FinancialInstitutionId\r\n, 0 AS WorkFlowId\r\n, 0 AS TaskRunId\r\n, SRC.InsertDttm AS InsertDttm\r\nFROM #TEMP_BNKM_CustomerOverallCreditRating SRC\r\nJOIN #TEMP_BNKM_CustomerOverallCreditRating_DELTA DELTA \r\nON DELTA.CustomerId = SRC.CustomerId \r\nAND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId \r\nAND DELTA.SOURCECODE = SRC.SOURCECODE \r\nWHERE RECORD_STATUS in ('UPDATE','INSERT');\r\n\r\n\r\n\r\nDROP TABLE #TEMP_BNKM_CustomerOverallCreditRating;\r\nDROP TABLE #TEMP_BNKM_CustomerOverallCreditRating_DELTA;\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Execute Patch",
+				"type": "ExecutePipeline",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Patch",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"table": "BNKM.CustomerOverallCreditRating",
+						"col": "PeriodEndDate"
+					}
+				}
+			},
+			{
+				"name": "CRM_PATCH",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "ALTER SP_CUSTOMEROVERALLCREDITRATING_CRM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Patch_SRC",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"table": "BNKM.CustomerOverallCreditRating",
+						"field": "PeriodEndDate",
+						"src_field": "SourceCode",
+						"src": "CRM"
+					}
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-02-19T03:48:57Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

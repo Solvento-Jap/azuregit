@@ -1,0 +1,635 @@
+{
+	"name": "CI_Trust_Account_Retail_EDS",
+	"properties": {
+		"description": "Sources data from EDS tables",
+		"activities": [
+			{
+				"name": "TrustRetail",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "START_TASK_CI",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": {
+							"value": "@concat('select      PORT.PORTFOLIO_NO as AccountID\n        ,   CUST.UNIQUE_ID as CustomerID\n        ,   concat(''Entity_CIF_CRM_'', CUST.UNIQUE_ID) as EntityCIF\n        ,   CUST.UNIQUE_ID as FCBSCIF\n        ,   UITF.BNK_CODE as Bank_Code\n        ,   UITF.BRANCH as Branch_Code\n        ,   BR.SOL_DESC as BranchName\n        ,   BR.AREA as Area\n        ,   BR.REGION as Region\n        ,   UITF.SOURCE_CODE as Source\n        ,   ''UITF'' as ProductGrouping\n        ,   PORT.PROD_CODE as ProductType\n        ,   concat(''UITF-'', PORT.PROD_CODE) as ProductDetails\n        ,   PFSUB.INCEPTION_DATE as OpenedDate\n        ,   UITF.CUSTOMER_FUND_VALUE_IN_PHP as AssetsUnderManagementBalance_Full\n        ,   null as AssetsUnderManagementBalance_Prorated\n        ,   CAST(''',variables('V_date'),''' AS DATE) as BusinessDate\n        ,   CAST(''',variables('V_date'),''' AS DATE) as LastUpdatedDate\n        ,   concat(PORT.PORTFOLIO_NO, CUST.UNIQUE_ID, UITF.BNK_CODE, UITF.SOURCE_CODE) as AccountKey\nfrom eds.TRU_CUST CUST\nleft join eds.TRU_BASELINK BASE \non CUST.CUST_NO = BASE.CIF_NO \nand CUST.BNK_CODE = BASE.BNK_CODE\nand CAST(''',variables('V_date'),''' AS DATE) between BASE.SCD_START_DATE and BASE.SCD_END_DATE\nleft join eds.TRU_PORTFOLIO PORT \non BASE.CUST_NO = PORT.BASE_NO \nand BASE.BNK_CODE = PORT.BNK_CODE\nand CAST(''',variables('V_date'),''' AS DATE) between PORT.SCD_START_DATE and PORT.SCD_END_DATE\nleft join eds.TRU_PFSUBSCRIPTION PFSUB\non PORT.SUBSCRIPTION_ID = PFSUB.SUBSCRIPTION_ID\nand PORT.BASE_NO = PFSUB.BASE_NO\nand PORT.BNK_CODE = PFSUB.BNK_CODE\nand CAST(''',variables('V_date'),''' AS DATE) between PFSUB.SCD_START_DATE and PFSUB.SCD_END_DATE\ninner join eds.TRU_AUMUITF UITF\non UITF.BASE_NO = PORT.BASE_NO\nand UITF.PORTFOLIO_NO = PORT.PORTFOLIO_NO\nand PORT.BNK_CODE = UITF.BNK_CODE\nand UITF.ASOFDATE = CAST(''',variables('V_date'),''' AS DATE) \nleft join eds.BRANCH_DIM BR \non UITF.BRANCH = BR.SOL_ID \nand UITF.BNK_CODE = BR.BNK_CODE\nand CAST(''',variables('V_date'),''' AS DATE) between BR.SCD_START_DATE and BR.SCD_END_DATE\nwhere CAST(''',variables('V_date'),''' AS DATE) between CUST.SCD_START_DATE and CUST.SCD_END_DATE\nand left(CUST.UNIQUE_ID, 1) = ''R''\ngroup by    PORT.PORTFOLIO_NO\n        ,   CUST.UNIQUE_ID\n        ,   concat(''Entity_CIF_CRM_'', CUST.UNIQUE_ID)\n        ,   CUST.UNIQUE_ID\n        ,   UITF.BNK_CODE\n        ,   UITF.BRANCH\n        ,   BR.SOL_DESC\n        ,   BR.AREA\n        ,   BR.REGION\n        ,   UITF.SOURCE_CODE\n        ,   PORT.PROD_CODE\n        ,   concat(''UITF-'', PORT.PROD_CODE)\n        ,   PFSUB.INCEPTION_DATE\n        ,   UITF.CUSTOMER_FUND_VALUE_IN_PHP\n        ,   concat(PORT.PORTFOLIO_NO, CUST.UNIQUE_ID, UITF.BNK_CODE, UITF.SOURCE_CODE)\n\nunion all\n\nselect      PORT.PORTFOLIO_NO as AccountID\n        ,   CUST.UNIQUE_ID as CustomerID\n        ,   concat(''Entity_CIF_CRM_'', CUST.UNIQUE_ID) as EntityCIF\n        ,   CUST.UNIQUE_ID as FCBSCIF\n        ,   NONUITF.BNK_CODE as Bank_Code\n        ,   null as Branch_Code\n        ,   null as BranchName\n        ,   null as Area\n        ,   null as Region\n        ,    NONUITF.SOURCE_CODE as Source\n        ,   ''NON-UITF'' as ProductGrouping\n        ,   PORT.PROD_CODE as ProductType\n        ,   concat(''NON-UITF-'', PORT.PROD_CODE) as ProductDetails\n        ,   PFSUB.INCEPTION_DATE as OpenedDate\n        ,   NONUITF.AUM_IN_ORIG_CURR as AssetsUnderManagementBalance_Full\n        ,   null as AssetsUnderManagementBalance_Prorated\n        ,   CAST(''',variables('V_date'),''' AS DATE) as BusinessDate\n        ,   CAST(''',variables('V_date'),''' AS DATE) as LastUpdatedDate\n        ,   concat(PORT.PORTFOLIO_NO, CUST.UNIQUE_ID, NONUITF.BNK_CODE, NONUITF.SOURCE_CODE) as AccountKey\nfrom eds.TRU_CUST CUST\nleft join eds.TRU_BASELINK BASE \non CUST.CUST_NO = BASE.CIF_NO \nand CUST.BNK_CODE = BASE.BNK_CODE\nand CAST(''',variables('V_date'),''' AS DATE) between BASE.SCD_START_DATE and BASE.SCD_END_DATE\nleft join eds.TRU_PORTFOLIO PORT \non BASE.CUST_NO = PORT.BASE_NO \nand BASE.BNK_CODE = PORT.BNK_CODE\nand CAST(''',variables('V_date'),''' AS DATE) between PORT.SCD_START_DATE and PORT.SCD_END_DATE\nleft join eds.TRU_PFSUBSCRIPTION PFSUB\non PORT.SUBSCRIPTION_ID = PFSUB.SUBSCRIPTION_ID\nand PORT.BASE_NO = PFSUB.BASE_NO\nand PORT.BNK_CODE = PFSUB.BNK_CODE\nand CAST(''',variables('V_date'),''' AS DATE) between PFSUB.SCD_START_DATE and PFSUB.SCD_END_DATE\ninner join eds.TRU_AUMNONUITF NONUITF\non NONUITF.BASE_NO = PORT.BASE_NO\nand NONUITF.PF_NO = PORT.PORTFOLIO_NO\nand NONUITF.BNK_CODE = PORT.BNK_CODE\nand NONUITF.ASOFDATE = CAST(''',variables('V_date'),''' AS DATE) \nwhere CAST(''',variables('V_date'),''' AS DATE) between CUST.SCD_START_DATE and CUST.SCD_END_DATE\nand left(CUST.UNIQUE_ID, 1) = ''R''\ngroup by    PORT.PORTFOLIO_NO\n        ,   CUST.UNIQUE_ID\n        ,   concat(''Entity_CIF_CRM_'', CUST.UNIQUE_ID)\n        ,   CUST.UNIQUE_ID\n        ,   NONUITF.BNK_CODE\n        ,   NONUITF.SOURCE_CODE\n        ,   PORT.PROD_CODE\n        ,   concat(''NON-UITF-'', PORT.PROD_CODE)\n        ,   PFSUB.INCEPTION_DATE\n        ,   NONUITF.AUM_IN_ORIG_CURR\n        ,   concat(PORT.PORTFOLIO_NO, CUST.UNIQUE_ID, NONUITF.BNK_CODE, NONUITF.SOURCE_CODE)')",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "DelimitedTextSink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"formatSettings": {
+							"type": "DelimitedTextWriteSettings",
+							"quoteAllText": true,
+							"fileExtension": ".txt"
+						}
+					},
+					"enableStaging": false,
+					"translator": {
+						"type": "TabularTranslator",
+						"typeConversion": true,
+						"typeConversionSettings": {
+							"allowDataTruncation": true,
+							"treatBooleanAsNumber": false
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_EDS",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "-"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "CI_csv_gen",
+						"type": "DatasetReference",
+						"parameters": {
+							"Table": {
+								"value": "CI_Trust_Retail",
+								"type": "Expression"
+							},
+							"Source": "TRUST",
+							"Types": "Retail"
+						}
+					}
+				]
+			},
+			{
+				"name": "START_TASK_CI",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "OM_SRC_CHECK",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_START]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@variables('v_date')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_SUCCESSFUL",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "TrustRetail",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "SUCCESSFUL",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_FAILED",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "TrustRetail",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "FAILED",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.date,'9999-12-31')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_date",
+								"value": {
+									"value": "@pipeline().parameters.date",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('select ect.',pipeline().parameters.ctl_src_sys,'_DATE as fulldate\nfrom \n    eds.eds_ctl ect'\n)",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_date",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_GET",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Set v_error_desc_get",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@variables('v_date')",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_ci_Trust_Retail",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "SP_LOG_TASK_ERROR_DTL_GET",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": {
+						"value": "@variables('v_error_desc')",
+						"type": "Expression"
+					},
+					"errorCode": "500"
+				}
+			},
+			{
+				"name": "Set v_error_desc_get",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "TrustRetail",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_error_desc",
+					"value": {
+						"value": "@activity('TrustRetail').Error.message",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "SP_LOG_COPY_ACTIVITY_DTL",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "TrustRetail",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_COPY_ACTIVITY_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@variables('v_date')",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"dataread": {
+							"value": {
+								"value": "@activity('TrustRetail').output.dataRead",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"datawritten": {
+							"value": {
+								"value": "@activity('TrustRetail').output.dataWritten",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"sourcepeakconnections": {
+							"value": {
+								"value": "@activity('TrustRetail').output.sourcePeakConnections",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowsread": {
+							"value": {
+								"value": "@activity('TrustRetail').output.rowsRead",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowscopied": {
+							"value": {
+								"value": "@activity('TrustRetail').output.rowsCopied",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"rowsskipped": {
+							"value": null,
+							"type": "String"
+						},
+						"copyduration": {
+							"value": {
+								"value": "@activity('TrustRetail').output.copyDuration",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"throughput": {
+							"value": {
+								"value": "@activity('TrustRetail').output.throughput",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"redirectrowpath": {
+							"value": null,
+							"type": "String"
+						},
+						"logfilepath": {
+							"value": null,
+							"type": "String"
+						},
+						"filesread": {
+							"value": null,
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "OM_SRC_CHECK",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_',pipeline().parameters.tables)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@replace(substring(variables('v_date'),0,10),'-','')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			}
+		],
+		"parameters": {
+			"tables": {
+				"type": "string",
+				"defaultValue": "CI_Trust_Retail"
+			},
+			"date": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"ctl_src_sys": {
+				"type": "string",
+				"defaultValue": "TRU"
+			}
+		},
+		"variables": {
+			"v_date": {
+				"type": "String"
+			},
+			"v_error_desc": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-06-27T05:25:33Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,17 @@
+{
+	"name": "SQL script 1249",
+	"properties": {
+		"content": {
+			"query": "--#1 BACKUP [TABLE_NAME]\nDECLARE @sql NVARCHAR(MAX);\nDECLARE @tableName NVARCHAR(128);\nDECLARE @tableSchema NVARCHAR(128);\nDECLARE @ticketNumber NVARCHAR(128);\nDECLARE @backupName NVARCHAR(128);\nDECLARE @SUFFIX INT = 0;\nDECLARE @BU_DATE CHAR(8);\n\nSET @BU_DATE = CONVERT(CHAR(8), CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATE), 112);\nSET @tableName = 'CUSTOMER_DIM'; -- TABLE_NAME\nSET @tableSchema = 'EDS' -- TABLE_SCHEMA\nSET @ticketNumber = 'RITM0489633'; -- TICKET_NUMBER\n\nSET @backupName = @tableName+ '_' + @ticketNumber + '_BU_' + @BU_DATE;\n \nIF EXISTS (\n    SELECT 1\n    FROM INFORMATION_SCHEMA.TABLES\n    WHERE TABLE_NAME = @backupName AND TABLE_SCHEMA = 'D360'\n)\nBEGIN\n    -- Find the highest suffix number\n    SELECT TOP 1\n        @SUFFIX = TRY_CAST(RIGHT(TABLE_NAME, CHARINDEX('_', REVERSE(TABLE_NAME)) - 1) AS INT)\n    FROM INFORMATION_SCHEMA.TABLES\n    WHERE\n        TABLE_NAME LIKE @backupName + '_%'\n        AND TABLE_SCHEMA = 'D360'\n        AND ISNUMERIC(RIGHT(TABLE_NAME, CHARINDEX('_', REVERSE(TABLE_NAME)) - 1)) = 1\n    ORDER BY TABLE_NAME DESC;\n \n    -- If no _1 exists, make _1. Otherwise, increment.\n    SET @SUFFIX = ISNULL(@SUFFIX, 0) + 1;\n    SET @backupName = @backupName + '_' + CAST(@SUFFIX AS VARCHAR);\nEND\n \nSET @sql = '\nCREATE TABLE D360.' + QUOTENAME(@backupName) + '\nWITH\n(\n    DISTRIBUTION= ROUND_ROBIN, HEAP\n)\nAS\nSELECT *\nFROM '+ @tableSchema+'.' + @tableName + ';';\n \nEXEC sp_executesql @sql;",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

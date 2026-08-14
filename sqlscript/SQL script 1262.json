@@ -1,0 +1,17 @@
+{
+	"name": "SQL script 1262",
+	"properties": {
+		"content": {
+			"query": "WITH Rolling_Window AS\n(\n    SELECT \n    fulldate,\n    LastDayOfMonth,\n    DEPOSITS_DATE\n    FROM eds.DATE_DIM\n    INNER JOIN eds.EDS_CTL\n    ON LastDayOfMonth <= DEPOSITS_DATE \n    where business_day_flag='Y' and month_end='Y'\n\tAND fulldate between CAST('2024-08-30' AS DATE) and CAST('2024-08-30' AS DATE)\n)\n,all_cif_ytd AS\n(\n\tSELECT\n\t\tCONCAT(CRM_ACCOUNTS.ORGKEY,format(RW.LastDayOfMonth,'MMddyyyy')) AS Id\n\t\t,EDF.CUST_ID\n\t\t,CRM_ACCOUNTS.ORGKEY\tAS\tCIF\n\t\t,CRM_ACCOUNTS.BANK_ID \n\t\t,sum(case when EDF.ACCT_CRNCY_CODE = 'PHP' then coalesce(EDF.YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP,0) else 0 end) AS\tytdphp\n\t\t,sum(case when EDF.ACCT_CRNCY_CODE <> 'PHP' then coalesce(EDF.YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP,0) else 0 end) AS\tytdnonphp\n\t\t,format(RW.LastDayOfMonth,'MM/dd/yyyy') Date\n\t    ,RW.FullDate\n\t\t,CRM_ACCOUNTS.STRUSERFIELD8\n\tFROM Rolling_Window AS RW\n\tINNER JOIN EDS.CUSTOMER_DIM AS CRM_ACCOUNTS\n\t\tON RW.FullDate BETWEEN CRM_ACCOUNTS.SCD_Start_Date AND CRM_ACCOUNTS.SCD_END_DATE\n\tINNER JOIN EDS.DEPOSIT_FACT EDF\n\t\tON RW.FullDate = EDF.AS_OF_DATE\n\t\tAND EDF.del_flg='N'\n\t\tAND EDF.GAM_BANK_ID='CBC01'\n\t\tAND EDF.GAM_SCHM_TYPE IN ('CAA','SBA')\n\t\tAND CRM_ACCOUNTS.CORE_CUST_ID = EDF.CUST_ID\n\t\tAND CRM_ACCOUNTS.BANK_ID = EDF.GAM_BANK_ID\n\n\tGROUP BY\n\t\tCONCAT(CRM_ACCOUNTS.ORGKEY,format(RW.LastDayOfMonth,'MMddyyyy'))\n\t\t,EDF.CUST_ID\n\t\t,CRM_ACCOUNTS.ORGKEY\n\t\t,CRM_ACCOUNTS.BANK_ID \n        ,format(RW.LastDayOfMonth,'MM/dd/yyyy')\n\t\t,RW.FullDate\n\t\t,CRM_ACCOUNTS.STRUSERFIELD8\n)\t\n\nSELECT\n\t ACY.Id\n\t,ACY.CIF\n\t,cast(max(coalesce(ACY.ytdphp,0)) as varchar) AS BorrowerPhpCasaAdbCurrentYear\n\t,cast(max(coalesce(ACY.ytdnonphp,0)) as varchar) AS [BorrowerFcduCasaAdbCurrentYear (PHP)]\n\t,'PHP' AS CurrencyForBorrowerFcduCasaAdb \n\t,cast(ACY.[Date] as varchar) AS [Date]\n\t,cast(sum(case when ACY.CIF <> CG_REL.ORGKEY then coalesce(ACY_REL.ytdphp,0) else 0 end) as varchar) AS RelatedAccountPhpCasaAdbCurrentYear\n\t,cast(sum(case when ACY.CIF <> CG_REL.ORGKEY then coalesce(ACY_REL.ytdnonphp,0) else 0 end) as varchar) AS RelatedAccountFcduCasaAdbCurrentYearOriginalCurrency\n\t,'PHP' AS CurrencyForRelatedAccountFcduCasaAdb\nFROM all_cif_ytd ACY\nLEFT JOIN EDS.CRM_GROUPHOUSEHOLD CG\n\tON  ACY.CIF = CG.ORGKEY\n\tAND ACY.BANK_ID = CG.BANK_ID\n\tAND ACY.FullDate BETWEEN CG.SCD_START_DATE AND CG.SCD_END_DATE\nLEFT JOIN EDS.CRM_GROUPHOUSEHOLD CG_REL\n\tON  CG_REL.GROUP_ID = CG.GROUP_ID\n\tAND CG_REL.BANK_ID = CG.BANK_ID\n\tAND ACY.FullDate BETWEEN CG_REL.SCD_START_DATE AND CG_REL.SCD_END_DATE\nLEFT JOIN all_cif_ytd ACY_REL\n\tON  ACY_REL.CIF = CG_REL.ORGKEY\n\tAND ACY_REL.BANK_ID = CG_REL.BANK_ID\nWHERE ACY.STRUSERFIELD8 IS NOT NULL\n\tAND ACY.CIF IN ('R00006350','R00024392','R00096203','R00183040')\nGROUP BY\n\t ACY.Id\n\t,ACY.CIF\n\t,ACY.[Date]\nunion all\nSELECT\n\t '#~#'\n\t,''\n\t,''\n\t,''\n\t,''\n\t,''\n\t,''\n\t,''\n\t,''\n\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

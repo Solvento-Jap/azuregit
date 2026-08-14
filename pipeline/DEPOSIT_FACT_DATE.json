@@ -1,0 +1,781 @@
+{
+	"name": "DEPOSIT_FACT_DATE",
+	"properties": {
+		"activities": [
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(variables('V_endDate')),ticks(variables('V_startDate'))),864000000000),1))\n",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append Process Date",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_Previous_Year_Last_Bus_Day_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_Previous_Year_Last_Bus_Day_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "Previous_Year_Last_Bus_Day",
+								"value": {
+									"value": "@pipeline().parameters.ytd_startDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('select fulldate\nfrom \n    eds.eds_ctl ect\ninner join \n    eds.date_dim dd\n    on \n    ect.DEPOSITS_DATE=dd.previous_business_day\n    and dd.business_day_flag=''Y''')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "GET_PROCESS_DATE_Previous_Year_Last_Bus_Day",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT Previous_Year_Last_Bus_Day FROM EDS.DATE_DIM WHERE FULLDATE =''',variables('V_startDate'),'''')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "DATE_DIM"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_YTD_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE_Previous_Year_Last_Bus_Day",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "Previous_Year_Last_Bus_Day",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE_Previous_Year_Last_Bus_Day').output.firstRow.Previous_Year_Last_Bus_Day\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Iterate Execution of Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "EDS_DEPOSIT_MTD_YTD_UAT",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "START_TASK_EDS",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_START]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_EDS_DEPOSIT_FACT_DATE",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@replace(substring(item(),0,10),'-','')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "DEPOSIT_FACT_DATE_CLOSED",
+							"type": "Script",
+							"dependsOn": [
+								{
+									"activity": "DEPOSIT_FACT_DATE_AS_OF_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "TestSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"parameters": [
+											{
+												"name": "item",
+												"type": "String",
+												"value": {
+													"value": "@item()",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											}
+										],
+										"type": "Query",
+										"text": "DECLARE @DateToProcess DATE;\nSET @DateToProcess = @item;\n\n--DELETE FROM EDS.DEPOSIT_FACT_DATE WHERE AS_OF_DATE = @DatetoProcess;\n\n\nWITH FACT AS \n(\nSELECT \n FACT.GAM_ACID\n,FACT.ENTITY_CRE_FLG\n,FACT.DEL_FLG\n,FACT.SOL_ID\n,FACT.ACCT_PREFIX\n,FACT.ACCT_NUM\n,FACT.BACID\n,FACT.FORACID\n,FACT.ACCT_NAME\n,FACT.ACCT_SHORT_NAME\n,FACT.CUST_ID\n,FACT.EMP_ID\n,FACT.GL_SUB_HEAD_CODE\n,FACT.ACCT_OWNERSHIP\n,FACT.GAM_SCHM_CODE\n,FACT.DR_BAL_LIM\n,FACT.ACCT_RPT_CODE\n,FACT.FREZ_CODE\n,FACT.FREZ_REASON_CODE\n,FACT.ACCT_OPN_DATE\n,FACT.ACCT_CLS_FLG\n,FACT.ACCT_CLS_DATE\n,FACT.CLR_BAL_AMT\n,FACT.TOT_MOD_TIMES\n,FACT.LEDG_NUM\n,FACT.UN_CLR_BAL_AMT\n,FACT.DRWNG_POWER\n,FACT.SANCT_LIM\n,FACT.ADHOC_LIM\n,FACT.EMER_ADVN\n,FACT.DACC_LIM\n,FACT.SYSTEM_RESERVED_AMT\n,FACT.SINGLE_TRAN_LIM\n,FACT.CLEAN_ADHOC_LIM\n,FACT.CLEAN_EMER_ADVN\n,FACT.CLEAN_SINGLE_TRAN_LIM\n,FACT.SYSTEM_GEN_LIM\n,FACT.CHQ_ALWD_FLG\n,FACT.CASH_EXCP_AMT_LIM\n,FACT.CLG_EXCP_AMT_LIM\n,FACT.XFER_EXCP_AMT_LIM\n,FACT.CASH_CR_EXCP_AMT_LIM\n,FACT.CLG_CR_EXCP_AMT_LIM\n,FACT.XFER_CR_EXCP_AMT_LIM\n,FACT.CASH_ABNRML_AMT_LIM\n,FACT.CLG_ABNRML_AMT_LIM\n,FACT.XFER_ABNRML_AMT_LIM\n,FACT.CUM_DR_AMT\n,FACT.CUM_CR_AMT\n,FACT.ACRD_CR_AMT\n,FACT.LAST_TRAN_DATE\n,FACT.MODE_OF_OPER_CODE\n,FACT.PB_PS_CODE\n,FACT.SERV_CHRG_COLL_FLG\n,FACT.FREE_TEXT\n,FACT.ACCT_TURNOVER_DET_FLG\n,FACT.NOM_AVAILABLE_FLG\n,FACT.ACCT_LOCN_CODE\n,FACT.LAST_PURGE_DATE\n,FACT.BAL_ON_PURGE_DATE\n,FACT.INT_PAID_FLG\n,FACT.INT_COLL_FLG\n,FACT.LAST_ANY_TRAN_DATE\n,FACT.HASHED_NO\n,FACT.GAM_LCHG_USER_ID\n,FACT.GAM_LCHG_TIME\n,FACT.GAM_RCRE_USER_ID\n,FACT.GAM_RCRE_TIME\n,FACT.LIMIT_B2KID\n,FACT.DRWNG_POWER_IND\n,FACT.DRWNG_POWER_PCNT\n,FACT.MICR_CHQ_CHRG_COLL_FLG\n,FACT.LAST_TURNOVER_DATE\n,FACT.NOTIONAL_RATE\n,FACT.NOTIONAL_RATE_CODE\n,FACT.FX_CLR_BAL_AMT\n,FACT.FX_BAL_ON_PURGE_DATE\n,FACT.FD_REF_NUM\n,FACT.FX_CUM_CR_AMT\n,FACT.FX_CUM_DR_AMT\n,FACT.CRNCY_CODE\n,FACT.SOURCE_OF_FUND\n,FACT.ANW_NON_CUST_ALWD_FLG\n,FACT.ACCT_CRNCY_CODE\n,FACT.LIEN_AMT\n,FACT.ACCT_CLASSIFICATION_FLG\n,FACT.SYSTEM_ONLY_ACCT_FLG\n,FACT.SINGLE_TRAN_FLG\n,FACT.UTILISED_AMT\n,FACT.INTER_SOL_ACCESS_FLG\n,FACT.PURGE_ALLOWED_FLG\n,FACT.PURGE_TEXT\n,FACT.MIN_VALUE_DATE\n,FACT.ACCT_MGR_USER_ID\n,FACT.GAM_SCHM_TYPE\n,FACT.LAST_FREZ_DATE\n,FACT.LAST_UNFREZ_DATE\n,FACT.BAL_ON_FREZ_DATE\n,FACT.SWIFT_ALLOWED_FLG\n,FACT.DACC_LIM_PCNT\n,FACT.DACC_LIM_ABS\n,FACT.CHRG_LEVEL_CODE\n,FACT.ACCT_CLS_CHRG_PEND_VERF\n,FACT.PARTITIONED_FLG\n,FACT.PARTITIONED_TYPE\n,FACT.PBF_DOWNLOAD_FLG\n,FACT.PBF_DELINK_DATE\n,FACT.WTAX_FLG\n,FACT.WTAX_AMOUNT_SCOPE_FLG\n,FACT.INT_ADJ_FOR_DEDUCTION_FLG\n,FACT.OPERATIVE_ACID\n,FACT.PHONE_NUM\n,FACT.NATIVE_LANG_NAME\n,FACT.NAT_LANG_TITLE_CODE\n,FACT.LANG_CODE\n,FACT.GAM_TS_CNT\n,FACT.POOL_ID\n,FACT.ALLOW_SWEEPS\n,FACT.ORDER_OF_UTILISATION\n,FACT.WTAX_PCNT\n,FACT.WTAX_FLOOR_LIMIT\n,FACT.DSA_PENAL_FLG\n,FACT.PRODUCT_GROUP\n,FACT.SOURCE_DEAL_CODE\n,FACT.DISBURSE_DEAL_CODE\n,FACT.SWEEP_IN_MIN_BAL\n,FACT.USED_SINGLE_TRAN_LIM\n,FACT.USED_CLEAN_SINGLE_TRAN_LIM\n,FACT.USED_UN_CLR_OVER_DACC_AMT\n,FACT.FFD_CONTRIB_TO_ACCT\n,FACT.ACCT_CREATION_MODE\n,FACT.WTAX_LEVEL_FLG\n,FACT.LAST_MODIFIED_DATE\n,FACT.CIF_ID\n,FACT.FUTURE_BAL_AMT\n,FACT.UTIL_FUTURE_BAL_AMT\n,FACT.DAFA_LIM\n,FACT.DAFA_LIM_ABS\n,FACT.DAFA_LIM_PCNT\n,FACT.FUTURE_OC_TOD_AMT\n,FACT.USED_OC_CLN_SINGLE_TRAN_LIM\n,FACT.IBAN_NUMBER\n,FACT.CHANNEL_LEVEL_CODE\n,FACT.CHANNEL_ID\n,FACT.FUTURE_CLR_BAL_AMT\n,FACT.FUTURE_UN_CLR_BAL_AMT\n,FACT.MASTER_B2K_ID\n,FACT.GAM_BANK_ID\n,FACT.FREZ_REASON_CODE_2\n,FACT.FREZ_REASON_CODE_3\n,FACT.FREZ_REASON_CODE_4\n,FACT.FREZ_REASON_CODE_5\n,FACT.IS_LOAN_AGNST_CLTRL_FLG\n,FACT.PREFERRED_CAL_BASE\n,FACT.ADDITIONAL_CAL_BASE\n,FACT.MUD_POOL_ACCT_FLG\n,FACT.ALT1_ACCT_SHORT_NAME\n,FACT.ALT1_ACCT_NAME\n,FACT.PACKAGE_ACCT_ID\n,FACT.EXTERNAL_PRICING_FLG\n,FACT.ACCT_MOD_FLG\n,FACT.WTAX_FLOOR_LIMIT_FREQ\n,FACT.CHQ_PROV_BY_BANK_FLG\n,FACT.CHQ_VAL_PRD_MNTH\n,FACT.CHQ_VAL_PRD_DAY\n,FACT.WTAX_WAIVER_LEVEL\n,FACT.WTAX_APPLICABLE_LEVEL\n,FACT.WTAX_NOTICE_RCV_DATE\n,FACT.WTAX_WAIVER_START_DATE\n,FACT.WTAX_WAIVER_END_DATE\n,FACT.TAX_CERT_NUM\n,FACT.TAX_FORM_PARTICULARS\n,FACT.TAX_CERT_SUBMISSION_DATE\n,FACT.ACCT_OWNERSHIP_XFER_AGE\n,FACT.OD_PROT_ALWD\n,FACT.PYMNT_REF_NUM\n,FACT.RA_REF_NUM\n,FACT.REQ_MIN_DIS_AMT\n,FACT.REQ_MIN_DIS_TENOR\n,FACT.DISP_BLOCK_AMT\n,FACT.CONS_BAL_FLG\n,FACT.TAX_EVENT\n,FACT.REQUESTED_BY\n,FACT.TAX_EVENT_REASON_CODE\n,FACT.DR_INT_PRENOTE_REQ_FLG\n,FACT.DR_INT_PRENOTE_PERIOD\n,FACT.CHRG_PRENOTIFICATION_FLG\n,FACT.TARGET_BAL_FOR_SWEEPS\n,FACT.CHECK_FUNDS_AVAIL_SET\n,FACT.RULE_SET_ID\n,FACT.CHQ_REORDER_ALWD_FLG\n,FACT.DR_INT_METHOD\n,FACT.COLL_CHRG_FOR_SWP_REG\n,FACT.SWP_CHRG_COLL_ACCT_FLG\n,FACT.SSA_PLAN_ID\n,FACT.ESCH_CR_BACID\n,FACT.GAM_LAST6_ACC_NUM\n,FACT.GAM_BNK_CODE\n,FACT.GAM_SOURCE_CODE\n,FACT.GAM_FILE_NAME\n,FACT.GAM_INSERT_DTTM\n,FACT.GAM_BUSINESS_DATE\n,FACT.EAB_ACID\n,FACT.EOD_DATE\n,FACT.TRAN_DATE_BAL\n,FACT.TRAN_DATE_TOT_TRAN\n,FACT.VALUE_DATE_BAL\n,FACT.VALUE_DATE_TOT_TRAN\n,FACT.END_EOD_DATE\n,FACT.EAB_LCHG_USER_ID\n,FACT.EAB_LCHG_TIME\n,FACT.EAB_RCRE_USER_ID\n,FACT.EAB_RCRE_TIME\n,FACT.EAB_TS_CNT\n,FACT.EAB_CRNCY_CODE\n,FACT.EAB_BANK_ID\n,FACT.EAB_BNK_CODE\n,FACT.EAB_SOURCE_CODE\n,FACT.EAB_FILE_NAME\n,FACT.EAB_INSERT_DTTM\n,FACT.EAB_BUSINESS_DATE\n,FACT.YTD_BANK_ID\n,FACT.YTD_ACID\n,FACT.PREVIOUS_CURRBAL\n,FACT.PREVIOUS_CLEARBAL\n,FACT.CURRENT_EOD_DATE\n,FACT.ACCUMULATED_CURRBAL\n,FACT.ACCUMULATED_CLEARBAL\n,FACT.YTD_BNK_CODE\n,FACT.YTD_SOURCE_CODE\n,FACT.YTD_FILE_NAME\n,FACT.YTD_INSERT_DTTM\n,FACT.YTD_BUSINESS_DATE\n,FACT.OUTSTANDING_BALANCE\n,FACT.PREVIOUS_MONTHEND_AVERAGE_DAILY_BALANCE\n,FACT.YEAR_TO_DATE_AVERAGE_DAILY_BALANCE\n,FACT.OUTSTANDING_BALANCE_PHP\n,FACT.PREVIOUS_MONTHEND_AVERAGE_DAILY_BALANCE_PHP\n,FACT.YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP\n,FACT.DAY_OF_YEAR\n,FACT.CONVERSION_RATE\n,FACT.MONTH_YEAR\n,FACT.MTD_BANK_ID\n,FACT.MTD_SOL_ID\n,FACT.MTD_SCHM_CODE\n,FACT.MTD_SCHM_TYPE\n,FACT.MTD_ACID\n,FACT.MTD_FORACID\n,FACT.MTD_ACCT_CRNCY_CODE\n,FACT.TRANDATE\n,FACT.AVE_CURR_BALANCE\n,FACT.AVE_CLR_BALANCE\n,FACT.NO_DAYS\n,FACT.USERID\n,FACT.MTD_LCHG_TIME\n,FACT.QUARTER_YEAR\n,FACT.MTD_LAST6_ACC_NUM\n,FACT.MTD_BNK_CODE\n,FACT.MTD_SOURCE_CODE\n,FACT.MTD_FILE_NAME\n,FACT.MTD_INSERT_DTTM\n,FACT.AS_OF_DATE\n,CASE\n    WHEN FACT.DEP_Account_Status IS NULL AND FACT.ACCT_OPN_DATE = FACT.AS_OF_DATE THEN 'A'\n    ELSE FACT.DEP_Account_Status\nEND AS DEP_Account_Status\n,CASE\n    WHEN LEFT(FACT.CIF_ID,1) = 'R' then 'Retail'\n    WHEN LEFT(FACT.CIF_ID,1) = 'C' then 'Corporate'\nEND AS CUSTOMER_TYPE\nFROM EDS.DEPOSIT_FACT FACT \nWHERE FACT.DEP_Account_Status='C'\n)\nINSERT INTO EDS.DEPOSIT_FACT_DATE(\n GAM_ACID\n,ENTITY_CRE_FLG\n,DEL_FLG\n,SOL_ID\n,ACCT_PREFIX\n,ACCT_NUM\n,BACID\n,FORACID\n,ACCT_NAME\n,ACCT_SHORT_NAME\n,CUST_ID\n,EMP_ID\n,GL_SUB_HEAD_CODE\n,ACCT_OWNERSHIP\n,GAM_SCHM_CODE\n,DR_BAL_LIM\n,ACCT_RPT_CODE\n,FREZ_CODE\n,FREZ_REASON_CODE\n,ACCT_OPN_DATE\n,ACCT_CLS_FLG\n,ACCT_CLS_DATE\n,CLR_BAL_AMT\n,TOT_MOD_TIMES\n,LEDG_NUM\n,UN_CLR_BAL_AMT\n,DRWNG_POWER\n,SANCT_LIM\n,ADHOC_LIM\n,EMER_ADVN\n,DACC_LIM\n,SYSTEM_RESERVED_AMT\n,SINGLE_TRAN_LIM\n,CLEAN_ADHOC_LIM\n,CLEAN_EMER_ADVN\n,CLEAN_SINGLE_TRAN_LIM\n,SYSTEM_GEN_LIM\n,CHQ_ALWD_FLG\n,CASH_EXCP_AMT_LIM\n,CLG_EXCP_AMT_LIM\n,XFER_EXCP_AMT_LIM\n,CASH_CR_EXCP_AMT_LIM\n,CLG_CR_EXCP_AMT_LIM\n,XFER_CR_EXCP_AMT_LIM\n,CASH_ABNRML_AMT_LIM\n,CLG_ABNRML_AMT_LIM\n,XFER_ABNRML_AMT_LIM\n,CUM_DR_AMT\n,CUM_CR_AMT\n,ACRD_CR_AMT\n,LAST_TRAN_DATE\n,MODE_OF_OPER_CODE\n,PB_PS_CODE\n,SERV_CHRG_COLL_FLG\n,FREE_TEXT\n,ACCT_TURNOVER_DET_FLG\n,NOM_AVAILABLE_FLG\n,ACCT_LOCN_CODE\n,LAST_PURGE_DATE\n,BAL_ON_PURGE_DATE\n,INT_PAID_FLG\n,INT_COLL_FLG\n,LAST_ANY_TRAN_DATE\n,HASHED_NO\n,GAM_LCHG_USER_ID\n,GAM_LCHG_TIME\n,GAM_RCRE_USER_ID\n,GAM_RCRE_TIME\n,LIMIT_B2KID\n,DRWNG_POWER_IND\n,DRWNG_POWER_PCNT\n,MICR_CHQ_CHRG_COLL_FLG\n,LAST_TURNOVER_DATE\n,NOTIONAL_RATE\n,NOTIONAL_RATE_CODE\n,FX_CLR_BAL_AMT\n,FX_BAL_ON_PURGE_DATE\n,FD_REF_NUM\n,FX_CUM_CR_AMT\n,FX_CUM_DR_AMT\n,CRNCY_CODE\n,SOURCE_OF_FUND\n,ANW_NON_CUST_ALWD_FLG\n,ACCT_CRNCY_CODE\n,LIEN_AMT\n,ACCT_CLASSIFICATION_FLG\n,SYSTEM_ONLY_ACCT_FLG\n,SINGLE_TRAN_FLG\n,UTILISED_AMT\n,INTER_SOL_ACCESS_FLG\n,PURGE_ALLOWED_FLG\n,PURGE_TEXT\n,MIN_VALUE_DATE\n,ACCT_MGR_USER_ID\n,GAM_SCHM_TYPE\n,LAST_FREZ_DATE\n,LAST_UNFREZ_DATE\n,BAL_ON_FREZ_DATE\n,SWIFT_ALLOWED_FLG\n,DACC_LIM_PCNT\n,DACC_LIM_ABS\n,CHRG_LEVEL_CODE\n,ACCT_CLS_CHRG_PEND_VERF\n,PARTITIONED_FLG\n,PARTITIONED_TYPE\n,PBF_DOWNLOAD_FLG\n,PBF_DELINK_DATE\n,WTAX_FLG\n,WTAX_AMOUNT_SCOPE_FLG\n,INT_ADJ_FOR_DEDUCTION_FLG\n,OPERATIVE_ACID\n,PHONE_NUM\n,NATIVE_LANG_NAME\n,NAT_LANG_TITLE_CODE\n,LANG_CODE\n,GAM_TS_CNT\n,POOL_ID\n,ALLOW_SWEEPS\n,ORDER_OF_UTILISATION\n,WTAX_PCNT\n,WTAX_FLOOR_LIMIT\n,DSA_PENAL_FLG\n,PRODUCT_GROUP\n,SOURCE_DEAL_CODE\n,DISBURSE_DEAL_CODE\n,SWEEP_IN_MIN_BAL\n,USED_SINGLE_TRAN_LIM\n,USED_CLEAN_SINGLE_TRAN_LIM\n,USED_UN_CLR_OVER_DACC_AMT\n,FFD_CONTRIB_TO_ACCT\n,ACCT_CREATION_MODE\n,WTAX_LEVEL_FLG\n,LAST_MODIFIED_DATE\n,CIF_ID\n,FUTURE_BAL_AMT\n,UTIL_FUTURE_BAL_AMT\n,DAFA_LIM\n,DAFA_LIM_ABS\n,DAFA_LIM_PCNT\n,FUTURE_OC_TOD_AMT\n,USED_OC_CLN_SINGLE_TRAN_LIM\n,IBAN_NUMBER\n,CHANNEL_LEVEL_CODE\n,CHANNEL_ID\n,FUTURE_CLR_BAL_AMT\n,FUTURE_UN_CLR_BAL_AMT\n,MASTER_B2K_ID\n,GAM_BANK_ID\n,FREZ_REASON_CODE_2\n,FREZ_REASON_CODE_3\n,FREZ_REASON_CODE_4\n,FREZ_REASON_CODE_5\n,IS_LOAN_AGNST_CLTRL_FLG\n,PREFERRED_CAL_BASE\n,ADDITIONAL_CAL_BASE\n,MUD_POOL_ACCT_FLG\n,ALT1_ACCT_SHORT_NAME\n,ALT1_ACCT_NAME\n,PACKAGE_ACCT_ID\n,EXTERNAL_PRICING_FLG\n,ACCT_MOD_FLG\n,WTAX_FLOOR_LIMIT_FREQ\n,CHQ_PROV_BY_BANK_FLG\n,CHQ_VAL_PRD_MNTH\n,CHQ_VAL_PRD_DAY\n,WTAX_WAIVER_LEVEL\n,WTAX_APPLICABLE_LEVEL\n,WTAX_NOTICE_RCV_DATE\n,WTAX_WAIVER_START_DATE\n,WTAX_WAIVER_END_DATE\n,TAX_CERT_NUM\n,TAX_FORM_PARTICULARS\n,TAX_CERT_SUBMISSION_DATE\n,ACCT_OWNERSHIP_XFER_AGE\n,OD_PROT_ALWD\n,PYMNT_REF_NUM\n,RA_REF_NUM\n,REQ_MIN_DIS_AMT\n,REQ_MIN_DIS_TENOR\n,DISP_BLOCK_AMT\n,CONS_BAL_FLG\n,TAX_EVENT\n,REQUESTED_BY\n,TAX_EVENT_REASON_CODE\n,DR_INT_PRENOTE_REQ_FLG\n,DR_INT_PRENOTE_PERIOD\n,CHRG_PRENOTIFICATION_FLG\n,TARGET_BAL_FOR_SWEEPS\n,CHECK_FUNDS_AVAIL_SET\n,RULE_SET_ID\n,CHQ_REORDER_ALWD_FLG\n,DR_INT_METHOD\n,COLL_CHRG_FOR_SWP_REG\n,SWP_CHRG_COLL_ACCT_FLG\n,SSA_PLAN_ID\n,ESCH_CR_BACID\n,GAM_LAST6_ACC_NUM\n,GAM_BNK_CODE\n,GAM_SOURCE_CODE\n,GAM_FILE_NAME\n,GAM_INSERT_DTTM\n,GAM_BUSINESS_DATE\n,EAB_ACID\n,EOD_DATE\n,TRAN_DATE_BAL\n,TRAN_DATE_TOT_TRAN\n,VALUE_DATE_BAL\n,VALUE_DATE_TOT_TRAN\n,END_EOD_DATE\n,EAB_LCHG_USER_ID\n,EAB_LCHG_TIME\n,EAB_RCRE_USER_ID\n,EAB_RCRE_TIME\n,EAB_TS_CNT\n,EAB_CRNCY_CODE\n,EAB_BANK_ID\n,EAB_BNK_CODE\n,EAB_SOURCE_CODE\n,EAB_FILE_NAME\n,EAB_INSERT_DTTM\n,EAB_BUSINESS_DATE\n,YTD_BANK_ID\n,YTD_ACID\n,PREVIOUS_CURRBAL\n,PREVIOUS_CLEARBAL\n,CURRENT_EOD_DATE\n,ACCUMULATED_CURRBAL\n,ACCUMULATED_CLEARBAL\n,YTD_BNK_CODE\n,YTD_SOURCE_CODE\n,YTD_FILE_NAME\n,YTD_INSERT_DTTM\n,YTD_BUSINESS_DATE\n,OUTSTANDING_BALANCE\n,PREVIOUS_MONTHEND_AVERAGE_DAILY_BALANCE\n,YEAR_TO_DATE_AVERAGE_DAILY_BALANCE\n,OUTSTANDING_BALANCE_PHP\n,PREVIOUS_MONTHEND_AVERAGE_DAILY_BALANCE_PHP\n,YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP\n,DAY_OF_YEAR\n,CONVERSION_RATE\n,MONTH_YEAR\n,MTD_BANK_ID\n,MTD_SOL_ID\n,MTD_SCHM_CODE\n,MTD_SCHM_TYPE\n,MTD_ACID\n,MTD_FORACID\n,MTD_ACCT_CRNCY_CODE\n,TRANDATE\n,AVE_CURR_BALANCE\n,AVE_CLR_BALANCE\n,NO_DAYS\n,USERID\n,MTD_LCHG_TIME\n,QUARTER_YEAR\n,MTD_LAST6_ACC_NUM\n,MTD_BNK_CODE\n,MTD_SOURCE_CODE\n,MTD_FILE_NAME\n,MTD_INSERT_DTTM\n,AS_OF_DATE\n,DEP_Account_Status\n,CUSTOMER_TYPE\n,MONTH_END\n,MONTHLY_TOT_OUT_BAL --MONTHLY_TOTAL_OUTSTANDING_BALANCE\n,MONTHLY_TOT_OUT_BAL_PHP --MONTHLY_TOTAL_OUTSTANDING_BALANCE_PHP\n,MTD_BALANCE \n,MTD_BALANCE_PHP \n,CURRENT_OUTSTANDING_BALANCE \n,CURRENT_OUTSTANDING_BALANCE_PHP \n,TOT_CUR_OUT_BAL --TOTAL_CURRENT_OUTSTANDING_BALANCE --\n,TOT_CUR_OUT_BAL_PHP --TOTAL_CURRENT_OUTSTANDING_BALANCE_PHP\n,YTD_BALANCE \n,YTD_BALANCE_PHP \n) \nSELECT\nFACT.GAM_ACID\n,FACT.ENTITY_CRE_FLG\n,FACT.DEL_FLG\n,FACT.SOL_ID\n,FACT.ACCT_PREFIX\n,FACT.ACCT_NUM\n,FACT.BACID\n,FACT.FORACID\n,FACT.ACCT_NAME\n,FACT.ACCT_SHORT_NAME\n,FACT.CUST_ID\n,FACT.EMP_ID\n,FACT.GL_SUB_HEAD_CODE\n,FACT.ACCT_OWNERSHIP\n,FACT.GAM_SCHM_CODE\n,FACT.DR_BAL_LIM\n,FACT.ACCT_RPT_CODE\n,FACT.FREZ_CODE\n,FACT.FREZ_REASON_CODE\n,FACT.ACCT_OPN_DATE\n,FACT.ACCT_CLS_FLG\n,FACT.ACCT_CLS_DATE\n,FACT.CLR_BAL_AMT\n,FACT.TOT_MOD_TIMES\n,FACT.LEDG_NUM\n,FACT.UN_CLR_BAL_AMT\n,FACT.DRWNG_POWER\n,FACT.SANCT_LIM\n,FACT.ADHOC_LIM\n,FACT.EMER_ADVN\n,FACT.DACC_LIM\n,FACT.SYSTEM_RESERVED_AMT\n,FACT.SINGLE_TRAN_LIM\n,FACT.CLEAN_ADHOC_LIM\n,FACT.CLEAN_EMER_ADVN\n,FACT.CLEAN_SINGLE_TRAN_LIM\n,FACT.SYSTEM_GEN_LIM\n,FACT.CHQ_ALWD_FLG\n,FACT.CASH_EXCP_AMT_LIM\n,FACT.CLG_EXCP_AMT_LIM\n,FACT.XFER_EXCP_AMT_LIM\n,FACT.CASH_CR_EXCP_AMT_LIM\n,FACT.CLG_CR_EXCP_AMT_LIM\n,FACT.XFER_CR_EXCP_AMT_LIM\n,FACT.CASH_ABNRML_AMT_LIM\n,FACT.CLG_ABNRML_AMT_LIM\n,FACT.XFER_ABNRML_AMT_LIM\n,FACT.CUM_DR_AMT\n,FACT.CUM_CR_AMT\n,FACT.ACRD_CR_AMT\n,FACT.LAST_TRAN_DATE\n,FACT.MODE_OF_OPER_CODE\n,FACT.PB_PS_CODE\n,FACT.SERV_CHRG_COLL_FLG\n,FACT.FREE_TEXT\n,FACT.ACCT_TURNOVER_DET_FLG\n,FACT.NOM_AVAILABLE_FLG\n,FACT.ACCT_LOCN_CODE\n,FACT.LAST_PURGE_DATE\n,FACT.BAL_ON_PURGE_DATE\n,FACT.INT_PAID_FLG\n,FACT.INT_COLL_FLG\n,FACT.LAST_ANY_TRAN_DATE\n,FACT.HASHED_NO\n,FACT.GAM_LCHG_USER_ID\n,FACT.GAM_LCHG_TIME\n,FACT.GAM_RCRE_USER_ID\n,FACT.GAM_RCRE_TIME\n,FACT.LIMIT_B2KID\n,FACT.DRWNG_POWER_IND\n,FACT.DRWNG_POWER_PCNT\n,FACT.MICR_CHQ_CHRG_COLL_FLG\n,FACT.LAST_TURNOVER_DATE\n,FACT.NOTIONAL_RATE\n,FACT.NOTIONAL_RATE_CODE\n,FACT.FX_CLR_BAL_AMT\n,FACT.FX_BAL_ON_PURGE_DATE\n,FACT.FD_REF_NUM\n,FACT.FX_CUM_CR_AMT\n,FACT.FX_CUM_DR_AMT\n,FACT.CRNCY_CODE\n,FACT.SOURCE_OF_FUND\n,FACT.ANW_NON_CUST_ALWD_FLG\n,FACT.ACCT_CRNCY_CODE\n,FACT.LIEN_AMT\n,FACT.ACCT_CLASSIFICATION_FLG\n,FACT.SYSTEM_ONLY_ACCT_FLG\n,FACT.SINGLE_TRAN_FLG\n,FACT.UTILISED_AMT\n,FACT.INTER_SOL_ACCESS_FLG\n,FACT.PURGE_ALLOWED_FLG\n,FACT.PURGE_TEXT\n,FACT.MIN_VALUE_DATE\n,FACT.ACCT_MGR_USER_ID\n,FACT.GAM_SCHM_TYPE\n,FACT.LAST_FREZ_DATE\n,FACT.LAST_UNFREZ_DATE\n,FACT.BAL_ON_FREZ_DATE\n,FACT.SWIFT_ALLOWED_FLG\n,FACT.DACC_LIM_PCNT\n,FACT.DACC_LIM_ABS\n,FACT.CHRG_LEVEL_CODE\n,FACT.ACCT_CLS_CHRG_PEND_VERF\n,FACT.PARTITIONED_FLG\n,FACT.PARTITIONED_TYPE\n,FACT.PBF_DOWNLOAD_FLG\n,FACT.PBF_DELINK_DATE\n,FACT.WTAX_FLG\n,FACT.WTAX_AMOUNT_SCOPE_FLG\n,FACT.INT_ADJ_FOR_DEDUCTION_FLG\n,FACT.OPERATIVE_ACID\n,FACT.PHONE_NUM\n,FACT.NATIVE_LANG_NAME\n,FACT.NAT_LANG_TITLE_CODE\n,FACT.LANG_CODE\n,FACT.GAM_TS_CNT\n,FACT.POOL_ID\n,FACT.ALLOW_SWEEPS\n,FACT.ORDER_OF_UTILISATION\n,FACT.WTAX_PCNT\n,FACT.WTAX_FLOOR_LIMIT\n,FACT.DSA_PENAL_FLG\n,FACT.PRODUCT_GROUP\n,FACT.SOURCE_DEAL_CODE\n,FACT.DISBURSE_DEAL_CODE\n,FACT.SWEEP_IN_MIN_BAL\n,FACT.USED_SINGLE_TRAN_LIM\n,FACT.USED_CLEAN_SINGLE_TRAN_LIM\n,FACT.USED_UN_CLR_OVER_DACC_AMT\n,FACT.FFD_CONTRIB_TO_ACCT\n,FACT.ACCT_CREATION_MODE\n,FACT.WTAX_LEVEL_FLG\n,FACT.LAST_MODIFIED_DATE\n,FACT.CIF_ID\n,FACT.FUTURE_BAL_AMT\n,FACT.UTIL_FUTURE_BAL_AMT\n,FACT.DAFA_LIM\n,FACT.DAFA_LIM_ABS\n,FACT.DAFA_LIM_PCNT\n,FACT.FUTURE_OC_TOD_AMT\n,FACT.USED_OC_CLN_SINGLE_TRAN_LIM\n,FACT.IBAN_NUMBER\n,FACT.CHANNEL_LEVEL_CODE\n,FACT.CHANNEL_ID\n,FACT.FUTURE_CLR_BAL_AMT\n,FACT.FUTURE_UN_CLR_BAL_AMT\n,FACT.MASTER_B2K_ID\n,FACT.GAM_BANK_ID\n,FACT.FREZ_REASON_CODE_2\n,FACT.FREZ_REASON_CODE_3\n,FACT.FREZ_REASON_CODE_4\n,FACT.FREZ_REASON_CODE_5\n,FACT.IS_LOAN_AGNST_CLTRL_FLG\n,FACT.PREFERRED_CAL_BASE\n,FACT.ADDITIONAL_CAL_BASE\n,FACT.MUD_POOL_ACCT_FLG\n,FACT.ALT1_ACCT_SHORT_NAME\n,FACT.ALT1_ACCT_NAME\n,FACT.PACKAGE_ACCT_ID\n,FACT.EXTERNAL_PRICING_FLG\n,FACT.ACCT_MOD_FLG\n,FACT.WTAX_FLOOR_LIMIT_FREQ\n,FACT.CHQ_PROV_BY_BANK_FLG\n,FACT.CHQ_VAL_PRD_MNTH\n,FACT.CHQ_VAL_PRD_DAY\n,FACT.WTAX_WAIVER_LEVEL\n,FACT.WTAX_APPLICABLE_LEVEL\n,FACT.WTAX_NOTICE_RCV_DATE\n,FACT.WTAX_WAIVER_START_DATE\n,FACT.WTAX_WAIVER_END_DATE\n,FACT.TAX_CERT_NUM\n,FACT.TAX_FORM_PARTICULARS\n,FACT.TAX_CERT_SUBMISSION_DATE\n,FACT.ACCT_OWNERSHIP_XFER_AGE\n,FACT.OD_PROT_ALWD\n,FACT.PYMNT_REF_NUM\n,FACT.RA_REF_NUM\n,FACT.REQ_MIN_DIS_AMT\n,FACT.REQ_MIN_DIS_TENOR\n,FACT.DISP_BLOCK_AMT\n,FACT.CONS_BAL_FLG\n,FACT.TAX_EVENT\n,FACT.REQUESTED_BY\n,FACT.TAX_EVENT_REASON_CODE\n,FACT.DR_INT_PRENOTE_REQ_FLG\n,FACT.DR_INT_PRENOTE_PERIOD\n,FACT.CHRG_PRENOTIFICATION_FLG\n,FACT.TARGET_BAL_FOR_SWEEPS\n,FACT.CHECK_FUNDS_AVAIL_SET\n,FACT.RULE_SET_ID\n,FACT.CHQ_REORDER_ALWD_FLG\n,FACT.DR_INT_METHOD\n,FACT.COLL_CHRG_FOR_SWP_REG\n,FACT.SWP_CHRG_COLL_ACCT_FLG\n,FACT.SSA_PLAN_ID\n,FACT.ESCH_CR_BACID\n,FACT.GAM_LAST6_ACC_NUM\n,FACT.GAM_BNK_CODE\n,FACT.GAM_SOURCE_CODE\n,FACT.GAM_FILE_NAME\n,FACT.GAM_INSERT_DTTM\n,FACT.GAM_BUSINESS_DATE\n,FACT.EAB_ACID\n,FACT.EOD_DATE\n,FACT.TRAN_DATE_BAL\n,FACT.TRAN_DATE_TOT_TRAN\n,FACT.VALUE_DATE_BAL\n,FACT.VALUE_DATE_TOT_TRAN\n,FACT.END_EOD_DATE\n,FACT.EAB_LCHG_USER_ID\n,FACT.EAB_LCHG_TIME\n,FACT.EAB_RCRE_USER_ID\n,FACT.EAB_RCRE_TIME\n,FACT.EAB_TS_CNT\n,FACT.EAB_CRNCY_CODE\n,FACT.EAB_BANK_ID\n,FACT.EAB_BNK_CODE\n,FACT.EAB_SOURCE_CODE\n,FACT.EAB_FILE_NAME\n,FACT.EAB_INSERT_DTTM\n,FACT.EAB_BUSINESS_DATE\n,FACT.YTD_BANK_ID\n,FACT.YTD_ACID\n,FACT.PREVIOUS_CURRBAL\n,FACT.PREVIOUS_CLEARBAL\n,FACT.CURRENT_EOD_DATE\n,FACT.ACCUMULATED_CURRBAL\n,FACT.ACCUMULATED_CLEARBAL\n,FACT.YTD_BNK_CODE\n,FACT.YTD_SOURCE_CODE\n,FACT.YTD_FILE_NAME\n,FACT.YTD_INSERT_DTTM\n,FACT.YTD_BUSINESS_DATE\n,FACT.OUTSTANDING_BALANCE\n,FACT.PREVIOUS_MONTHEND_AVERAGE_DAILY_BALANCE\n,FACT.YEAR_TO_DATE_AVERAGE_DAILY_BALANCE\n,FACT.OUTSTANDING_BALANCE_PHP\n,FACT.PREVIOUS_MONTHEND_AVERAGE_DAILY_BALANCE_PHP\n,FACT.YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP\n,FACT.DAY_OF_YEAR\n,FACT.CONVERSION_RATE\n,FACT.MONTH_YEAR\n,FACT.MTD_BANK_ID\n,FACT.MTD_SOL_ID\n,FACT.MTD_SCHM_CODE\n,FACT.MTD_SCHM_TYPE\n,FACT.MTD_ACID\n,FACT.MTD_FORACID\n,FACT.MTD_ACCT_CRNCY_CODE\n,FACT.TRANDATE\n,FACT.AVE_CURR_BALANCE\n,FACT.AVE_CLR_BALANCE\n,FACT.NO_DAYS\n,FACT.USERID\n,FACT.MTD_LCHG_TIME\n,FACT.QUARTER_YEAR\n,FACT.MTD_LAST6_ACC_NUM\n,FACT.MTD_BNK_CODE\n,FACT.MTD_SOURCE_CODE\n,FACT.MTD_FILE_NAME\n,FACT.MTD_INSERT_DTTM\n,YTD.FULLDATE AS AS_OF_DATE\n,FACT.DEP_Account_Status\n,FACT.CUSTOMER_TYPE\n,YTD.MONTH_END\n,YTD.MONTHLY_TOTAL_OUTSTANDING_BALANCE AS MONTHLY_TOT_OUT_BAL\n,YTD.MONTHLY_TOTAL_OUTSTANDING_BALANCE_PHP AS MONTHLY_TOT_OUT_BAL_PHP\n,YTD.MTD_BALANCE \n,YTD.MTD_BALANCE_PHP \n,YTD.CURRENT_OUTSTANDING_BALANCE \n,YTD.CURRENT_OUTSTANDING_BALANCE_PHP \n,YTD.TOTAL_CURRENT_OUTSTANDING_BALANCE AS TOT_CUR_OUT_BAL\n,YTD.TOTAL_CURRENT_OUTSTANDING_BALANCE_PHP AS TOT_CUR_OUT_BAL_PHP\n,YTD.YTD_BALANCE \n,YTD.YTD_BALANCE_PHP \nFROM FACT FACT\nINNER JOIN EDS.DEPOSIT_MTD_YTD_UAT YTD \nON FACT.GAM_ACID = YTD.GAM_ACID\nAND YTD.Business_Day_Flag = 'Y' AND YTD.FULLDATE = @Datetoprocess\nAND @Datetoprocess > FACT.AS_OF_DATE\nAND (YTD.DEP_Account_Status='C' OR YTD.DEP_Account_Status IS NULL)"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						},
+						{
+							"name": "END_TASK_EDS_SUCCESSFUL",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "DEPOSIT_FACT_DATE_CLOSED",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_EDS_DEPOSIT_FACT_DATE",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "SUCCESSFUL",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "END_TASK_EDS_FAILED",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "DEPOSIT_FACT_DATE_CLOSED",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_EDS_DEPOSIT_FACT_DATE",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "FAILED",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "OM_SRC_CHECK",
+							"type": "SqlPoolStoredProcedure",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [
+								{
+									"activity": "START_TASK_EDS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_EDS_DEPOSIT_FACT_DATE",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@item()",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "DEPOSIT_FACT_DATE_AS_OF_DATE",
+							"type": "Script",
+							"dependsOn": [
+								{
+									"activity": "OM_SRC_CHECK",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "TestSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"parameters": [
+											{
+												"name": "item",
+												"type": "String",
+												"value": {
+													"value": "@item()",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											}
+										],
+										"type": "Query",
+										"text": "DECLARE @DateToProcess DATE;\nSET @DateToProcess = @item;\n\nDELETE FROM EDS.DEPOSIT_FACT_DATE WHERE AS_OF_DATE = @DatetoProcess;\n\nINSERT INTO EDS.DEPOSIT_FACT_DATE(\n GAM_ACID\n,ENTITY_CRE_FLG\n,DEL_FLG\n,SOL_ID\n,ACCT_PREFIX\n,ACCT_NUM\n,BACID\n,FORACID\n,ACCT_NAME\n,ACCT_SHORT_NAME\n,CUST_ID\n,EMP_ID\n,GL_SUB_HEAD_CODE\n,ACCT_OWNERSHIP\n,GAM_SCHM_CODE\n,DR_BAL_LIM\n,ACCT_RPT_CODE\n,FREZ_CODE\n,FREZ_REASON_CODE\n,ACCT_OPN_DATE\n,ACCT_CLS_FLG\n,ACCT_CLS_DATE\n,CLR_BAL_AMT\n,TOT_MOD_TIMES\n,LEDG_NUM\n,UN_CLR_BAL_AMT\n,DRWNG_POWER\n,SANCT_LIM\n,ADHOC_LIM\n,EMER_ADVN\n,DACC_LIM\n,SYSTEM_RESERVED_AMT\n,SINGLE_TRAN_LIM\n,CLEAN_ADHOC_LIM\n,CLEAN_EMER_ADVN\n,CLEAN_SINGLE_TRAN_LIM\n,SYSTEM_GEN_LIM\n,CHQ_ALWD_FLG\n,CASH_EXCP_AMT_LIM\n,CLG_EXCP_AMT_LIM\n,XFER_EXCP_AMT_LIM\n,CASH_CR_EXCP_AMT_LIM\n,CLG_CR_EXCP_AMT_LIM\n,XFER_CR_EXCP_AMT_LIM\n,CASH_ABNRML_AMT_LIM\n,CLG_ABNRML_AMT_LIM\n,XFER_ABNRML_AMT_LIM\n,CUM_DR_AMT\n,CUM_CR_AMT\n,ACRD_CR_AMT\n,LAST_TRAN_DATE\n,MODE_OF_OPER_CODE\n,PB_PS_CODE\n,SERV_CHRG_COLL_FLG\n,FREE_TEXT\n,ACCT_TURNOVER_DET_FLG\n,NOM_AVAILABLE_FLG\n,ACCT_LOCN_CODE\n,LAST_PURGE_DATE\n,BAL_ON_PURGE_DATE\n,INT_PAID_FLG\n,INT_COLL_FLG\n,LAST_ANY_TRAN_DATE\n,HASHED_NO\n,GAM_LCHG_USER_ID\n,GAM_LCHG_TIME\n,GAM_RCRE_USER_ID\n,GAM_RCRE_TIME\n,LIMIT_B2KID\n,DRWNG_POWER_IND\n,DRWNG_POWER_PCNT\n,MICR_CHQ_CHRG_COLL_FLG\n,LAST_TURNOVER_DATE\n,NOTIONAL_RATE\n,NOTIONAL_RATE_CODE\n,FX_CLR_BAL_AMT\n,FX_BAL_ON_PURGE_DATE\n,FD_REF_NUM\n,FX_CUM_CR_AMT\n,FX_CUM_DR_AMT\n,CRNCY_CODE\n,SOURCE_OF_FUND\n,ANW_NON_CUST_ALWD_FLG\n,ACCT_CRNCY_CODE\n,LIEN_AMT\n,ACCT_CLASSIFICATION_FLG\n,SYSTEM_ONLY_ACCT_FLG\n,SINGLE_TRAN_FLG\n,UTILISED_AMT\n,INTER_SOL_ACCESS_FLG\n,PURGE_ALLOWED_FLG\n,PURGE_TEXT\n,MIN_VALUE_DATE\n,ACCT_MGR_USER_ID\n,GAM_SCHM_TYPE\n,LAST_FREZ_DATE\n,LAST_UNFREZ_DATE\n,BAL_ON_FREZ_DATE\n,SWIFT_ALLOWED_FLG\n,DACC_LIM_PCNT\n,DACC_LIM_ABS\n,CHRG_LEVEL_CODE\n,ACCT_CLS_CHRG_PEND_VERF\n,PARTITIONED_FLG\n,PARTITIONED_TYPE\n,PBF_DOWNLOAD_FLG\n,PBF_DELINK_DATE\n,WTAX_FLG\n,WTAX_AMOUNT_SCOPE_FLG\n,INT_ADJ_FOR_DEDUCTION_FLG\n,OPERATIVE_ACID\n,PHONE_NUM\n,NATIVE_LANG_NAME\n,NAT_LANG_TITLE_CODE\n,LANG_CODE\n,GAM_TS_CNT\n,POOL_ID\n,ALLOW_SWEEPS\n,ORDER_OF_UTILISATION\n,WTAX_PCNT\n,WTAX_FLOOR_LIMIT\n,DSA_PENAL_FLG\n,PRODUCT_GROUP\n,SOURCE_DEAL_CODE\n,DISBURSE_DEAL_CODE\n,SWEEP_IN_MIN_BAL\n,USED_SINGLE_TRAN_LIM\n,USED_CLEAN_SINGLE_TRAN_LIM\n,USED_UN_CLR_OVER_DACC_AMT\n,FFD_CONTRIB_TO_ACCT\n,ACCT_CREATION_MODE\n,WTAX_LEVEL_FLG\n,LAST_MODIFIED_DATE\n,CIF_ID\n,FUTURE_BAL_AMT\n,UTIL_FUTURE_BAL_AMT\n,DAFA_LIM\n,DAFA_LIM_ABS\n,DAFA_LIM_PCNT\n,FUTURE_OC_TOD_AMT\n,USED_OC_CLN_SINGLE_TRAN_LIM\n,IBAN_NUMBER\n,CHANNEL_LEVEL_CODE\n,CHANNEL_ID\n,FUTURE_CLR_BAL_AMT\n,FUTURE_UN_CLR_BAL_AMT\n,MASTER_B2K_ID\n,GAM_BANK_ID\n,FREZ_REASON_CODE_2\n,FREZ_REASON_CODE_3\n,FREZ_REASON_CODE_4\n,FREZ_REASON_CODE_5\n,IS_LOAN_AGNST_CLTRL_FLG\n,PREFERRED_CAL_BASE\n,ADDITIONAL_CAL_BASE\n,MUD_POOL_ACCT_FLG\n,ALT1_ACCT_SHORT_NAME\n,ALT1_ACCT_NAME\n,PACKAGE_ACCT_ID\n,EXTERNAL_PRICING_FLG\n,ACCT_MOD_FLG\n,WTAX_FLOOR_LIMIT_FREQ\n,CHQ_PROV_BY_BANK_FLG\n,CHQ_VAL_PRD_MNTH\n,CHQ_VAL_PRD_DAY\n,WTAX_WAIVER_LEVEL\n,WTAX_APPLICABLE_LEVEL\n,WTAX_NOTICE_RCV_DATE\n,WTAX_WAIVER_START_DATE\n,WTAX_WAIVER_END_DATE\n,TAX_CERT_NUM\n,TAX_FORM_PARTICULARS\n,TAX_CERT_SUBMISSION_DATE\n,ACCT_OWNERSHIP_XFER_AGE\n,OD_PROT_ALWD\n,PYMNT_REF_NUM\n,RA_REF_NUM\n,REQ_MIN_DIS_AMT\n,REQ_MIN_DIS_TENOR\n,DISP_BLOCK_AMT\n,CONS_BAL_FLG\n,TAX_EVENT\n,REQUESTED_BY\n,TAX_EVENT_REASON_CODE\n,DR_INT_PRENOTE_REQ_FLG\n,DR_INT_PRENOTE_PERIOD\n,CHRG_PRENOTIFICATION_FLG\n,TARGET_BAL_FOR_SWEEPS\n,CHECK_FUNDS_AVAIL_SET\n,RULE_SET_ID\n,CHQ_REORDER_ALWD_FLG\n,DR_INT_METHOD\n,COLL_CHRG_FOR_SWP_REG\n,SWP_CHRG_COLL_ACCT_FLG\n,SSA_PLAN_ID\n,ESCH_CR_BACID\n,GAM_LAST6_ACC_NUM\n,GAM_BNK_CODE\n,GAM_SOURCE_CODE\n,GAM_FILE_NAME\n,GAM_INSERT_DTTM\n,GAM_BUSINESS_DATE\n,EAB_ACID\n,EOD_DATE\n,TRAN_DATE_BAL\n,TRAN_DATE_TOT_TRAN\n,VALUE_DATE_BAL\n,VALUE_DATE_TOT_TRAN\n,END_EOD_DATE\n,EAB_LCHG_USER_ID\n,EAB_LCHG_TIME\n,EAB_RCRE_USER_ID\n,EAB_RCRE_TIME\n,EAB_TS_CNT\n,EAB_CRNCY_CODE\n,EAB_BANK_ID\n,EAB_BNK_CODE\n,EAB_SOURCE_CODE\n,EAB_FILE_NAME\n,EAB_INSERT_DTTM\n,EAB_BUSINESS_DATE\n,YTD_BANK_ID\n,YTD_ACID\n,PREVIOUS_CURRBAL\n,PREVIOUS_CLEARBAL\n,CURRENT_EOD_DATE\n,ACCUMULATED_CURRBAL\n,ACCUMULATED_CLEARBAL\n,YTD_BNK_CODE\n,YTD_SOURCE_CODE\n,YTD_FILE_NAME\n,YTD_INSERT_DTTM\n,YTD_BUSINESS_DATE\n,OUTSTANDING_BALANCE\n,PREVIOUS_MONTHEND_AVERAGE_DAILY_BALANCE\n,YEAR_TO_DATE_AVERAGE_DAILY_BALANCE\n,OUTSTANDING_BALANCE_PHP\n,PREVIOUS_MONTHEND_AVERAGE_DAILY_BALANCE_PHP\n,YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP\n,DAY_OF_YEAR\n,CONVERSION_RATE\n,MONTH_YEAR\n,MTD_BANK_ID\n,MTD_SOL_ID\n,MTD_SCHM_CODE\n,MTD_SCHM_TYPE\n,MTD_ACID\n,MTD_FORACID\n,MTD_ACCT_CRNCY_CODE\n,TRANDATE\n,AVE_CURR_BALANCE\n,AVE_CLR_BALANCE\n,NO_DAYS\n,USERID\n,MTD_LCHG_TIME\n,QUARTER_YEAR\n,MTD_LAST6_ACC_NUM\n,MTD_BNK_CODE\n,MTD_SOURCE_CODE\n,MTD_FILE_NAME\n,MTD_INSERT_DTTM\n,AS_OF_DATE\n,DEP_Account_Status\n,CUSTOMER_TYPE\n,MONTH_END\n,MONTHLY_TOT_OUT_BAL --MONTHLY_TOTAL_OUTSTANDING_BALANCE\n,MONTHLY_TOT_OUT_BAL_PHP --MONTHLY_TOTAL_OUTSTANDING_BALANCE_PHP\n,MTD_BALANCE \n,MTD_BALANCE_PHP \n,CURRENT_OUTSTANDING_BALANCE \n,CURRENT_OUTSTANDING_BALANCE_PHP \n,TOT_CUR_OUT_BAL --TOTAL_CURRENT_OUTSTANDING_BALANCE --\n,TOT_CUR_OUT_BAL_PHP --TOTAL_CURRENT_OUTSTANDING_BALANCE_PHP\n,YTD_BALANCE \n,YTD_BALANCE_PHP \n) \nSELECT\nFACT.GAM_ACID\n,FACT.ENTITY_CRE_FLG\n,FACT.DEL_FLG\n,FACT.SOL_ID\n,FACT.ACCT_PREFIX\n,FACT.ACCT_NUM\n,FACT.BACID\n,FACT.FORACID\n,FACT.ACCT_NAME\n,FACT.ACCT_SHORT_NAME\n,FACT.CUST_ID\n,FACT.EMP_ID\n,FACT.GL_SUB_HEAD_CODE\n,FACT.ACCT_OWNERSHIP\n,FACT.GAM_SCHM_CODE\n,FACT.DR_BAL_LIM\n,FACT.ACCT_RPT_CODE\n,FACT.FREZ_CODE\n,FACT.FREZ_REASON_CODE\n,FACT.ACCT_OPN_DATE\n,FACT.ACCT_CLS_FLG\n,FACT.ACCT_CLS_DATE\n,FACT.CLR_BAL_AMT\n,FACT.TOT_MOD_TIMES\n,FACT.LEDG_NUM\n,FACT.UN_CLR_BAL_AMT\n,FACT.DRWNG_POWER\n,FACT.SANCT_LIM\n,FACT.ADHOC_LIM\n,FACT.EMER_ADVN\n,FACT.DACC_LIM\n,FACT.SYSTEM_RESERVED_AMT\n,FACT.SINGLE_TRAN_LIM\n,FACT.CLEAN_ADHOC_LIM\n,FACT.CLEAN_EMER_ADVN\n,FACT.CLEAN_SINGLE_TRAN_LIM\n,FACT.SYSTEM_GEN_LIM\n,FACT.CHQ_ALWD_FLG\n,FACT.CASH_EXCP_AMT_LIM\n,FACT.CLG_EXCP_AMT_LIM\n,FACT.XFER_EXCP_AMT_LIM\n,FACT.CASH_CR_EXCP_AMT_LIM\n,FACT.CLG_CR_EXCP_AMT_LIM\n,FACT.XFER_CR_EXCP_AMT_LIM\n,FACT.CASH_ABNRML_AMT_LIM\n,FACT.CLG_ABNRML_AMT_LIM\n,FACT.XFER_ABNRML_AMT_LIM\n,FACT.CUM_DR_AMT\n,FACT.CUM_CR_AMT\n,FACT.ACRD_CR_AMT\n,FACT.LAST_TRAN_DATE\n,FACT.MODE_OF_OPER_CODE\n,FACT.PB_PS_CODE\n,FACT.SERV_CHRG_COLL_FLG\n,FACT.FREE_TEXT\n,FACT.ACCT_TURNOVER_DET_FLG\n,FACT.NOM_AVAILABLE_FLG\n,FACT.ACCT_LOCN_CODE\n,FACT.LAST_PURGE_DATE\n,FACT.BAL_ON_PURGE_DATE\n,FACT.INT_PAID_FLG\n,FACT.INT_COLL_FLG\n,FACT.LAST_ANY_TRAN_DATE\n,FACT.HASHED_NO\n,FACT.GAM_LCHG_USER_ID\n,FACT.GAM_LCHG_TIME\n,FACT.GAM_RCRE_USER_ID\n,FACT.GAM_RCRE_TIME\n,FACT.LIMIT_B2KID\n,FACT.DRWNG_POWER_IND\n,FACT.DRWNG_POWER_PCNT\n,FACT.MICR_CHQ_CHRG_COLL_FLG\n,FACT.LAST_TURNOVER_DATE\n,FACT.NOTIONAL_RATE\n,FACT.NOTIONAL_RATE_CODE\n,FACT.FX_CLR_BAL_AMT\n,FACT.FX_BAL_ON_PURGE_DATE\n,FACT.FD_REF_NUM\n,FACT.FX_CUM_CR_AMT\n,FACT.FX_CUM_DR_AMT\n,FACT.CRNCY_CODE\n,FACT.SOURCE_OF_FUND\n,FACT.ANW_NON_CUST_ALWD_FLG\n,FACT.ACCT_CRNCY_CODE\n,FACT.LIEN_AMT\n,FACT.ACCT_CLASSIFICATION_FLG\n,FACT.SYSTEM_ONLY_ACCT_FLG\n,FACT.SINGLE_TRAN_FLG\n,FACT.UTILISED_AMT\n,FACT.INTER_SOL_ACCESS_FLG\n,FACT.PURGE_ALLOWED_FLG\n,FACT.PURGE_TEXT\n,FACT.MIN_VALUE_DATE\n,FACT.ACCT_MGR_USER_ID\n,FACT.GAM_SCHM_TYPE\n,FACT.LAST_FREZ_DATE\n,FACT.LAST_UNFREZ_DATE\n,FACT.BAL_ON_FREZ_DATE\n,FACT.SWIFT_ALLOWED_FLG\n,FACT.DACC_LIM_PCNT\n,FACT.DACC_LIM_ABS\n,FACT.CHRG_LEVEL_CODE\n,FACT.ACCT_CLS_CHRG_PEND_VERF\n,FACT.PARTITIONED_FLG\n,FACT.PARTITIONED_TYPE\n,FACT.PBF_DOWNLOAD_FLG\n,FACT.PBF_DELINK_DATE\n,FACT.WTAX_FLG\n,FACT.WTAX_AMOUNT_SCOPE_FLG\n,FACT.INT_ADJ_FOR_DEDUCTION_FLG\n,FACT.OPERATIVE_ACID\n,FACT.PHONE_NUM\n,FACT.NATIVE_LANG_NAME\n,FACT.NAT_LANG_TITLE_CODE\n,FACT.LANG_CODE\n,FACT.GAM_TS_CNT\n,FACT.POOL_ID\n,FACT.ALLOW_SWEEPS\n,FACT.ORDER_OF_UTILISATION\n,FACT.WTAX_PCNT\n,FACT.WTAX_FLOOR_LIMIT\n,FACT.DSA_PENAL_FLG\n,FACT.PRODUCT_GROUP\n,FACT.SOURCE_DEAL_CODE\n,FACT.DISBURSE_DEAL_CODE\n,FACT.SWEEP_IN_MIN_BAL\n,FACT.USED_SINGLE_TRAN_LIM\n,FACT.USED_CLEAN_SINGLE_TRAN_LIM\n,FACT.USED_UN_CLR_OVER_DACC_AMT\n,FACT.FFD_CONTRIB_TO_ACCT\n,FACT.ACCT_CREATION_MODE\n,FACT.WTAX_LEVEL_FLG\n,FACT.LAST_MODIFIED_DATE\n,FACT.CIF_ID\n,FACT.FUTURE_BAL_AMT\n,FACT.UTIL_FUTURE_BAL_AMT\n,FACT.DAFA_LIM\n,FACT.DAFA_LIM_ABS\n,FACT.DAFA_LIM_PCNT\n,FACT.FUTURE_OC_TOD_AMT\n,FACT.USED_OC_CLN_SINGLE_TRAN_LIM\n,FACT.IBAN_NUMBER\n,FACT.CHANNEL_LEVEL_CODE\n,FACT.CHANNEL_ID\n,FACT.FUTURE_CLR_BAL_AMT\n,FACT.FUTURE_UN_CLR_BAL_AMT\n,FACT.MASTER_B2K_ID\n,FACT.GAM_BANK_ID\n,FACT.FREZ_REASON_CODE_2\n,FACT.FREZ_REASON_CODE_3\n,FACT.FREZ_REASON_CODE_4\n,FACT.FREZ_REASON_CODE_5\n,FACT.IS_LOAN_AGNST_CLTRL_FLG\n,FACT.PREFERRED_CAL_BASE\n,FACT.ADDITIONAL_CAL_BASE\n,FACT.MUD_POOL_ACCT_FLG\n,FACT.ALT1_ACCT_SHORT_NAME\n,FACT.ALT1_ACCT_NAME\n,FACT.PACKAGE_ACCT_ID\n,FACT.EXTERNAL_PRICING_FLG\n,FACT.ACCT_MOD_FLG\n,FACT.WTAX_FLOOR_LIMIT_FREQ\n,FACT.CHQ_PROV_BY_BANK_FLG\n,FACT.CHQ_VAL_PRD_MNTH\n,FACT.CHQ_VAL_PRD_DAY\n,FACT.WTAX_WAIVER_LEVEL\n,FACT.WTAX_APPLICABLE_LEVEL\n,FACT.WTAX_NOTICE_RCV_DATE\n,FACT.WTAX_WAIVER_START_DATE\n,FACT.WTAX_WAIVER_END_DATE\n,FACT.TAX_CERT_NUM\n,FACT.TAX_FORM_PARTICULARS\n,FACT.TAX_CERT_SUBMISSION_DATE\n,FACT.ACCT_OWNERSHIP_XFER_AGE\n,FACT.OD_PROT_ALWD\n,FACT.PYMNT_REF_NUM\n,FACT.RA_REF_NUM\n,FACT.REQ_MIN_DIS_AMT\n,FACT.REQ_MIN_DIS_TENOR\n,FACT.DISP_BLOCK_AMT\n,FACT.CONS_BAL_FLG\n,FACT.TAX_EVENT\n,FACT.REQUESTED_BY\n,FACT.TAX_EVENT_REASON_CODE\n,FACT.DR_INT_PRENOTE_REQ_FLG\n,FACT.DR_INT_PRENOTE_PERIOD\n,FACT.CHRG_PRENOTIFICATION_FLG\n,FACT.TARGET_BAL_FOR_SWEEPS\n,FACT.CHECK_FUNDS_AVAIL_SET\n,FACT.RULE_SET_ID\n,FACT.CHQ_REORDER_ALWD_FLG\n,FACT.DR_INT_METHOD\n,FACT.COLL_CHRG_FOR_SWP_REG\n,FACT.SWP_CHRG_COLL_ACCT_FLG\n,FACT.SSA_PLAN_ID\n,FACT.ESCH_CR_BACID\n,FACT.GAM_LAST6_ACC_NUM\n,FACT.GAM_BNK_CODE\n,FACT.GAM_SOURCE_CODE\n,FACT.GAM_FILE_NAME\n,FACT.GAM_INSERT_DTTM\n,FACT.GAM_BUSINESS_DATE\n,FACT.EAB_ACID\n,FACT.EOD_DATE\n,FACT.TRAN_DATE_BAL\n,FACT.TRAN_DATE_TOT_TRAN\n,FACT.VALUE_DATE_BAL\n,FACT.VALUE_DATE_TOT_TRAN\n,FACT.END_EOD_DATE\n,FACT.EAB_LCHG_USER_ID\n,FACT.EAB_LCHG_TIME\n,FACT.EAB_RCRE_USER_ID\n,FACT.EAB_RCRE_TIME\n,FACT.EAB_TS_CNT\n,FACT.EAB_CRNCY_CODE\n,FACT.EAB_BANK_ID\n,FACT.EAB_BNK_CODE\n,FACT.EAB_SOURCE_CODE\n,FACT.EAB_FILE_NAME\n,FACT.EAB_INSERT_DTTM\n,FACT.EAB_BUSINESS_DATE\n,FACT.YTD_BANK_ID\n,FACT.YTD_ACID\n,FACT.PREVIOUS_CURRBAL\n,FACT.PREVIOUS_CLEARBAL\n,FACT.CURRENT_EOD_DATE\n,FACT.ACCUMULATED_CURRBAL\n,FACT.ACCUMULATED_CLEARBAL\n,FACT.YTD_BNK_CODE\n,FACT.YTD_SOURCE_CODE\n,FACT.YTD_FILE_NAME\n,FACT.YTD_INSERT_DTTM\n,FACT.YTD_BUSINESS_DATE\n,FACT.OUTSTANDING_BALANCE\n,FACT.PREVIOUS_MONTHEND_AVERAGE_DAILY_BALANCE\n,FACT.YEAR_TO_DATE_AVERAGE_DAILY_BALANCE\n,FACT.OUTSTANDING_BALANCE_PHP\n,FACT.PREVIOUS_MONTHEND_AVERAGE_DAILY_BALANCE_PHP\n,FACT.YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP\n,FACT.DAY_OF_YEAR\n,FACT.CONVERSION_RATE\n,FACT.MONTH_YEAR\n,FACT.MTD_BANK_ID\n,FACT.MTD_SOL_ID\n,FACT.MTD_SCHM_CODE\n,FACT.MTD_SCHM_TYPE\n,FACT.MTD_ACID\n,FACT.MTD_FORACID\n,FACT.MTD_ACCT_CRNCY_CODE\n,FACT.TRANDATE\n,FACT.AVE_CURR_BALANCE\n,FACT.AVE_CLR_BALANCE\n,FACT.NO_DAYS\n,FACT.USERID\n,FACT.MTD_LCHG_TIME\n,FACT.QUARTER_YEAR\n,FACT.MTD_LAST6_ACC_NUM\n,FACT.MTD_BNK_CODE\n,FACT.MTD_SOURCE_CODE\n,FACT.MTD_FILE_NAME\n,FACT.MTD_INSERT_DTTM\n--,YTD.FULLDATE AS AS_OF_DATE\n,FACT.AS_OF_DATE AS AS_OF_DATE\n,CASE\n    WHEN FACT.DEP_Account_Status IS NULL AND FACT.ACCT_OPN_DATE = FACT.AS_OF_DATE THEN 'A'\n    ELSE FACT.DEP_Account_Status\nEND AS DEP_Account_Status\n,CASE\n    WHEN LEFT(FACT.CIF_ID,1) = 'R' then 'Retail'\n    WHEN LEFT(FACT.CIF_ID,1) = 'C' then 'Corporate'\nEND AS CUSTOMER_TYPE\n,YTD.MONTH_END\n,YTD.MONTHLY_TOTAL_OUTSTANDING_BALANCE AS MONTHLY_TOT_OUT_BAL\n,YTD.MONTHLY_TOTAL_OUTSTANDING_BALANCE_PHP AS MONTHLY_TOT_OUT_BAL_PHP\n,YTD.MTD_BALANCE \n,YTD.MTD_BALANCE_PHP \n,YTD.CURRENT_OUTSTANDING_BALANCE \n,YTD.CURRENT_OUTSTANDING_BALANCE_PHP \n,YTD.TOTAL_CURRENT_OUTSTANDING_BALANCE AS TOT_CUR_OUT_BAL\n,YTD.TOTAL_CURRENT_OUTSTANDING_BALANCE_PHP AS TOT_CUR_OUT_BAL_PHP\n,YTD.YTD_BALANCE \n,YTD.YTD_BALANCE_PHP \nFROM EDS.DEPOSIT_FACT FACT\nLEFT JOIN EDS.DEPOSIT_MTD_YTD_UAT YTD\nON FACT.GAM_ACID = YTD.GAM_ACID\nAND FACT.AS_OF_DATE = YTD.FULLDATE\nWHERE FACT.AS_OF_DATE = @DateToProcess;\n--FROM EDS.DEPOSIT_FACT FACT\n--LEFT JOIN EDS.DEPOSIT_MTD_YTD_UAT YTD \n--ON FACT.GAM_ACID = YTD.GAM_ACID\n--AND (FACT.AS_OF_DATE = YTD.FULLDATE OR\n--    ((\n--    CASE\n--            WHEN FACT.DEP_Account_Status IS NULL AND FACT.ACCT_OPN_DATE = FACT.AS_OF_DATE THEN 'A'\n--            ELSE FACT.DEP_Account_Status\n--        END\n--    )='C' AND YTD.FULLDATE > FACT.AS_OF_DATE)\n--)\n--WHERE YTD.Business_Day_Flag = 'Y'  AND YTD.FULLDATE = @DateToProcess;"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "D360_DEPO_BALANCE_ONLY",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "endDate",
+									"type": "String",
+									"value": {
+										"value": "@substring(variables('V_endDate'),0,10)",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "DECLARE @endDate_process DATE;\r\nSET @endDate_process = @endDate;\r\n\r\nDROP TABLE D360.DEPO_BALANCE_ONLY;\r\n\r\nCREATE TABLE D360.DEPO_BALANCE_ONLY\r\nWITH\r\n(\r\n    DISTRIBUTION = HASH(GAM_ACID)\r\n,    HEAP\r\n)\r\nAS\r\nSELECT AS_OF_DATE\r\n    ,CUST_ID\r\n    ,GAM_ACID\r\n    ,ACCT_CRNCY_CODE\r\n    ,GAM_BANK_ID\r\n    ,GAM_SCHM_TYPE\r\n    ,GAM_SCHM_CODE\r\n    ,OUTSTANDING_BALANCE\r\n    ,OUTSTANDING_BALANCE_PHP\r\n\t,ACCUMULATED_CURRBAL\r\n    ,DEP_ACCOUNT_STATUS\r\nFROM EDS.DEPOSIT_FACT\r\nWHERE GAM_BANK_ID = 'CBC01'\r\n\tAND SUBSTRING(GAM_SCHM_CODE, 1, 2) <> '09'\r\n\tAND DEL_FLG = 'N'\r\n\t--AND\t(\r\n\t--\t\tDEP_ACCOUNT_STATUS <> 'C' \r\n\t--\t\tOR (DEP_ACCOUNT_STATUS IS NULL AND ACCT_OPN_DATE = AS_OF_DATE)\r\n\t--\t)\r\n\tAND AS_OF_DATE <= @endDate_process\r\n-- where ACCT_CRNCY_CODE <> 'PHP'\r\n;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "D360_DEPO_YTD_ALLDATES",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "D360_DEPO_BALANCE_ONLY",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "endDate",
+									"type": "String",
+									"value": {
+										"value": "@substring(variables('V_endDate'),0,10)",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "ytd_startDate",
+									"type": "String",
+									"value": {
+										"value": "@substring(variables('Previous_Year_Last_Bus_Day'),0,10)",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "DECLARE @endDate_process DATE;\r\nSET @endDate_process = @endDate;\r\n\r\nDECLARE @ytd_startDate_process DATE;\r\nSET @ytd_startDate_process = @ytd_startDate;\r\n\r\nDROP TABLE D360.DEPO_YTD_ALLDATES;\r\n\r\nCREATE TABLE D360.DEPO_YTD_ALLDATES\r\nWITH\r\n(\r\n    DISTRIBUTION = HASH(GAM_ACID)\r\n,    HEAP\r\n)\r\nAS\r\n\tSELECT FULLDATE\r\n\t\t, Previous_Business_Day\r\n\t\t, Business_Day_Flag\r\n\t\t, DAYOFYEAR\r\n\t\t, LastDayOfMonth\r\n\t\t, Day\r\n--\t\t, case when month_end = 'Y' then DATEDIFF(day, fulldate, LastDayOfMonth) else 0 end month_end_diff\r\n\t\t, DATEDIFF(day, fulldate, LastDayOfMonth) month_end_diff\r\n\t\t, YEAR\r\n\t\t, MONTH\r\n\t\t, CUST_ID\r\n\t\t, GAM_ACID\r\n\t\t, ACCT_CRNCY_CODE\r\n\t\t, GAM_BANK_ID\r\n\t\t, GAM_SCHM_TYPE\r\n\t\t, DATE_DIM.MONTH_END --need to add DATE_DIM alias when DEPOSIT_FACT endstate table is deployed by Tommy 20250605\r\n\tFROM EDS.DATE_DIM\r\n\tJOIN EDS.DEPOSIT_FACT\r\n\t\tON 1 = 1\r\n\t\tAND SUBSTRING(GAM_SCHM_CODE, 1, 2) <> '09'\r\n\t\tAND GAM_BANK_ID = 'CBC01'\r\n\t\tAND (AS_OF_DATE = @endDate_process OR (DEP_ACCOUNT_STATUS = 'C' and  AS_OF_DATE < @endDate_process))\r\n\tWHERE FULLDATE BETWEEN @ytd_startDate_process AND @endDate_process;\r\n--\tWHERE FULLDATE = '2024-10-31'\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "EDS_DEPOSIT_MTD_YTD_UAT",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "D360_DEPO_YTD_ALLDATES",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "DROP TABLE EDS.DEPOSIT_MTD_YTD_UAT;\r\n\r\nCREATE TABLE EDS.DEPOSIT_MTD_YTD_UAT\r\nWITH\r\n(\r\n    DISTRIBUTION = HASH(GAM_ACID)\r\n,    HEAP\r\n)\r\nAS\r\nSELECT\r\n      TMP.FULLDATE\r\n    , TMP.Previous_Business_Day\r\n\t, TMP.Business_Day_Flag --New added fields 3/28 Tommy\r\n    , TMP.CUST_ID\r\n    , TMP.GAM_ACID\r\n    , TMP.ACCT_CRNCY_CODE\r\n    , TMP.GAM_BANK_ID\r\n    , TMP.GAM_SCHM_TYPE\r\n    , (CASE WHEN Business_Day_Flag = 'Y' THEN COALESCE(CURRENT_BD.OUTSTANDING_BALANCE,0) ELSE COALESCE(CURRENT_PBD.OUTSTANDING_BALANCE,0) END) AS CURRENT_OUTSTANDING_BALANCE\r\n    , (CASE WHEN Business_Day_Flag = 'Y' THEN COALESCE(CURRENT_BD.OUTSTANDING_BALANCE_PHP,0) ELSE COALESCE(CURRENT_PBD.OUTSTANDING_BALANCE_PHP,0) END) AS CURRENT_OUTSTANDING_BALANCE_PHP\r\n--    , COALESCE(CURRENT_PBD.OUTSTANDING_BALANCE,0) AS PREVIOUS_OUTSTANDING_BALANCE\r\n--    , COALESCE(CURRENT_PBD.OUTSTANDING_BALANCE_PHP,0) AS PREVIOUS_OUTSTANDING_BALANCE_PHP\r\n    , SUM(CASE WHEN Business_Day_Flag = 'Y' THEN COALESCE(CURRENT_BD.OUTSTANDING_BALANCE,0) ELSE COALESCE(CURRENT_PBD.OUTSTANDING_BALANCE,0) END)\r\n        OVER(PARTITION BY YEAR, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW ) AS TOTAL_CURRENT_OUTSTANDING_BALANCE\r\n    , SUM(CASE WHEN Business_Day_Flag = 'Y' THEN COALESCE(CURRENT_BD.OUTSTANDING_BALANCE_PHP,0) ELSE COALESCE(CURRENT_PBD.OUTSTANDING_BALANCE_PHP,0) END)\r\n        OVER(PARTITION BY YEAR, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW ) AS TOTAL_CURRENT_OUTSTANDING_BALANCE_PHP\r\n\t--, COALESCE(DEP_YTD.ACCUMULATED_CURRBAL, CURRENT_BD.ACCUMULATED_CURRBAL)\tAS ACCUMULATED_CURRBAL\r\n\t\r\n\t,(CASE WHEN YEAR(TMP.FULLDATE)<>YEAR(TMP.Previous_Business_Day) AND CURRENT_PBD.DEP_ACCOUNT_STATUS='C' THEN 0 WHEN CURRENT_PBD.DEP_ACCOUNT_STATUS='C' THEN CURRENT_PBD.ACCUMULATED_CURRBAL ELSE  COALESCE(DEP_YTD.ACCUMULATED_CURRBAL, CURRENT_BD.ACCUMULATED_CURRBAL) END)\tAS ACCUMULATED_CURRBAL\r\n\t\r\n    , CAST(DAYOFYEAR AS SMALLINT) DAYOFYEAR\r\n    , LastDayOfMonth\r\n    , CAST(Day AS SMALLINT) Day\r\n\t, month_end_diff\r\n    , (\r\n--\t\tCASE \r\n--\t\t\tWHEN TMP.ACCT_CRNCY_CODE <> 'PHP' THEN \r\n\t\t\t\t(\r\n\t\t\t\t\tSUM(CASE WHEN Business_Day_Flag = 'Y' THEN COALESCE(CURRENT_BD.OUTSTANDING_BALANCE,0) ELSE COALESCE(CURRENT_PBD.OUTSTANDING_BALANCE,0) END)\r\n\t\t\t\t\t\tOVER(PARTITION BY YEAR, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) \r\n\t\t\t\t\t+ case when month_end = 'Y' then month_end_diff * COALESCE(CURRENT_BD.OUTSTANDING_BALANCE,0) else 0 end\r\n\t\t\t\t) / (DAYOFYEAR + case when month_end = 'Y' then month_end_diff else 0 end)\r\n--\t\t\tELSE COALESCE(DEP_YTD.ACCUMULATED_CURRBAL, CURRENT_BD.ACCUMULATED_CURRBAL) / DAYOFYEAR\r\n--\t\tEND\r\n\t) AS YTD_BALANCE\r\n\t\r\n    , (\r\n--\t\tCASE \r\n--\t\t\tWHEN TMP.ACCT_CRNCY_CODE <> 'PHP' THEN\r\n\t\t\t\t(\r\n\t\t\t\t\tSUM(CASE WHEN Business_Day_Flag = 'Y' THEN COALESCE(CURRENT_BD.OUTSTANDING_BALANCE_PHP,0) ELSE COALESCE(CURRENT_PBD.OUTSTANDING_BALANCE_PHP,0) END)\r\n\t\t\t\t\t\tOVER(PARTITION BY YEAR, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW )\r\n\t\t\t\t\t+ case when month_end = 'Y' then month_end_diff * COALESCE(CURRENT_BD.OUTSTANDING_BALANCE_PHP,0) else 0 end\r\n\t\t\t\t) / (DAYOFYEAR + case when month_end = 'Y' then month_end_diff else 0 end)\r\n--\t\t\tELSE COALESCE(DEP_YTD.ACCUMULATED_CURRBAL, CURRENT_BD.ACCUMULATED_CURRBAL) / DAYOFYEAR\r\n--\t\tEND\r\n\t) AS YTD_BALANCE_PHP\r\n\t\r\n    , ((SUM(CASE WHEN Business_Day_Flag = 'Y' THEN COALESCE(CURRENT_BD.OUTSTANDING_BALANCE,0) ELSE COALESCE(CURRENT_PBD.OUTSTANDING_BALANCE,0) END)\r\n\tOVER(PARTITION BY YEAR, MONTH, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW ) \r\n\t+ case when month_end = 'Y' then month_end_diff else 0 end * COALESCE(CURRENT_BD.OUTSTANDING_BALANCE,0)) \r\n\t/ (DAY + case when month_end = 'Y' then month_end_diff else 0 end)\r\n\t) AS MTD_BALANCE\r\n\t\r\n    , ((SUM(CASE WHEN Business_Day_Flag = 'Y' THEN COALESCE(CURRENT_BD.OUTSTANDING_BALANCE_PHP,0) ELSE COALESCE(CURRENT_PBD.OUTSTANDING_BALANCE_PHP,0) END)\r\n\tOVER(PARTITION BY YEAR, MONTH, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW )\r\n\t+ case when month_end = 'Y' then month_end_diff * COALESCE(CURRENT_BD.OUTSTANDING_BALANCE_PHP,0) else 0 end) \r\n\t/ (DAY + case when month_end = 'Y' then month_end_diff else 0 end)\r\n\t) AS MTD_BALANCE_PHP\t\r\n\r\n    , ((SUM(CASE WHEN Business_Day_Flag = 'Y' THEN COALESCE(CURRENT_BD.OUTSTANDING_BALANCE,0) ELSE COALESCE(CURRENT_PBD.OUTSTANDING_BALANCE,0) END)\r\n\tOVER(PARTITION BY YEAR, MONTH, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW ) \r\n\t+ case when month_end = 'Y' then month_end_diff else 0 end *  COALESCE(CURRENT_BD.OUTSTANDING_BALANCE,0)) \r\n\t) AS MONTHLY_TOTAL_OUTSTANDING_BALANCE\r\n\r\n    , ((SUM(CASE WHEN Business_Day_Flag = 'Y' THEN COALESCE(CURRENT_BD.OUTSTANDING_BALANCE_PHP,0) ELSE COALESCE(CURRENT_PBD.OUTSTANDING_BALANCE_PHP,0) END)\r\n\tOVER(PARTITION BY YEAR, MONTH, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW )\r\n\t+ case when month_end = 'Y' then month_end_diff * COALESCE(CURRENT_BD.OUTSTANDING_BALANCE_PHP,0) else 0 end) \r\n\t) AS MONTHLY_TOTAL_OUTSTANDING_BALANCE_PHP\t\r\n\t\r\n    , TMP.MONTH_END\r\n\t, CURRENT_BD.DEP_ACCOUNT_STATUS\r\nFROM D360.DEPO_YTD_ALLDATES TMP\r\nLEFT JOIN D360.DEPO_BALANCE_ONLY CURRENT_BD\r\n    ON TMP.GAM_ACID = CURRENT_BD.GAM_ACID\r\n    AND TMP.FULLDATE = CURRENT_BD.AS_OF_DATE\r\n\t\r\nLEFT JOIN D360.DEPO_BALANCE_ONLY CURRENT_PBD\r\n    ON TMP.GAM_ACID = CURRENT_PBD.GAM_ACID \r\n    AND TMP.Previous_Business_Day = CURRENT_PBD.AS_OF_DATE\r\n\t\r\nLEFT JOIN D360.DEP_BUSC_ACCUMULATED_CURRBAL_YTD DEP_YTD\r\n\tON TMP.GAM_ACID = DEP_YTD.ACID\r\n\tAND TMP.GAM_BANK_ID = DEP_YTD.BANK_ID\r\n\tAND TMP.FULLDATE = DEP_YTD.CURRENT_EOD_DATE;\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"ytd_startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			}
+		},
+		"variables": {
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			},
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"Previous_Year_Last_Bus_Day": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-06-05T09:24:36Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

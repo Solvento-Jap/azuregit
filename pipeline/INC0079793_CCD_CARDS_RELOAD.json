@@ -1,0 +1,2100 @@
+{
+	"name": "INC0079793_CCD_CARDS_RELOAD",
+	"properties": {
+		"activities": [
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(variables('V_endDate')),ticks(variables('V_startDate'))),864000000000),1))\n",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append Process Date",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Iterate Execution of Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "OM_SRC_CHECK_CCD_CBCEXCARDP",
+							"type": "SqlPoolStoredProcedure",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [
+								{
+									"activity": "Condition Success Count",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_EDS_CCD_CARDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@replace(substring(item(),0,10),'-','')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Condition Success Count",
+							"type": "IfCondition",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(0,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "END_TASK_STG_EDS_CCD_CBCEXCARDP_SUCCESSFUL",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "Create Full",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_STG_EDS_CCD_CBCEXCARDP",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												},
+												"tablename": {
+													"value": "D360.STG_EDS_CCD_CBCEXCARDP",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_STG_EDS_CCD_CBCEXCARDP_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "Create Full",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_STG_EDS_CCD_CBCEXCARDP",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												},
+												"tablename": {
+													"value": "D360.STG_EDS_CCD_CBCEXCARDP",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "START_TASK_STG_EDS_CCD_CBCEXCARDP",
+										"type": "SqlPoolStoredProcedure",
+										"state": "Inactive",
+										"onInactiveMarkAs": "Succeeded",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_STG_EDS_CCD_CBCEXCARDP",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "MovToArchive_CCD_CBCEXCARDP",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "Create Full",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "MovToArchive_EDS_CCD_CBCEXCARDP",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true
+										}
+									},
+									{
+										"name": "Truncate Staging",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "PGP Decrypt",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 3,
+											"retryIntervalInSeconds": 60,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"type": "NonQuery",
+													"text": "TRUNCATE TABLE d360.STG_EDS_CCD_CBCEXCARDP;\n"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									},
+									{
+										"name": "HashLog_CCD_CBCEXCARDP",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "Create Full",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "HashLog_CCD_CBCEXCARDP",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true
+										}
+									},
+									{
+										"name": "Onprem",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_STG_EDS_CCD_CBCEXCARDP",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "OnPremToADLS_EDS_v2",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"DatetoProcessed": {
+													"value": "@replace(substring(item(),0,10),'-','')",
+													"type": "Expression"
+												},
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												},
+												"src_sys": {
+													"value": "@pipeline().parameters.src_sys",
+													"type": "Expression"
+												},
+												"Bank_ID": {
+													"value": "@pipeline().parameters.Bank_id",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "PGP Decrypt",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "Onprem",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "PGPDecrypt_EDS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												},
+												"src_sys": {
+													"value": "@pipeline().parameters.src_sys",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "CCD_CBCEXCARDP",
+										"type": "Copy",
+										"dependsOn": [
+											{
+												"activity": "Truncate Staging",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"source": {
+												"type": "DelimitedTextSource",
+												"additionalColumns": [
+													{
+														"name": "FILE_NAME",
+														"value": "$$FILEPATH"
+													},
+													{
+														"name": "insert_dttm",
+														"value": {
+															"value": "@pipeline().TriggerTime",
+															"type": "Expression"
+														}
+													}
+												],
+												"storeSettings": {
+													"type": "AzureBlobFSReadSettings",
+													"recursive": true,
+													"wildcardFolderPath": "dev/decrypted/CCD",
+													"wildcardFileName": {
+														"value": "@concat('*CCD_CBCEXCARDP_*',replace(substring(item(),0,10),'-',''),'*')",
+														"type": "Expression"
+													},
+													"enablePartitionDiscovery": false
+												},
+												"formatSettings": {
+													"type": "DelimitedTextReadSettings"
+												}
+											},
+											"sink": {
+												"type": "SqlDWSink",
+												"preCopyScript": "truncate TABLE D360.STG_EDS_CCD_CBCEXCARDP",
+												"allowCopyCommand": true,
+												"tableOption": "autoCreate",
+												"disableMetricsCollection": false
+											},
+											"enableStaging": true,
+											"stagingSettings": {
+												"linkedServiceName": {
+													"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+													"type": "LinkedServiceReference"
+												},
+												"path": "data360/dev/stg_synapse",
+												"enableCompression": true
+											},
+											"enableSkipIncompatibleRow": true,
+											"logSettings": {
+												"enableCopyActivityLog": true,
+												"copyActivityLogSettings": {
+													"logLevel": "Warning",
+													"enableReliableLogging": true
+												},
+												"logLocationSettings": {
+													"linkedServiceName": {
+														"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+														"type": "LinkedServiceReference"
+													},
+													"path": {
+														"value": "@concat('data360/dev/Logging/CCD/CCD_CBCEXCARDP/',substring(replace(replace(replace(addHours(utcnow(),+8),'-',''),'T','_'),':',''),0,15))",
+														"type": "Expression"
+													}
+												}
+											},
+											"translator": {
+												"type": "TabularTranslator",
+												"mappings": [
+													{
+														"source": {
+															"name": "H",
+															"type": "String"
+														},
+														"sink": {
+															"name": "H",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_NBR",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_NBR",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_BANK_NBR",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_BANK_NBR",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_PDT_NBR",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_PDT_NBR",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_ACCT_NBR",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_ACCT_NBR",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_STATUS",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_STATUS",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_SHORT_NAME",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_SHORT_NAME",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_CUST_NBR",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_CUST_NBR",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_SUP_REL",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_SUP_REL",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_COM_BIL",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_COM_BIL",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_CHGOFF_IND",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_CHGOFF_IND",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_USR_DTA",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_USR_DTA",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DTE_OPEN",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DTE_OPEN",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DTE_CLOSE",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DTE_CLOSE",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DTE_WARN",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DTE_WARN",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DTE_MEMB",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DTE_MEMB",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DTE_WRTO",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DTE_WRTO",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DTE_USER1",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DTE_USER1",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DTE_USER2",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DTE_USER2",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DTE_USER3",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DTE_USER3",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DTE_LAST_ST_CHG",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DTE_LAST_ST_CHG",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_EMB_NAME1",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_EMB_NAME1",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_EMB_REQ1",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_EMB_REQ1",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_NBR_OUT1",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_NBR_OUT1",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_EMB_USRC1",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_EMB_USRC1",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DTE_LSTREQ1",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DTE_LSTREQ1",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_LSTREQ1",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_LSTREQ1",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_EMB_NAME2",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_EMB_NAME2",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_EMB_REQ2",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_EMB_REQ2",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_NBR_OUT2",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_NBR_OUT2",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_EMB_USRC2",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_EMB_USRC2",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DTE_LSTREQ2",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DTE_LSTREQ2",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_LSTREQ2",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_LSTREQ2",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_EMB_NAME3",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_EMB_NAME3",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_EMB_REQ3",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_EMB_REQ3",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_NBR_OUT3",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_NBR_OUT3",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_EMB_USRC3",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_EMB_USRC3",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DTE_LSTREQ3",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DTE_LSTREQ3",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_LSTREQ3",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_LSTREQ3",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_EMB_NAME4",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_EMB_NAME4",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_EMB_REQ4",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_EMB_REQ4",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_NBR_OUT4",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_NBR_OUT4",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_EMB_USRC4",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_EMB_USRC4",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DTE_LSTREQ4",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DTE_LSTREQ4",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_LSTREQ4",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_LSTREQ4",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_TERM",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_TERM",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_EXP_DATE",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_EXP_DATE",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_LAST_EXP_DATE",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_LAST_EXP_DATE",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_MEMB_FEE_DATE",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_MEMB_FEE_DATE",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_JOIN_FEE_DATE",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_JOIN_FEE_DATE",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_LST_ACT_DATE",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_LST_ACT_DATE",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_BLK_CODE",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_BLK_CODE",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DTE_BLK_CODE",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DTE_BLK_CODE",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_PRV_BLK_CODE",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_PRV_BLK_CODE",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DTE_PRVBLK_CODE",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DTE_PRVBLK_CODE",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DTE_PRVBLK_CODE_END",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DTE_PRVBLK_CODE_END",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_AUTH_USG_LMTCDE",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_AUTH_USG_LMTCDE",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_WAIVE_MEMB_FEE",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_WAIVE_MEMB_FEE",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_WAIVE_JOIN_FEE",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_WAIVE_JOIN_FEE",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_WAIVE_SVC_FEE",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_WAIVE_SVC_FEE",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_NEW_NBR",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_NEW_NBR",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_NEW_NBR_EFFDTE",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_NEW_NBR_EFFDTE",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_ORG_NBR",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_ORG_NBR",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_ORG_NBR_EFFDTE",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_ORG_NBR_EFFDTE",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DTE_BPS",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DTE_BPS",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_SEQ_NBR",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_SEQ_NBR",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_FORMAT_ID",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_FORMAT_ID",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_BANK_ACCOUNT_1",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_BANK_ACCOUNT_1",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_BANK_ACCOUNT_2",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_BANK_ACCOUNT_2",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_ATM_LANGUAGE",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_ATM_LANGUAGE",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_PHOTO_IND",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_PHOTO_IND",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_SPRT_LIMIT",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_SPRT_LIMIT",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "FLAG_CARD_SUPP_PERM_CRLIMIT",
+															"type": "String"
+														},
+														"sink": {
+															"name": "FLAG_CARD_SUPP_PERM_CRLIMIT",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_SUPP_PERM_CRLIMIT",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_SUPP_PERM_CRLIMIT",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "FLAG_CARD_SUPP_PERM_CSHLIMIT",
+															"type": "String"
+														},
+														"sink": {
+															"name": "FLAG_CARD_SUPP_PERM_CSHLIMIT",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_SUPP_PERM_CSHLIMIT",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_SUPP_PERM_CSHLIMIT",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "FLAG_CARD_SUPP_TEMP_CRLIMIT",
+															"type": "String"
+														},
+														"sink": {
+															"name": "FLAG_CARD_SUPP_TEMP_CRLIMIT",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_SUPP_TEMP_CRLIMIT",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_SUPP_TEMP_CRLIMIT",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_SUPP_TEMP_CRLIMIT_EFF",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_SUPP_TEMP_CRLIMIT_EFF",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_SUPP_TEMP_CRLIMIT_EXP",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_SUPP_TEMP_CRLIMIT_EXP",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_NODE_ID",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_NODE_ID",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_CLOSE_REASON",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_CLOSE_REASON",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_FILE_BUFFER",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_FILE_BUFFER",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_ACTIVATION_DATE",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_ACTIVATION_DATE",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_LST_DATE_ACTIVE",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_LST_DATE_ACTIVE",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_ACTIVATED_BY",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_ACTIVATED_BY",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_MEMBER_SINCE",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_MEMBER_SINCE",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_LST_RENEW_DATE",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_LST_RENEW_DATE",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_LOYALTY_CRD1",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_LOYALTY_CRD1",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_LOYALTY_CRD2",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_LOYALTY_CRD2",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_LOYALTY_CRD3",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_LOYALTY_CRD3",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_LOYALTY_CRD4",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_LOYALTY_CRD4",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_LOYALTY_CRD5",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_LOYALTY_CRD5",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_LOYALTY_CRD6",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_LOYALTY_CRD6",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_LOYALTY_CRD7",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_LOYALTY_CRD7",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_LOYALTY_CRD8",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_LOYALTY_CRD8",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_LOYALTY_CRD9",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_LOYALTY_CRD9",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_LOYALTY_CRD10",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_LOYALTY_CRD10",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_REPLACE_WAIVE_IND",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_REPLACE_WAIVE_IND",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DELIVERY",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_DELIVERY",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_CBC_BUFFER",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_CBC_BUFFER",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DELTA_DATE",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DELTA_DATE",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_CONV_FLD",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_CONV_FLD",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_ARCHIVED_IND",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_ARCHIVED_IND",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DTE_ARCHIVED",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DTE_ARCHIVED",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_DATE_MAINT",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_DATE_MAINT",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_USER_MAINT",
+															"type": "String"
+														},
+														"sink": {
+															"name": "CARD_USER_MAINT",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_TIME_MAINT",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_TIME_MAINT",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "CARD_FILE_DATE",
+															"type": "Decimal"
+														},
+														"sink": {
+															"name": "CARD_FILE_DATE",
+															"type": "Decimal"
+														}
+													},
+													{
+														"source": {
+															"name": "LAST6_CARD_ACCT_NBR",
+															"type": "String"
+														},
+														"sink": {
+															"name": "LAST6_CARD_ACCT_NBR",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "FILE_NAME",
+															"type": "String"
+														},
+														"sink": {
+															"name": "FILE_NAME",
+															"type": "String"
+														}
+													},
+													{
+														"source": {
+															"name": "insert_dttm",
+															"type": "String"
+														},
+														"sink": {
+															"name": "insert_dttm",
+															"type": "DateTime"
+														}
+													}
+												]
+											}
+										},
+										"inputs": [
+											{
+												"referenceName": "decrypt_csv",
+												"type": "DatasetReference",
+												"parameters": {
+													"Filename": " ",
+													"SourceCode": " "
+												}
+											}
+										],
+										"outputs": [
+											{
+												"referenceName": "SQLPool_STG",
+												"type": "DatasetReference",
+												"parameters": {
+													"table_name": "STG_EDS_CCD_CBCEXCARDP"
+												}
+											}
+										]
+									},
+									{
+										"name": "Create Full",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "CCD_CBCEXCARDP",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 3,
+											"retryIntervalInSeconds": 60,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"type": "NonQuery",
+													"text": "DECLARE @FileDate DATE =\n(\n    SELECT TOP 1\n        CONVERT(DATE, LEFT(RIGHT(FILE_NAME,12),8))\n    FROM D360.STG_EDS_CCD_CBCEXCARDP\n);\n\nDECLARE @PrevDate DATE;\nSELECT @PrevDate=PREVIOUS_BUSINESS_DAY FROM EDS.DATE_DIM WHERE FULLDATE = @FileDate\n\nDECLARE @FILENAME VARCHAR(100) = (\n    SELECT TOP 1\n        FILE_NAME\n    FROM D360.STG_EDS_CCD_CBCEXCARDP\n);\n\nDECLARE @insert_dttm datetime2 = (\n    SELECT TOP 1\n        insert_dttm\n    FROM D360.STG_EDS_CCD_CBCEXCARDP\n);\n\nWITH STG_ID AS (\n    SELECT DISTINCT CARD_NBR FROM D360.STG_EDS_CCD_CBCEXCARDP\n)\nINSERT INTO D360.STG_EDS_CCD_CBCEXCARDP (\n[H]\n,\t[CARD_NBR]\n,\t[CARD_BANK_NBR]\n,\t[CARD_PDT_NBR]\n,\t[CARD_ACCT_NBR]\n,\t[CARD_STATUS]\n,\t[CARD_SHORT_NAME]\n,\t[CARD_CUST_NBR]\n,\t[CARD_SUP_REL]\n,\t[CARD_COM_BIL]\n,\t[CARD_CHGOFF_IND]\n,\t[CARD_USR_DTA]\n,\t[CARD_DTE_OPEN]\n,\t[CARD_DTE_CLOSE]\n,\t[CARD_DTE_WARN]\n,\t[CARD_DTE_MEMB]\n,\t[CARD_DTE_WRTO]\n,\t[CARD_DTE_USER1]\n,\t[CARD_DTE_USER2]\n,\t[CARD_DTE_USER3]\n,\t[CARD_DTE_LAST_ST_CHG]\n,\t[CARD_EMB_NAME1]\n,\t[CARD_EMB_REQ1]\n,\t[CARD_NBR_OUT1]\n,\t[CARD_EMB_USRC1]\n,\t[CARD_DTE_LSTREQ1]\n,\t[CARD_LSTREQ1]\n,\t[CARD_EMB_NAME2]\n,\t[CARD_EMB_REQ2]\n,\t[CARD_NBR_OUT2]\n,\t[CARD_EMB_USRC2]\n,\t[CARD_DTE_LSTREQ2]\n,\t[CARD_LSTREQ2]\n,\t[CARD_EMB_NAME3]\n,\t[CARD_EMB_REQ3]\n,\t[CARD_NBR_OUT3]\n,\t[CARD_EMB_USRC3]\n,\t[CARD_DTE_LSTREQ3]\n,\t[CARD_LSTREQ3]\n,\t[CARD_EMB_NAME4]\n,\t[CARD_EMB_REQ4]\n,\t[CARD_NBR_OUT4]\n,\t[CARD_EMB_USRC4]\n,\t[CARD_DTE_LSTREQ4]\n,\t[CARD_LSTREQ4]\n,\t[CARD_TERM]\n,\t[CARD_EXP_DATE]\n,\t[CARD_LAST_EXP_DATE]\n,\t[CARD_MEMB_FEE_DATE]\n,\t[CARD_JOIN_FEE_DATE]\n,\t[CARD_LST_ACT_DATE]\n,\t[CARD_BLK_CODE]\n,\t[CARD_DTE_BLK_CODE]\n,\t[CARD_PRV_BLK_CODE]\n,\t[CARD_DTE_PRVBLK_CODE]\n,\t[CARD_DTE_PRVBLK_CODE_END]\n,\t[CARD_AUTH_USG_LMTCDE]\n,\t[CARD_WAIVE_MEMB_FEE]\n,\t[CARD_WAIVE_JOIN_FEE]\n,\t[CARD_WAIVE_SVC_FEE]\n,\t[CARD_NEW_NBR]\n,\t[CARD_NEW_NBR_EFFDTE]\n,\t[CARD_ORG_NBR]\n,\t[CARD_ORG_NBR_EFFDTE]\n,\t[CARD_DTE_BPS]\n,\t[CARD_SEQ_NBR]\n,\t[CARD_FORMAT_ID]\n,\t[CARD_BANK_ACCOUNT_1]\n,\t[CARD_BANK_ACCOUNT_2]\n,\t[CARD_ATM_LANGUAGE]\n,\t[CARD_PHOTO_IND]\n,\t[CARD_SPRT_LIMIT]\n,\t[FLAG_CARD_SUPP_PERM_CRLIMIT]\n,\t[CARD_SUPP_PERM_CRLIMIT]\n,\t[FLAG_CARD_SUPP_PERM_CSHLIMIT]\n,\t[CARD_SUPP_PERM_CSHLIMIT]\n,\t[FLAG_CARD_SUPP_TEMP_CRLIMIT]\n,\t[CARD_SUPP_TEMP_CRLIMIT]\n,\t[CARD_SUPP_TEMP_CRLIMIT_EFF]\n,\t[CARD_SUPP_TEMP_CRLIMIT_EXP]\n,\t[CARD_NODE_ID]\n,\t[CARD_CLOSE_REASON]\n,\t[CARD_FILE_BUFFER]\n,\t[CARD_ACTIVATION_DATE]\n,\t[CARD_LST_DATE_ACTIVE]\n,\t[CARD_ACTIVATED_BY]\n,\t[CARD_MEMBER_SINCE]\n,\t[CARD_LST_RENEW_DATE]\n,\t[CARD_LOYALTY_CRD1]\n,\t[CARD_LOYALTY_CRD2]\n,\t[CARD_LOYALTY_CRD3]\n,\t[CARD_LOYALTY_CRD4]\n,\t[CARD_LOYALTY_CRD5]\n,\t[CARD_LOYALTY_CRD6]\n,\t[CARD_LOYALTY_CRD7]\n,\t[CARD_LOYALTY_CRD8]\n,\t[CARD_LOYALTY_CRD9]\n,\t[CARD_LOYALTY_CRD10]\n,\t[CARD_REPLACE_WAIVE_IND]\n,\t[CARD_DELIVERY]\n,\t[CARD_CBC_BUFFER]\n,\t[CARD_DELTA_DATE]\n,\t[CARD_CONV_FLD]\n,\t[CARD_ARCHIVED_IND]\n,\t[CARD_DTE_ARCHIVED]\n,\t[CARD_DATE_MAINT]\n,\t[CARD_USER_MAINT]\n,\t[CARD_TIME_MAINT]\n,\t[CARD_FILE_DATE]\n,\t[LAST6_CARD_ACCT_NBR]\n,   [FILE_NAME]\n,   [insert_dttm]\n)\n\nSELECT \n'D' AS [H]\n,\t[E].[CARD_NBR]\n,\t[E].[CARD_BANK_NBR]\n,\t[E].[CARD_PDT_NBR]\n,\t[E].[CARD_ACCT_NBR]\n,\t[E].[CARD_STATUS]\n,\t[E].[CARD_SHORT_NAME]\n,\t[E].[CARD_CUST_NBR]\n,\t[E].[CARD_SUP_REL]\n,\t[E].[CARD_COM_BIL]\n,\t[E].[CARD_CHGOFF_IND]\n,\t[E].[CARD_USR_DTA]\n,\t[E].[CARD_DTE_OPEN]\n,\t[E].[CARD_DTE_CLOSE]\n,\t[E].[CARD_DTE_WARN]\n,\t[E].[CARD_DTE_MEMB]\n,\t[E].[CARD_DTE_WRTO]\n,\t[E].[CARD_DTE_USER1]\n,\t[E].[CARD_DTE_USER2]\n,\t[E].[CARD_DTE_USER3]\n,\t[E].[CARD_DTE_LAST_ST_CHG]\n,\t[E].[CARD_EMB_NAME1]\n,\t[E].[CARD_EMB_REQ1]\n,\t[E].[CARD_NBR_OUT1]\n,\t[E].[CARD_EMB_USRC1]\n,\t[E].[CARD_DTE_LSTREQ1]\n,\t[E].[CARD_LSTREQ1]\n,\t[E].[CARD_EMB_NAME2]\n,\t[E].[CARD_EMB_REQ2]\n,\t[E].[CARD_NBR_OUT2]\n,\t[E].[CARD_EMB_USRC2]\n,\t[E].[CARD_DTE_LSTREQ2]\n,\t[E].[CARD_LSTREQ2]\n,\t[E].[CARD_EMB_NAME3]\n,\t[E].[CARD_EMB_REQ3]\n,\t[E].[CARD_NBR_OUT3]\n,\t[E].[CARD_EMB_USRC3]\n,\t[E].[CARD_DTE_LSTREQ3]\n,\t[E].[CARD_LSTREQ3]\n,\t[E].[CARD_EMB_NAME4]\n,\t[E].[CARD_EMB_REQ4]\n,\t[E].[CARD_NBR_OUT4]\n,\t[E].[CARD_EMB_USRC4]\n,\t[E].[CARD_DTE_LSTREQ4]\n,\t[E].[CARD_LSTREQ4]\n,\t[E].[CARD_TERM]\n,\t[E].[CARD_EXP_DATE]\n,\t[E].[CARD_LAST_EXP_DATE]\n,\t[E].[CARD_MEMB_FEE_DATE]\n,\t[E].[CARD_JOIN_FEE_DATE]\n,\t[E].[CARD_LST_ACT_DATE]\n,\t[E].[CARD_BLK_CODE]\n,\t[E].[CARD_DTE_BLK_CODE]\n,\t[E].[CARD_PRV_BLK_CODE]\n,\t[E].[CARD_DTE_PRVBLK_CODE]\n,\t[E].[CARD_DTE_PRVBLK_CODE_END]\n,\t[E].[CARD_AUTH_USG_LMTCDE]\n,\t[E].[CARD_WAIVE_MEMB_FEE]\n,\t[E].[CARD_WAIVE_JOIN_FEE]\n,\t[E].[CARD_WAIVE_SVC_FEE]\n,\t[E].[CARD_NEW_NBR]\n,\t[E].[CARD_NEW_NBR_EFFDTE]\n,\t[E].[CARD_ORG_NBR]\n,\t[E].[CARD_ORG_NBR_EFFDTE]\n,\t[E].[CARD_DTE_BPS]\n,\t[E].[CARD_SEQ_NBR]\n,\t[E].[CARD_FORMAT_ID]\n,\t[E].[CARD_BANK_ACCOUNT_1]\n,\t[E].[CARD_BANK_ACCOUNT_2]\n,\t[E].[CARD_ATM_LANGUAGE]\n,\t[E].[CARD_PHOTO_IND]\n,\t[E].[CARD_SPRT_LIMIT]\n,\t[E].[FLAG_CARD_SUPP_PERM_CRLIMIT]\n,\t[E].[CARD_SUPP_PERM_CRLIMIT]\n,\t[E].[FLAG_CARD_SUPP_PERM_CSHLIMIT]\n,\t[E].[CARD_SUPP_PERM_CSHLIMIT]\n,\t[E].[FLAG_CARD_SUPP_TEMP_CRLIMIT]\n,\t[E].[CARD_SUPP_TEMP_CRLIMIT]\n,\t[E].[CARD_SUPP_TEMP_CRLIMIT_EFF]\n,\t[E].[CARD_SUPP_TEMP_CRLIMIT_EXP]\n,\t[E].[CARD_NODE_ID]\n,\t[E].[CARD_CLOSE_REASON]\n,\t[E].[CARD_FILE_BUFFER]\n,\t[E].[CARD_ACTIVATION_DATE]\n,\t[E].[CARD_LST_DATE_ACTIVE]\n,\t[E].[CARD_ACTIVATED_BY]\n,\t[E].[CARD_MEMBER_SINCE]\n,\t[E].[CARD_LST_RENEW_DATE]\n,\t[E].[CARD_LOYALTY_CRD1]\n,\t[E].[CARD_LOYALTY_CRD2]\n,\t[E].[CARD_LOYALTY_CRD3]\n,\t[E].[CARD_LOYALTY_CRD4]\n,\t[E].[CARD_LOYALTY_CRD5]\n,\t[E].[CARD_LOYALTY_CRD6]\n,\t[E].[CARD_LOYALTY_CRD7]\n,\t[E].[CARD_LOYALTY_CRD8]\n,\t[E].[CARD_LOYALTY_CRD9]\n,\t[E].[CARD_LOYALTY_CRD10]\n,\t[E].[CARD_REPLACE_WAIVE_IND]\n,\t[E].[CARD_DELIVERY]\n,\t[E].[CARD_CBC_BUFFER]\n,\t[E].[CARD_DELTA_DATE]\n,\t[E].[CARD_CONV_FLD]\n,\t[E].[CARD_ARCHIVED_IND]\n,\t[E].[CARD_DTE_ARCHIVED]\n,\t[E].[CARD_DATE_MAINT]\n,\t[E].[CARD_USER_MAINT]\n,\t[E].[CARD_TIME_MAINT]\n,\t[E].[CARD_FILE_DATE]\n,\t[E].[LAST6_CARD_ACCT_NBR]\n,   @FILENAME AS [FILE_NAME]\n,   @insert_dttm AS [insert_dttm]\nFROM EDS.CCD_CARDS E\nLEFT JOIN STG_ID S\n    ON S.CARD_NBR = E.CARD_NBR\nWHERE E.AS_OF_DATE = @PrevDate\n    AND S.CARD_NBR IS NULL"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "Condition Success Count EDS",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "OM_SRC_CHECK_CCD_CBCEXCARDP",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(0,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "START_TASK_EDS_CCD_CARDS",
+										"type": "SqlPoolStoredProcedure",
+										"state": "Inactive",
+										"onInactiveMarkAs": "Succeeded",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_CCD_CARDS",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_CCD_CARDS_SUCCESSFUL",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "StgToEds_CCD_CARDS",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_CCD_CARDS",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_CCD_CARDS_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "StgToEds_CCD_CARDS",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_CCD_CARDS",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "StgToEds_CCD_CARDS",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_EDS_CCD_CARDS",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "StgTo_EDS_CCD_CARDS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('select fulldate\nfrom \n    eds.eds_ctl ect\ninner join \n    eds.date_dim dd\n    on \n    ect.CCD_Date=dd.previous_business_day\n    and dd.business_day_flag=''Y''')\n\n\n",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"tables": {
+				"type": "string",
+				"defaultValue": "CCD_CBCEXCARDP"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "CCD"
+			},
+			"Bank_id": {
+				"type": "string",
+				"defaultValue": "CBC01"
+			}
+		},
+		"variables": {
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"CheckFEstatus": {
+				"type": "String",
+				"defaultValue": "True"
+			},
+			"Source": {
+				"type": "String",
+				"defaultValue": "DEP"
+			},
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-06-17T09:01:21Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,70 @@
+{
+	"name": "SP_DEPLOY",
+	"properties": {
+		"activities": [
+			{
+				"name": "ALTER SP",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CustomerAccountBalance_TRY] AS\nBEGIN\n\nWITH TEMP_BNKM_CustomerAccountBalance\nAS(\nSELECT\nBTT.CounterParty_ID AS CustomerAccountId\n,CASE\n    WHEN BTT.product_type LIKE 'Bond%' AND BTT.book = 'Client' AND BTT.bundle_type <> 'ASSET SWAP' AND BTT.tradestatus = 'VERIFIED' \n    AND BTT.maturity_date > GETDATE() THEN 'Fixed Income Product Outstanding' \n    WHEN BTT.PRODUCT_TYPE = 'StructuredFlows' AND BTT.BOOK in ('F_Intl_MM_Team1',  'F_Intl_MM_Team2',  'R_Dom_MM_Team1', 'R_Dom_MM_Team2', 'R_Dom_MM_Borrowing') \n    AND btt.bundle_type <> 'PYA' AND BTT.TRADESTATUS = 'VERIFIED' THEN 'Money Market Product Outstanding'\n    WHEN BTT.PRODUCT_TYPE  = 'StructuredFlows' AND BTT.BUNDLE_TYPE = 'PYA' \n    AND BTT.TRADESTATUS = 'VERIFIED' THEN 'Structured Product PYA Outstanding' \n    WHEN BTT.PRODUCT_TYPE  = 'StructuredFlows' AND BTT.EXTERNAL_REFERENCE LIKE 'PYA%' AND BTT.TRADESTATUS = 'VERIFIED' THEN 'Structured Product PYA Outstanding'\n    WHEN BTT.PRODUCT_TYPE LIKE 'BOND%' AND BTT.BUNDLE_TYPE = 'ASSET SWAP' AND BTT.TRADESTATUS = 'VERIFIED' AND BTT.MATURITY_DATE > GETDATE() THEN 'Structured Product Asset Swap'\n    END AS BalanceTypeId\n,DATEADD(DAY,-1,BTT.INSERT_DTTM) AS [TIMESTAMP]\n,CASE\n    WHEN BTT.product_type LIKE 'Bond%' AND BTT.book = 'Client' AND BTT.bundle_type <> 'ASSET SWAP' AND BTT.tradestatus = 'VERIFIED' \n    AND BTT.maturity_date > GETDATE() THEN BTT.NOMINAL \n    WHEN BTT.PRODUCT_TYPE = 'StructuredFlows' AND BTT.BOOK in ('F_Intl_MM_Team1',  'F_Intl_MM_Team2',  'R_Dom_MM_Team1', 'R_Dom_MM_Team2', 'R_Dom_MM_Borrowing') \n    AND btt.bundle_type <> 'PYA' AND BTT.TRADESTATUS = 'VERIFIED' THEN BTT.PRINCIPAL_AMOUNT\n    WHEN BTT.PRODUCT_TYPE  = 'StructuredFlows' AND BTT.BUNDLE_TYPE = 'PYA' \n    AND BTT.TRADESTATUS = 'VERIFIED' THEN BTT.PRINCIPAL_AMOUNT \n    WHEN BTT.PRODUCT_TYPE  = 'StructuredFlows' AND BTT.EXTERNAL_REFERENCE LIKE 'PYA%' AND BTT.TRADESTATUS = 'VERIFIED' THEN BTT.PRINCIPAL_AMOUNT\n    WHEN BTT.PRODUCT_TYPE LIKE 'BOND%' AND BTT.BUNDLE_TYPE = 'ASSET SWAP' AND BTT.TRADESTATUS = 'VERIFIED' AND BTT.MATURITY_DATE > GETDATE() THEN BTT.NOMINAL END AS BalanceAmount \n,BTT.TRADE_CURRENCY AS IsoCurrencyCode\n,'TRY' AS SourceSystemCode\n,BTT.Insert_Dttm AS INSERTDTTM\n,BTT.BNK_CODE AS FinancialInstitutionId\nfrom busc.TRY_TRADES BTT\nWHERE BTT.CounterParty_ID IS NOT NULL and BTT.ISLATEST = '1'\n)\n\nSELECT * INTO #TEMP_BNKM_CustomerAccountBalance FROM TEMP_BNKM_CustomerAccountBalance\nWHERE BalanceTypeId IS NOT NULL;\n\n\n--INSERT TO BNKM\nINSERT INTO BNKM.CustomerAccountBalance(\n[CustomerAccountId]\n,[BalanceTypeId]\n,[Timestamp]\n,[BalanceAmount]\n,[IsoCurrencyCode]\n,[SourceSystemCode]\n,[WorkFlowId]\n,[TaskRunId]\n,[InsertDttm]\n,[FinancialInstitutionId]\n)\nSELECT\nDISTINCT\nSRC.[CustomerAccountId]\n,SRC.[BalanceTypeId]\n,SRC.[Timestamp]\n,SUM(SRC.[BalanceAmount]) AS BalanceAmount\n,SRC.[IsoCurrencyCode]\n,'TRY' AS [SourceSystemCode]\n,0 AS [WorkFlowId]\n,0 AS [TaskRunId]\n,SRC.[InsertDttm]\n,SRC.[FinancialInstitutionId]\nFROM #TEMP_BNKM_CustomerAccountBalance SRC\nWHERE NOT EXISTS (SELECT * FROM BNKM.CustomerAccountBalance TGT WHERE \n    SRC.CustomerAccountId = TGT.CustomerAccountId\n    AND SRC.BalanceTypeId = TGT.BalanceTypeId\n    AND SRC.Timestamp = TGT.Timestamp\n    AND SRC.IsoCurrencyCode = TGT.IsoCurrencyCode\n    AND SRC.SourceSystemCode = TGT.SourceSystemCode\n    AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\n    )\nGROUP BY SRC.[CustomerAccountId]\n,SRC.[BalanceTypeId]\n,SRC.[Timestamp]\n,SRC.[InsertDttm]\n,SRC.[FinancialInstitutionId]\n,SRC.IsoCurrencyCode\n\nDROP TABLE #TEMP_BNKM_CustomerAccountBalance;\n\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "FactTreasuryOutstandingBalance",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH CustomerAccountBalance AS(\nSELECT * FROM BNKM.CustomerAccountBalance \nWHERE BalanceTypeId IN ('Fixed Income Product Outstanding','Money Market Product Outstanding','Structured Product PYA Outstanding','Structured Product Asset Swap')\nAND SourceSystemCode = 'TRY' AND IsoCurrencyCode = 'PHP')\n\n,CNT_CustomerAccountParticipation AS(\n    select AccountID,\n    count(ShareIndicator) as CNT\n    from DW.DimCustomerAccount where ShareIndicator = 'Y'\n    group by AccountID\n)\n\n,Balance AS (\nSELECT\n\tconvert(varchar,BCAB.[Timestamp],112) AS BusinessDateSK\n\t,DDB.BranchSK AS BranchSK\n\t,DDBANK.BankSK AS BankSK\n\t,DDA.AccountSK AS AccountSK\n\t,DDA.AccountId AS AccountID\n\t,SUM(BCAB.BalanceAmount) AS OutstandingInvestmentFull\n\t,SUM(BCAB.BalanceAmount) / CNT AS OutstandingInvestmentProrated\n\t,BCAB.IsoCurrencyCode AS Currency\n\t,BCAB.SourceSystemCode AS SourceSystemCode\n\t,0 AS WorkFlowId \n\t,0 AS TaskRunId\n\t,GETDATE() AS InsertDttm\nFROM CustomerAccountBalance BCAB\nLEFT JOIN BNKM.CUSTOMERACCOUNT BCA ON BCAB.CUSTOMERACCOUNTID = BCA.CUSTOMERACCOUNTID AND BCAB.SourceSystemCode = BCA.SourceSystemCode\nLEFT JOIN DW.DimBranch DDB ON BCA.BRANCHID = DDB.BRANCHID aND DDB.CurrentIndicator = 1\nLEFT JOIN DW.DIMBANK DDBANK ON BCAB.FINANCIALINSTITUTIONID = DDBANK.BANKID\nLEFT JOIN CNT_CustomerAccountParticipation BCAP ON BCAB.CustomerAccountId = BCAP.AccountId --join for count\nLEFT JOIN DW.DimAccount DDA ON BCAB.CUSTOMERACCOUNTID = DDA.ACCOUNTID AND BCAB.SOURCESYSTEMCODE = DDA.SOURCESYSTEMCODE AND DDA.CurrentIndicator = 1\nWHERE convert(varchar,BCAB.[Timestamp],112) between '20210101' and '20231116'\nGROUP BY \nBCAB.[Timestamp]\n,DDB.BranchSK\n,DDBANK.BankSK\n,DDA.AccountSK\n,DDA.AccountId\n,BCAB.IsoCurrencyCode\n,BCAB.SourceSystemCode\n,CNT\n)\n,Distinct_Balance AS (\nSELECT DISTINCT \n    BranchSK, BankSK, AccountSK, AccountId, BusinessDateSK, OutstandingInvestmentFull, OutstandingInvestmentProrated, Currency, SourceSystemCode, WorkFlowId, TaskRunId, InsertDttm\nFROM Balance)\n\nINSERT INTO DW.FactTreasuryOutstandingInvestment\nSELECT\n    BusinessDateSK\n    ,BranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n    ,OutstandingInvestmentFull\n    ,OutstandingInvestmentProrated\n    ,Currency\n    ,SourceSystemCode\n    ,WorkFlowId\n    ,TaskRunId\n    ,InsertDttm\n\nFROM Distinct_Balance A\nWHERE NOT EXISTS (\n    SELECT * FROM DW.FactTreasuryOutstandingInvestment B\n    WHERE B.AccountId  = A.AccountId\n    AND B.BusinessDateSK = A.BusinessDateSK\n    AND B.BankSK = A.BankSK\n)"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-11-16T10:17:23Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

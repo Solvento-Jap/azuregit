@@ -1,0 +1,255 @@
+{
+	"name": "PATCH_CustomerCountryOfCitizenship_20240223",
+	"properties": {
+		"activities": [
+			{
+				"name": "BU_TABLE",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT *INTO BNKM.CustomerCountryOfCitizenship_BU_20240223 FROM BNKM.CustomerCountryOfCitizenship"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "UPDATE_SSC_FII",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "BU_TABLE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH TEMP_TBL AS (\r\nSELECT * FROM BNKM.CUSTOMERCOUNTRYOFCITIZENSHIP\r\n)\r\n \r\nUPDATE A\r\nSET A.SourceSystemCode = B.FinancialInstitutionId\r\nFROM BNKM.CUSTOMERCOUNTRYOFCITIZENSHIP A\r\nJOIN TEMP_TBL B\r\nON A.CustomerId = B.CustomerId\r\nAND A.CountryId = B.CountryId\r\nAND A.PeriodStartDate = B.PeriodStartDate\r\n \r\nUPDATE A\r\nSET A.FinancialInstitutionId = B.SourceSystemCode\r\nFROM BNKM.CUSTOMERCOUNTRYOFCITIZENSHIP A\r\nJOIN TEMP_TBL B\r\nON A.CustomerId = B.CustomerId\r\nAND A.CountryId = B.CountryId\r\nAND A.PeriodStartDate = B.PeriodStartDate"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "EndDate_Patch",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "UPDATE_SSC_FII",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH TEMP_CUSTOMERCOUNTRYOFCITIZENSHIP AS (\r\nselect CustomerId,CountryId,FinancialInstitutionId,SourceSystemCode\r\n,PeriodStartDate\r\n,PeriodEndDate as PeriodEndDate_Orig\r\n,dateadd(dd,-1,LEAD(PeriodStartDate, 1 ,'2100-01-01') OVER (PARTITION BY CustomerId,CountryId,FinancialInstitutionId,SourceSystemCode ORDER BY PeriodStartDate)) as PeriodEndDate_Patch\r\nFROM BNKM.CUSTOMERCOUNTRYOFCITIZENSHIP\r\n)\r\n\r\nUPDATE A\r\nSET A.PeriodEndDate = CASE WHEN B.PeriodEndDate_Patch = '2099-12-31' THEN '9999-12-31' ELSE B.PeriodEndDate_Patch END\r\nFROM BNKM.CUSTOMERCOUNTRYOFCITIZENSHIP A \r\nLEFT JOIN TEMP_CUSTOMERCOUNTRYOFCITIZENSHIP B\r\nON A.CustomerId = B.CustomerId\r\nAND A.CountryId = B.CountryId\r\nAND A.FinancialInstitutionId = B.FinancialInstitutionId\r\nAND A.SourceSystemCode = B.SourceSystemCode"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "COUNT_TBL",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "EndDate_Patch",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) PATCH_CNT FROM BNKM.CustomerCountryOfCitizenship\r\n\r\nSELECT COUNT(1) NOT_PATCH_CNT FROM BNKM.CustomerCountryOfCitizenship\r\n\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Validate1",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "COUNT_TBL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "--CUSTOMERCOUNTRYOFCITIZENSHIP\r\nSELECT SourceSystemCode, COUNT(1) FROM BNKM.CUSTOMERCOUNTRYOFCITIZENSHIP\r\nWHERE SourceSystemCode = 'CRM' OR SourceSystemCode = 'SEC' OR SourceSystemCode = 'CCD'\r\nGROUP BY SOURCECODE"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Validate2",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Validate1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT PeriodEndDate, SOURCESYSTEMCODE, COUNT(1)\r\nFROM BNKM.CUSTOMERCOUNTRYOFCITIZENSHIP\r\nWHERE (PeriodEndDate IS NULL\r\nOR PeriodEndDate = '9999-12-31') AND (SOURCESYSTEMCODE = 'CRM' OR SourceSystemCode = 'SEC' OR SourceSystemCode = 'CCD')\r\nGROUP BY PeriodEndDate, SOURCESYSTEMCODE"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Validate3",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Validate2",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT SOURCESYSTEMCODE, COUNT(1) CNT\r\nFROM BNKM.CUSTOMERCOUNTRYOFCITIZENSHIP\r\nWHERE PERIODENDDATE IS NOT NULL\r\nAND PERIODENDDATE NOT LIKE '%9999-12-31%' AND (SOURCESYSTEMCODE = 'CRM' OR SourceSystemCode = 'SEC' OR SourceSystemCode = 'CCD')\r\nGROUP BY SOURCESYSTEMCODE"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-02-23T10:58:37Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

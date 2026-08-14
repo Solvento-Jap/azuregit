@@ -1,0 +1,20 @@
+{
+	"name": "SQL script 410",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nALTER PROC [BNKM].[SP_BranchGroupDescription_DEP] AS\nBEGIN\n--GET DELTA FROM BUSC\n--------------GET DELTA FROM BUSC\nWITH TEMP_BNKM_BranchGroupDescription AS \n(\nSELECT\n\t BDS.SET_ID AS BranchGroupId\n\t,BDS.BANK_ID AS FinancialInstitutionId\n\t,BDS.LCHG_TIME AS Timestamp\n\t,BDS.SET_DESC AS BranchGroupDescription\n\t,'DEP' AS SourceSystemCode\n\t,0 AS WorkFlowId\n\t,0 AS TaskRunId\n\t,BDS.INSERT_DTTM AS InsertDttm\nFROM BUSC.DEP_SETIDTABLE BDS\n WHERE BDS.ISLATEST = 1\n)\n\nSELECT * INTO #TEMP_BNKM_BranchGroupDescription FROM TEMP_BNKM_BranchGroupDescription;\n\n-------------CHECK IF THERE IS DELTA \nWITH\nTEMP_BNKM_BranchGroupDescription_SRC\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,BranchGroupId)\n,convert(varchar,FinancialInstitutionId)\n,convert(varchar,BranchGroupDescription)\n)) HASHROW, BranchGroupId, Timestamp, FinancialInstitutionId\nFROM #TEMP_BNKM_BranchGroupDescription \n)\n,\nTEMP_BNKM_BranchGroupDescription_TGT\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,A.BranchGroupId)\n,convert(varchar,A.FinancialInstitutionId)\n,convert(varchar,A.BranchGroupDescription)\n)) HASHROW, A.BranchGroupId, A.Timestamp, A.FinancialInstitutionId\nFROM BNKM.BranchGroupDescription  A\n\tLEFT JOIN (SELECT BranchGroupId, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.BranchGroupDescription GROUP BY BranchGroupId, FinancialInstitutionId ) B\n\t\tON A.BranchGroupId = B.BranchGroupId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\nWHERE A.SourceSystemCode = 'DEP'\t\n)\n,\nTEMP_BNKM_BranchGroupDescription_DELTA\nAS\n(\nSELECT\t\n\tSRC.HASHROW AS SRC_HR\n\t,TGT.HASHROW AS TGT_HR\n\t,ISNULL(SRC.BranchGroupId,TGT.BranchGroupId) AS BranchGroupId\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\n\t,CASE\n\t\tWHEN TGT.HASHROW IS NULL THEN 'INSERT'  \n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'INSERT'\n\tELSE NULL END AS RECORD_STATUS\n\t\nFROM TEMP_BNKM_BranchGroupDescription_SRC\tSRC\nLEFT JOIN TEMP_BNKM_BranchGroupDescription_TGT\tTGT\nON\tSRC.BranchGroupId = TGT.BranchGroupId\nAND\tSRC.FinancialInstitutionId = TGT.FinancialInstitutionId\nWHERE SRC.HASHROW <> TGT.HASHROW  OR TGT.HASHROW IS NULL \n)\nSELECT * INTO #TEMP_BNKM_BranchGroupDescription_DELTA FROM TEMP_BNKM_BranchGroupDescription_DELTA;\n\n\n \n-------INSERT TO BNKM\nINSERT INTO BNKM.BranchGroupDescription\n(\n\tBranchGroupId\n\t,FinancialInstitutionId\n\t,Timestamp\n\t,BranchGroupDescription\n\t,SourceSystemCode\n\t,TaskRunId\n\t,WorkFlowId\n\t,InsertDttm\n)\nSELECT\nDISTINCT\n\tSRC.BranchGroupId\n\t,SRC.FinancialInstitutionId\n\t,SRC.Timestamp\n\t,SRC.BranchGroupDescription\n\t,'DEP' AS SourceSystemCode\n\t,0 AS TaskRunId\n\t,0 AS WorkFlowId\n\t,SRC.InsertDttm\nFROM #TEMP_BNKM_BranchGroupDescription SRC\nJOIN #TEMP_BNKM_BranchGroupDescription_DELTA DELTA \nON DELTA.BranchGroupId = SRC.BranchGroupId  \nAND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\nWHERE RECORD_STATUS IN ('INSERT');\n\nDROP TABLE #TEMP_BNKM_BranchGroupDescription;\nDROP TABLE #TEMP_BNKM_BranchGroupDescription_DELTA;\n\nEND\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

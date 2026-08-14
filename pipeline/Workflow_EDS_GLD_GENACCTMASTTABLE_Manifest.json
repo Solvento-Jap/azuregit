@@ -1,0 +1,640 @@
+{
+	"name": "Workflow_EDS_GLD_GENACCTMASTTABLE_Manifest",
+	"properties": {
+		"activities": [
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(pipeline().parameters.endDate),ticks(pipeline().parameters.startDate)),864000000000),1))",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append variable1",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "select fulldate\nfrom \n    eds.eds_ctl ect\ninner join \n    eds.date_dim dd\n    on \n    ect.GLD_Date=dd.previous_business_day and dd.business_day_flag='Y'\n",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "eds_ctl"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Iterate Execution of Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "ADLS_file_process",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Manifest_file",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "ADLS_file_process_EDS_GLD_GENACCTMASTTABLE",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"DatetoProcess": {
+										"value": "@item()",
+										"type": "Expression"
+									},
+									"tables": {
+										"value": "@pipeline().parameters.tables1",
+										"type": "Expression"
+									},
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "OM_SRC_CHECK",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "ADLS_file_process",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_EDS_GLD_GENERAL_ACCT_MAST",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@replace(substring(item(),0,10),'-','')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Get Success Count EDS",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "OM_SRC_CHECK",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_EDS_GLD_GENERAL_ACCT_MAST'',''EDS'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count EDS",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count EDS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count EDS').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "START_TASK_EDS_GLD_GENERAL_ACCT_MAST",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_GLD_GENERAL_ACCT_MAST",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_GLD_GENERAL_ACCT_MAST_SUCCESS",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_GLD_GENERAL_ACCT_MAST",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_GLD_GENERAL_ACCT_MAST",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_GLD_GENERAL_ACCT_MAST_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_GLD_GENERAL_ACCT_MAST",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_GLD_GENERAL_ACCT_MAST",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "EDS_GLD_GENERAL_ACCT_MAST",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_EDS_GLD_GENERAL_ACCT_MAST",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"parameters": [
+														{
+															"name": "DatetoProcessed",
+															"type": "Datetime",
+															"value": {
+																"value": "@substring(item(),0,10)",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														}
+													],
+													"type": "Query",
+													"text": "DELETE FROM EDS.GLD_GENERAL_ACCT_MAST WHERE AS_OF_DATE = CAST(@DatetoProcessed AS DATE);\r\n\r\nINSERT INTO EDS.GLD_GENERAL_ACCT_MAST\r\n(\r\n\t\t\t\t [AS_OF_DATE]\r\n\t\t\t\t,[ACID]\r\n\t\t\t\t,[BANK_ID]\r\n\t\t\t\t,[ENTITY_CRE_FLG]\r\n\t\t\t\t,[DEL_FLG]\r\n\t\t\t\t,[SOL_ID]\r\n\t\t\t\t,[ACCT_PREFIX]\r\n\t\t\t\t,[ACCT_NUM]\r\n\t\t\t\t,[BACID]\r\n\t\t\t\t,[FORACID]\r\n\t\t\t\t,[ACCT_NAME]\r\n\t\t\t\t,[ACCT_SHORT_NAME]\r\n\t\t\t\t,[CUST_ID]\r\n\t\t\t\t,[EMP_ID]\r\n\t\t\t\t,[GL_SUB_HEAD_CODE]\r\n\t\t\t\t,[ACCT_OWNERSHIP]\r\n\t\t\t\t,[SCHM_CODE]\r\n\t\t\t\t,[DR_BAL_LIM]\r\n\t\t\t\t,[ACCT_RPT_CODE]\r\n\t\t\t\t,[FREZ_CODE]\r\n\t\t\t\t,[FREZ_REASON_CODE]\r\n\t\t\t\t,[ACCT_OPN_DATE]\r\n\t\t\t\t,[ACCT_CLS_FLG]\r\n\t\t\t\t,[ACCT_CLS_DATE]\r\n\t\t\t\t,[CLR_BAL_AMT]\r\n\t\t\t\t,[TOT_MOD_TIMES]\r\n\t\t\t\t,[LEDG_NUM]\r\n\t\t\t\t,[UN_CLR_BAL_AMT]\r\n\t\t\t\t,[DRWNG_POWER]\r\n\t\t\t\t,[SANCT_LIM]\r\n\t\t\t\t,[ADHOC_LIM]\r\n\t\t\t\t,[EMER_ADVN]\r\n\t\t\t\t,[DACC_LIM]\r\n\t\t\t\t,[SYSTEM_RESERVED_AMT]\r\n\t\t\t\t,[SINGLE_TRAN_LIM]\r\n\t\t\t\t,[CLEAN_ADHOC_LIM]\r\n\t\t\t\t,[CLEAN_EMER_ADVN]\r\n\t\t\t\t,[CLEAN_SINGLE_TRAN_LIM]\r\n\t\t\t\t,[SYSTEM_GEN_LIM]\r\n\t\t\t\t,[CHQ_ALWD_FLG]\r\n\t\t\t\t,[CASH_EXCP_AMT_LIM]\r\n\t\t\t\t,[CLG_EXCP_AMT_LIM]\r\n\t\t\t\t,[XFER_EXCP_AMT_LIM]\r\n\t\t\t\t,[CASH_CR_EXCP_AMT_LIM]\r\n\t\t\t\t,[CLG_CR_EXCP_AMT_LIM]\r\n\t\t\t\t,[XFER_CR_EXCP_AMT_LIM]\r\n\t\t\t\t,[CASH_ABNRML_AMT_LIM]\r\n\t\t\t\t,[CLG_ABNRML_AMT_LIM]\r\n\t\t\t\t,[XFER_ABNRML_AMT_LIM]\r\n\t\t\t\t,[CUM_DR_AMT]\r\n\t\t\t\t,[CUM_CR_AMT]\r\n\t\t\t\t,[ACRD_CR_AMT]\r\n\t\t\t\t,[LAST_TRAN_DATE]\r\n\t\t\t\t,[MODE_OF_OPER_CODE]\r\n\t\t\t\t,[PB_PS_CODE]\r\n\t\t\t\t,[SERV_CHRG_COLL_FLG]\r\n\t\t\t\t,[FREE_TEXT]\r\n\t\t\t\t,[ACCT_TURNOVER_DET_FLG]\r\n\t\t\t\t,[NOM_AVAILABLE_FLG]\r\n\t\t\t\t,[ACCT_LOCN_CODE]\r\n\t\t\t\t,[LAST_PURGE_DATE]\r\n\t\t\t\t,[BAL_ON_PURGE_DATE]\r\n\t\t\t\t,[INT_PAID_FLG]\r\n\t\t\t\t,[INT_COLL_FLG]\r\n\t\t\t\t,[LAST_ANY_TRAN_DATE]\r\n\t\t\t\t,[HASHED_NO]\r\n\t\t\t\t,[LCHG_USER_ID]\r\n\t\t\t\t,[LCHG_TIME]\r\n\t\t\t\t,[RCRE_USER_ID]\r\n\t\t\t\t,[RCRE_TIME]\r\n\t\t\t\t,[LIMIT_B2KID]\r\n\t\t\t\t,[DRWNG_POWER_IND]\r\n\t\t\t\t,[DRWNG_POWER_PCNT]\r\n\t\t\t\t,[MICR_CHQ_CHRG_COLL_FLG]\r\n\t\t\t\t,[LAST_TURNOVER_DATE]\r\n\t\t\t\t,[NOTIONAL_RATE]\r\n\t\t\t\t,[NOTIONAL_RATE_CODE]\r\n\t\t\t\t,[FX_CLR_BAL_AMT]\r\n\t\t\t\t,[FX_BAL_ON_PURGE_DATE]\r\n\t\t\t\t,[FD_REF_NUM]\r\n\t\t\t\t,[FX_CUM_CR_AMT]\r\n\t\t\t\t,[FX_CUM_DR_AMT]\r\n\t\t\t\t,[CRNCY_CODE]\r\n\t\t\t\t,[SOURCE_OF_FUND]\r\n\t\t\t\t,[ANW_NON_CUST_ALWD_FLG]\r\n\t\t\t\t,[ACCT_CRNCY_CODE]\r\n\t\t\t\t,[LIEN_AMT]\r\n\t\t\t\t,[ACCT_CLASSIFICATION_FLG]\r\n\t\t\t\t,[SYSTEM_ONLY_ACCT_FLG]\r\n\t\t\t\t,[SINGLE_TRAN_FLG]\r\n\t\t\t\t,[UTILISED_AMT]\r\n\t\t\t\t,[INTER_SOL_ACCESS_FLG]\r\n\t\t\t\t,[PURGE_ALLOWED_FLG]\r\n\t\t\t\t,[PURGE_TEXT]\r\n\t\t\t\t,[MIN_VALUE_DATE]\r\n\t\t\t\t,[ACCT_MGR_USER_ID]\r\n\t\t\t\t,[SCHM_TYPE]\r\n\t\t\t\t,[LAST_FREZ_DATE]\r\n\t\t\t\t,[LAST_UNFREZ_DATE]\r\n\t\t\t\t,[BAL_ON_FREZ_DATE]\r\n\t\t\t\t,[SWIFT_ALLOWED_FLG]\r\n\t\t\t\t,[DACC_LIM_PCNT]\r\n\t\t\t\t,[DACC_LIM_ABS]\r\n\t\t\t\t,[CHRG_LEVEL_CODE]\r\n\t\t\t\t,[ACCT_CLS_CHRG_PEND_VERF]\r\n\t\t\t\t,[PARTITIONED_FLG]\r\n\t\t\t\t,[PARTITIONED_TYPE]\r\n\t\t\t\t,[PBF_DOWNLOAD_FLG]\r\n\t\t\t\t,[PBF_DELINK_DATE]\r\n\t\t\t\t,[WTAX_FLG]\r\n\t\t\t\t,[WTAX_AMOUNT_SCOPE_FLG]\r\n\t\t\t\t,[INT_ADJ_FOR_DEDUCTION_FLG]\r\n\t\t\t\t,[OPERATIVE_ACID]\r\n\t\t\t\t,[PHONE_NUM]\r\n\t\t\t\t,[NATIVE_LANG_NAME]\r\n\t\t\t\t,[NAT_LANG_TITLE_CODE]\r\n\t\t\t\t,[LANG_CODE]\r\n\t\t\t\t,[TS_CNT]\r\n\t\t\t\t,[POOL_ID]\r\n\t\t\t\t,[ALLOW_SWEEPS]\r\n\t\t\t\t,[ORDER_OF_UTILISATION]\r\n\t\t\t\t,[WTAX_PCNT]\r\n\t\t\t\t,[WTAX_FLOOR_LIMIT]\r\n\t\t\t\t,[DSA_PENAL_FLG]\r\n\t\t\t\t,[PRODUCT_GROUP]\r\n\t\t\t\t,[SOURCE_DEAL_CODE]\r\n\t\t\t\t,[DISBURSE_DEAL_CODE]\r\n\t\t\t\t,[SWEEP_IN_MIN_BAL]\r\n\t\t\t\t,[USED_SINGLE_TRAN_LIM]\r\n\t\t\t\t,[USED_CLEAN_SINGLE_TRAN_LIM]\r\n\t\t\t\t,[USED_UN_CLR_OVER_DACC_AMT]\r\n\t\t\t\t,[FFD_CONTRIB_TO_ACCT]\r\n\t\t\t\t,[ACCT_CREATION_MODE]\r\n\t\t\t\t,[WTAX_LEVEL_FLG]\r\n\t\t\t\t,[LAST_MODIFIED_DATE]\r\n\t\t\t\t,[CIF_ID]\r\n\t\t\t\t,[FUTURE_BAL_AMT]\r\n\t\t\t\t,[UTIL_FUTURE_BAL_AMT]\r\n\t\t\t\t,[DAFA_LIM]\r\n\t\t\t\t,[DAFA_LIM_ABS]\r\n\t\t\t\t,[DAFA_LIM_PCNT]\r\n\t\t\t\t,[FUTURE_OC_TOD_AMT]\r\n\t\t\t\t,[USED_OC_CLN_SINGLE_TRAN_LIM]\r\n\t\t\t\t,[IBAN_NUMBER]\r\n\t\t\t\t,[CHANNEL_LEVEL_CODE]\r\n\t\t\t\t,[CHANNEL_ID]\r\n\t\t\t\t,[FUTURE_CLR_BAL_AMT]\r\n\t\t\t\t,[FUTURE_UN_CLR_BAL_AMT]\r\n\t\t\t\t,[MASTER_B2K_ID]\r\n\t\t\t\t,[FREZ_REASON_CODE_2]\r\n\t\t\t\t,[FREZ_REASON_CODE_3]\r\n\t\t\t\t,[FREZ_REASON_CODE_4]\r\n\t\t\t\t,[FREZ_REASON_CODE_5]\r\n\t\t\t\t,[IS_LOAN_AGNST_CLTRL_FLG]\r\n\t\t\t\t,[preferred_caI_base]\r\n\t\t\t\t,[PREFERRED_CAL_BASE]\r\n\t\t\t\t,[ADDITIONAL_CAL_BASE]\r\n\t\t\t\t,[MUD_POOL_ACCT_FLG]\r\n\t\t\t\t,[ALT1_ACCT_SHORT_NAME]\r\n\t\t\t\t,[ALT1_ACCT_NAME]\r\n\t\t\t\t,[PACKAGE_ACCT_ID]\r\n\t\t\t\t,[ACCT_MOD_FLG]\r\n\t\t\t\t,[WTAX_FLOOR_LIMIT_FREQ]\r\n\t\t\t\t,[CHQ_PROV_BY_BANK_FLG]\r\n\t\t\t\t,[CHQ_VAL_PRD_MNTH]\r\n\t\t\t\t,[CHQ_VAL_PRD_DAY]\r\n\t\t\t\t,[WTAX_WAIVER_LEVEL]\r\n\t\t\t\t,[WTAX_APPLICABLE_LEVEL]\r\n\t\t\t\t,[WTAX_NOTICE_RCV_DATE]\r\n\t\t\t\t,[WTAX_WAIVER_START_DATE]\r\n\t\t\t\t,[WTAX_WAIVER_END_DATE]\r\n\t\t\t\t,[TAX_CERT_NUM]\r\n\t\t\t\t,[TAX_FORM_PARTICULARS]\r\n\t\t\t\t,[TAX_CERT_SUBMISSION_DATE]\r\n\t\t\t\t,[ACCT_OWNERSHIP_XFER_AGE]\r\n\t\t\t\t,[OD_PROT_ALWD]\r\n\t\t\t\t,[PYMNT_REF_NUM]\r\n\t\t\t\t,[RA_REF_NUM]\r\n\t\t\t\t,[REQ_MIN_DIS_AMT]\r\n\t\t\t\t,[REQ_MIN_DIS_TENOR]\r\n\t\t\t\t,[DISP_BLOCK_AMT]\r\n\t\t\t\t,[CONS_BAL_FLG]\r\n\t\t\t\t,[TAX_EVENT]\r\n\t\t\t\t,[REQUESTED_BY]\r\n\t\t\t\t,[TAX_EVENT_REASON_CODE]\r\n\t\t\t\t,[DR_INT_PRENOTE_REQ_FLG]\r\n\t\t\t\t,[DR_INT_PRENOTE_PERIOD]\r\n\t\t\t\t,[CHRG_PRENOTIFICATION_FLG]\r\n\t\t\t\t,[TARGET_BAL_FOR_SWEEPS]\r\n\t\t\t\t,[CHECK_FUNDS_AVAIL_SET]\r\n\t\t\t\t,[RULE_SET_ID]\r\n\t\t\t\t,[CHQ_REORDER_ALWD_FLG]\r\n\t\t\t\t,[DR_INT_METHOD]\r\n\t\t\t\t,[COLL_CHRG_FOR_SWP_REG]\r\n\t\t\t\t,[SWP_CHRG_COLL_ACCT_FLG]\r\n\t\t\t\t,[SSA_PLAN_ID]\r\n\t\t\t\t,[ESCH_CR_BACID]\r\n\t\t\t\t,[LAST6_ACCT_NUM]\r\n\t\t\t\t,[LAST6_FORACID]\r\n\t\t\t\t,BNK_CODE\r\n\t\t\t\t,SOURCE_CODE\r\n\t\t\t\t,FILE_NAME\r\n\t\t\t\t,insert_dttm\r\n\r\n)\r\n\r\n\r\nSELECT \r\n\t\t\t\t CONVERT(DATE,LEFT(RIGHT(FILE_NAME, 12), 8)) AS AS_OF_DATE\r\n\t\t\t\t,[ACID]\r\n\t\t\t\t,[BANK_ID]\r\n\t\t\t\t,[ENTITY_CRE_FLG]\r\n\t\t\t\t,[DEL_FLG]\r\n\t\t\t\t,[SOL_ID]\r\n\t\t\t\t,[ACCT_PREFIX]\r\n\t\t\t\t,[ACCT_NUM]\r\n\t\t\t\t,[BACID]\r\n\t\t\t\t,[FORACID]\r\n\t\t\t\t,[ACCT_NAME]\r\n\t\t\t\t,[ACCT_SHORT_NAME]\r\n\t\t\t\t,[CUST_ID]\r\n\t\t\t\t,[EMP_ID]\r\n\t\t\t\t,[GL_SUB_HEAD_CODE]\r\n\t\t\t\t,[ACCT_OWNERSHIP]\r\n\t\t\t\t,[SCHM_CODE]\r\n\t\t\t\t,[DR_BAL_LIM]\r\n\t\t\t\t,[ACCT_RPT_CODE]\r\n\t\t\t\t,[FREZ_CODE]\r\n\t\t\t\t,[FREZ_REASON_CODE]\r\n\t\t\t\t,[ACCT_OPN_DATE]\r\n\t\t\t\t,[ACCT_CLS_FLG]\r\n\t\t\t\t,[ACCT_CLS_DATE]\r\n\t\t\t\t,[CLR_BAL_AMT]\r\n\t\t\t\t,[TOT_MOD_TIMES]\r\n\t\t\t\t,[LEDG_NUM]\r\n\t\t\t\t,[UN_CLR_BAL_AMT]\r\n\t\t\t\t,[DRWNG_POWER]\r\n\t\t\t\t,[SANCT_LIM]\r\n\t\t\t\t,[ADHOC_LIM]\r\n\t\t\t\t,[EMER_ADVN]\r\n\t\t\t\t,[DACC_LIM]\r\n\t\t\t\t,[SYSTEM_RESERVED_AMT]\r\n\t\t\t\t,[SINGLE_TRAN_LIM]\r\n\t\t\t\t,[CLEAN_ADHOC_LIM]\r\n\t\t\t\t,[CLEAN_EMER_ADVN]\r\n\t\t\t\t,[CLEAN_SINGLE_TRAN_LIM]\r\n\t\t\t\t,[SYSTEM_GEN_LIM]\r\n\t\t\t\t,[CHQ_ALWD_FLG]\r\n\t\t\t\t,[CASH_EXCP_AMT_LIM]\r\n\t\t\t\t,[CLG_EXCP_AMT_LIM]\r\n\t\t\t\t,[XFER_EXCP_AMT_LIM]\r\n\t\t\t\t,[CASH_CR_EXCP_AMT_LIM]\r\n\t\t\t\t,[CLG_CR_EXCP_AMT_LIM]\r\n\t\t\t\t,[XFER_CR_EXCP_AMT_LIM]\r\n\t\t\t\t,[CASH_ABNRML_AMT_LIM]\r\n\t\t\t\t,[CLG_ABNRML_AMT_LIM]\r\n\t\t\t\t,[XFER_ABNRML_AMT_LIM]\r\n\t\t\t\t,[CUM_DR_AMT]\r\n\t\t\t\t,[CUM_CR_AMT]\r\n\t\t\t\t,[ACRD_CR_AMT]\r\n\t\t\t\t,[LAST_TRAN_DATE]\r\n\t\t\t\t,[MODE_OF_OPER_CODE]\r\n\t\t\t\t,[PB_PS_CODE]\r\n\t\t\t\t,[SERV_CHRG_COLL_FLG]\r\n\t\t\t\t,[FREE_TEXT]\r\n\t\t\t\t,[ACCT_TURNOVER_DET_FLG]\r\n\t\t\t\t,[NOM_AVAILABLE_FLG]\r\n\t\t\t\t,[ACCT_LOCN_CODE]\r\n\t\t\t\t,[LAST_PURGE_DATE]\r\n\t\t\t\t,[BAL_ON_PURGE_DATE]\r\n\t\t\t\t,[INT_PAID_FLG]\r\n\t\t\t\t,[INT_COLL_FLG]\r\n\t\t\t\t,[LAST_ANY_TRAN_DATE]\r\n\t\t\t\t,[HASHED_NO]\r\n\t\t\t\t,[LCHG_USER_ID]\r\n\t\t\t\t,[LCHG_TIME]\r\n\t\t\t\t,[RCRE_USER_ID]\r\n\t\t\t\t,[RCRE_TIME]\r\n\t\t\t\t,[LIMIT_B2KID]\r\n\t\t\t\t,[DRWNG_POWER_IND]\r\n\t\t\t\t,[DRWNG_POWER_PCNT]\r\n\t\t\t\t,[MICR_CHQ_CHRG_COLL_FLG]\r\n\t\t\t\t,[LAST_TURNOVER_DATE]\r\n\t\t\t\t,[NOTIONAL_RATE]\r\n\t\t\t\t,[NOTIONAL_RATE_CODE]\r\n\t\t\t\t,[FX_CLR_BAL_AMT]\r\n\t\t\t\t,[FX_BAL_ON_PURGE_DATE]\r\n\t\t\t\t,[FD_REF_NUM]\r\n\t\t\t\t,[FX_CUM_CR_AMT]\r\n\t\t\t\t,[FX_CUM_DR_AMT]\r\n\t\t\t\t,[CRNCY_CODE]\r\n\t\t\t\t,[SOURCE_OF_FUND]\r\n\t\t\t\t,[ANW_NON_CUST_ALWD_FLG]\r\n\t\t\t\t,[ACCT_CRNCY_CODE]\r\n\t\t\t\t,[LIEN_AMT]\r\n\t\t\t\t,[ACCT_CLASSIFICATION_FLG]\r\n\t\t\t\t,[SYSTEM_ONLY_ACCT_FLG]\r\n\t\t\t\t,[SINGLE_TRAN_FLG]\r\n\t\t\t\t,[UTILISED_AMT]\r\n\t\t\t\t,[INTER_SOL_ACCESS_FLG]\r\n\t\t\t\t,[PURGE_ALLOWED_FLG]\r\n\t\t\t\t,[PURGE_TEXT]\r\n\t\t\t\t,[MIN_VALUE_DATE]\r\n\t\t\t\t,[ACCT_MGR_USER_ID]\r\n\t\t\t\t,[SCHM_TYPE]\r\n\t\t\t\t,[LAST_FREZ_DATE]\r\n\t\t\t\t,[LAST_UNFREZ_DATE]\r\n\t\t\t\t,[BAL_ON_FREZ_DATE]\r\n\t\t\t\t,[SWIFT_ALLOWED_FLG]\r\n\t\t\t\t,[DACC_LIM_PCNT]\r\n\t\t\t\t,[DACC_LIM_ABS]\r\n\t\t\t\t,[CHRG_LEVEL_CODE]\r\n\t\t\t\t,[ACCT_CLS_CHRG_PEND_VERF]\r\n\t\t\t\t,[PARTITIONED_FLG]\r\n\t\t\t\t,[PARTITIONED_TYPE]\r\n\t\t\t\t,[PBF_DOWNLOAD_FLG]\r\n\t\t\t\t,[PBF_DELINK_DATE]\r\n\t\t\t\t,[WTAX_FLG]\r\n\t\t\t\t,[WTAX_AMOUNT_SCOPE_FLG]\r\n\t\t\t\t,[INT_ADJ_FOR_DEDUCTION_FLG]\r\n\t\t\t\t,[OPERATIVE_ACID]\r\n\t\t\t\t,[PHONE_NUM]\r\n\t\t\t\t,[NATIVE_LANG_NAME]\r\n\t\t\t\t,[NAT_LANG_TITLE_CODE]\r\n\t\t\t\t,[LANG_CODE]\r\n\t\t\t\t,[TS_CNT]\r\n\t\t\t\t,[POOL_ID]\r\n\t\t\t\t,[ALLOW_SWEEPS]\r\n\t\t\t\t,[ORDER_OF_UTILISATION]\r\n\t\t\t\t,[WTAX_PCNT]\r\n\t\t\t\t,[WTAX_FLOOR_LIMIT]\r\n\t\t\t\t,[DSA_PENAL_FLG]\r\n\t\t\t\t,[PRODUCT_GROUP]\r\n\t\t\t\t,[SOURCE_DEAL_CODE]\r\n\t\t\t\t,[DISBURSE_DEAL_CODE]\r\n\t\t\t\t,[SWEEP_IN_MIN_BAL]\r\n\t\t\t\t,[USED_SINGLE_TRAN_LIM]\r\n\t\t\t\t,[USED_CLEAN_SINGLE_TRAN_LIM]\r\n\t\t\t\t,[USED_UN_CLR_OVER_DACC_AMT]\r\n\t\t\t\t,[FFD_CONTRIB_TO_ACCT]\r\n\t\t\t\t,[ACCT_CREATION_MODE]\r\n\t\t\t\t,[WTAX_LEVEL_FLG]\r\n\t\t\t\t,[LAST_MODIFIED_DATE]\r\n\t\t\t\t,[CIF_ID]\r\n\t\t\t\t,[FUTURE_BAL_AMT]\r\n\t\t\t\t,[UTIL_FUTURE_BAL_AMT]\r\n\t\t\t\t,[DAFA_LIM]\r\n\t\t\t\t,[DAFA_LIM_ABS]\r\n\t\t\t\t,[DAFA_LIM_PCNT]\r\n\t\t\t\t,[FUTURE_OC_TOD_AMT]\r\n\t\t\t\t,[USED_OC_CLN_SINGLE_TRAN_LIM]\r\n\t\t\t\t,[IBAN_NUMBER]\r\n\t\t\t\t,[CHANNEL_LEVEL_CODE]\r\n\t\t\t\t,[CHANNEL_ID]\r\n\t\t\t\t,[FUTURE_CLR_BAL_AMT]\r\n\t\t\t\t,[FUTURE_UN_CLR_BAL_AMT]\r\n\t\t\t\t,[MASTER_B2K_ID]\r\n\t\t\t\t,[FREZ_REASON_CODE_2]\r\n\t\t\t\t,[FREZ_REASON_CODE_3]\r\n\t\t\t\t,[FREZ_REASON_CODE_4]\r\n\t\t\t\t,[FREZ_REASON_CODE_5]\r\n\t\t\t\t,[IS_LOAN_AGNST_CLTRL_FLG]\r\n\t\t\t\t,[preferred_caI_base]\r\n\t\t\t\t,[PREFERRED_CAL_BASE]\r\n\t\t\t\t,[ADDITIONAL_CAL_BASE]\r\n\t\t\t\t,[MUD_POOL_ACCT_FLG]\r\n\t\t\t\t,[ALT1_ACCT_SHORT_NAME]\r\n\t\t\t\t,[ALT1_ACCT_NAME]\r\n\t\t\t\t,[PACKAGE_ACCT_ID]\r\n\t\t\t\t,[ACCT_MOD_FLG]\r\n\t\t\t\t,[WTAX_FLOOR_LIMIT_FREQ]\r\n\t\t\t\t,[CHQ_PROV_BY_BANK_FLG]\r\n\t\t\t\t,[CHQ_VAL_PRD_MNTH]\r\n\t\t\t\t,[CHQ_VAL_PRD_DAY]\r\n\t\t\t\t,[WTAX_WAIVER_LEVEL]\r\n\t\t\t\t,[WTAX_APPLICABLE_LEVEL]\r\n\t\t\t\t,[WTAX_NOTICE_RCV_DATE]\r\n\t\t\t\t,[WTAX_WAIVER_START_DATE]\r\n\t\t\t\t,[WTAX_WAIVER_END_DATE]\r\n\t\t\t\t,[TAX_CERT_NUM]\r\n\t\t\t\t,[TAX_FORM_PARTICULARS]\r\n\t\t\t\t,[TAX_CERT_SUBMISSION_DATE]\r\n\t\t\t\t,[ACCT_OWNERSHIP_XFER_AGE]\r\n\t\t\t\t,[OD_PROT_ALWD]\r\n\t\t\t\t,[PYMNT_REF_NUM]\r\n\t\t\t\t,[RA_REF_NUM]\r\n\t\t\t\t,[REQ_MIN_DIS_AMT]\r\n\t\t\t\t,[REQ_MIN_DIS_TENOR]\r\n\t\t\t\t,[DISP_BLOCK_AMT]\r\n\t\t\t\t,[CONS_BAL_FLG]\r\n\t\t\t\t,[TAX_EVENT]\r\n\t\t\t\t,[REQUESTED_BY]\r\n\t\t\t\t,[TAX_EVENT_REASON_CODE]\r\n\t\t\t\t,[DR_INT_PRENOTE_REQ_FLG]\r\n\t\t\t\t,[DR_INT_PRENOTE_PERIOD]\r\n\t\t\t\t,[CHRG_PRENOTIFICATION_FLG]\r\n\t\t\t\t,[TARGET_BAL_FOR_SWEEPS]\r\n\t\t\t\t,[CHECK_FUNDS_AVAIL_SET]\r\n\t\t\t\t,[RULE_SET_ID]\r\n\t\t\t\t,[CHQ_REORDER_ALWD_FLG]\r\n\t\t\t\t,[DR_INT_METHOD]\r\n\t\t\t\t,[COLL_CHRG_FOR_SWP_REG]\r\n\t\t\t\t,[SWP_CHRG_COLL_ACCT_FLG]\r\n\t\t\t\t,[SSA_PLAN_ID]\r\n\t\t\t\t,[ESCH_CR_BACID]\r\n\t\t\t\t,[LAST6_ACCT_NUM]\r\n\t\t\t\t,[LAST6_FORACID]\r\n\t\t\t\t,LEFT(FILE_NAME, 5) AS BNK_CODE\r\n\t\t\t\t,SUBSTRING(FILE_NAME,7,3) AS SOURCE_CODE\r\n\t\t\t\t,FILE_NAME\r\n\t\t\t\t,INSERT_DTTM\r\nFROM D360.STG_EDS_GLD_GENACCTMASTTABLE\r\nWHERE H = 'D'\r\n\r\n"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "Manifest_file",
+							"type": "ExecutePipeline",
+							"dependsOn": [],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Workflow_Manifest",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"MaxPipelineCalls": 5,
+									"RetryInterval": 600,
+									"DatetoProcessed": {
+										"value": "@substring(item(),0,10)",
+										"type": "Expression"
+									},
+									"tables": {
+										"value": "@concat('''',pipeline().parameters.tables1,'''')",
+										"type": "Expression"
+									},
+									"EndTime": "08:00",
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									}
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"tables1": {
+				"type": "string",
+				"defaultValue": "GLD_GENACCTMASTTABLE"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "GLD"
+			}
+		},
+		"variables": {
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"CheckFEstatus": {
+				"type": "String",
+				"defaultValue": "True"
+			},
+			"Source": {
+				"type": "String",
+				"defaultValue": "GLD_FACT"
+			},
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-11-15T05:29:29Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

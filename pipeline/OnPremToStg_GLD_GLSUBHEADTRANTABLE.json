@@ -1,0 +1,359 @@
+{
+	"name": "OnPremToStg_GLD_GLSUBHEADTRANTABLE",
+	"properties": {
+		"activities": [
+			{
+				"name": "Get Success Count GLD_GLSUBHEADTRANTABLE",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": {
+							"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_STG_BUSC_GLD_GLSUBHEADTRANTABLE'',''BUSC_STG'',''',pipeline().parameters.process_date,''')')",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_OM",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "TASK_RUN"
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "Condition Success Count GLD_GLSUBHEADTABLE_copy1",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "TRUNCATE STG_GLD_GLSUBHEADTRANTABLE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('Get Success Count GLD_GLSUBHEADTRANTABLE').output.firstrow.CNT_SUCCESSFUL,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "DecToStg_GLD_GLSUBHEADTRANTABLE",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "PGP Decrypt GLD_GLSUBHEADTRANTABLE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "DecToStg_GLD_GLSUBHEADTRANTABLE",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"DateToProcess": {
+										"value": "@pipeline().parameters.process_date",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "END_TASK_GLD_GLSUBHEADTRANTABLE_SUCCESSFUL",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "DecToStg_GLD_GLSUBHEADTRANTABLE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_BUSC_GLD_GLSUBHEADTRANTABLE",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "BUSC_STG",
+										"type": "String"
+									},
+									"status": {
+										"value": "SUCCESSFUL",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "END_TASK_GLD_GLSUBHEADTRANTABLE_FAILED",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "DecToStg_GLD_GLSUBHEADTRANTABLE",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_BUSC_GLD_GLSUBHEADTRANTABLE",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "BUSC_STG",
+										"type": "String"
+									},
+									"status": {
+										"value": "FAILED",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "MovToArchive_GLD_GLSUBHEADTRANTABLE",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "END_TASK_GLD_GLSUBHEADTRANTABLE_SUCCESSFUL",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "MovToArchive_Joblet",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"tables": "GLD_GLSUBHEADTRANTABLE",
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "START_TASK_TSK_STG_BUSC_GLD_GLSUBHEADTRANTABLE",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_START]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_BUSC_GLD_GLSUBHEADTRANTABLE",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "BUSC_STG",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.process_date",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "OnPrem_GLD_GLSUBHEADTABLE",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "START_TASK_TSK_STG_BUSC_GLD_GLSUBHEADTRANTABLE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "OnPremToADLS_GLD",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"DatetoProcessed": {
+										"value": "@pipeline().parameters.process_date",
+										"type": "Expression"
+									},
+									"tables": "GLD_GLSUBHEADTRANTABLE"
+								}
+							}
+						},
+						{
+							"name": "PGP Decrypt GLD_GLSUBHEADTRANTABLE",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "OnPrem_GLD_GLSUBHEADTABLE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "PGPDecrypt_GLD",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "TRUNCATE STG_GLD_GLSUBHEADTRANTABLE",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Get Success Count GLD_GLSUBHEADTRANTABLE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "TRUNCATE TABLE D360.STG_GLD_GLSUBHEADTRANTABLE;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"parameters": {
+			"process_date": {
+				"type": "string"
+			},
+			"src_sys": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-05-10T01:43:42Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

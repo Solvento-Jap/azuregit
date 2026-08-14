@@ -1,0 +1,581 @@
+{
+	"name": "Workflow_EDS_DEP_DEPOSIT_NONPHP_YTD_Weekend",
+	"properties": {
+		"activities": [
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(variables('V_endDate')),ticks(variables('V_startDate'))),864000000000),1))\n",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append Process Date",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Iterate Execution of Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "OM_SRC_CHECK_DEP_DEPOSIT_NONPHP_YTD",
+							"type": "SqlPoolStoredProcedure",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_EDS_DEP_DEPOSIT_NONPHP_YTD",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@replace(substring(item(),0,10),'-','')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Get Success Count EDS",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "OM_SRC_CHECK_DEP_DEPOSIT_NONPHP_YTD",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_EDS_DEP_DEPOSIT_NONPHP_YTD'',''EDS'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count EDS",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count EDS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count EDS').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "START_TASK_EDS_DEP_DEPOSIT_NONPHP_YTD",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_DEP_DEPOSIT_NONPHP_YTD",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_DEP_DEPOSIT_NONPHP_YTD_SUCCESSFUL",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_DEP_DEPOSIT_NONPHP_YTD",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_DEP_DEPOSIT_NONPHP_YTD",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_DEP_DEPOSIT_NONPHP_YTD_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_DEP_DEPOSIT_NONPHP_YTD",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": "TSK_EDS_DEP_DEPOSIT_NONPHP_YTD",
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "EDS_DEP_DEPOSIT_NONPHP_YTD",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_EDS_DEP_DEPOSIT_NONPHP_YTD",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testsqlpool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"parameters": [
+														{
+															"name": "process_date",
+															"type": "Datetime",
+															"value": {
+																"value": "@substring(item(),0,10)",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														}
+													],
+													"type": "NonQuery",
+													"text": "DELETE FROM EDS.DEPOSIT_NONPHP_YTD WHERE FULLDATE = CAST(@process_date AS DATE);\r\n\r\nINSERT INTO\r\n\t EDS.DEPOSIT_NONPHP_YTD\r\n(      \r\n\t  FULLDATE\r\n    , PREVIOUS_BUSINESS_DAY\r\n    , CUST_ID\r\n    , GAM_ACID\r\n    , ACCT_CRNCY_CODE\r\n    , GAM_BANK_ID\r\n    , GAM_SCHM_TYPE\r\n    , CURRENT_OUTSTANDING_BALANCE\r\n    , CURRENT_OUTSTANDING_BALANCE_PHP\r\n    , PREVIOUS_OUTSTANDING_BALANCE --\r\n    , PREVIOUS_OUTSTANDING_BALANCE_PHP\r\n    , TOTAL_CURRENT_OUTSTANDING_BALANCE --\r\n    , TOTAL_CURRENT_OUTSTANDING_BALANCE_PHP\t\r\n    , DAYOFYEAR\r\n    , YTD_BALANCE  --\r\n\t, YTD_BALANCE_PHP\r\n\t, MONTH_END --\r\n)\r\n\r\n\r\nSELECT \r\n      TMP.FULLDATE\r\n    , TMP.PREVIOUS_BUSINESS_DAY\r\n    , TMP.CUST_ID\r\n    , TMP.GAM_ACID\r\n    , TMP.ACCT_CRNCY_CODE\r\n    , TMP.GAM_BANK_ID\r\n    , TMP.GAM_SCHM_TYPE\r\n    , (CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE ELSE CURRENT_PBD.OUTSTANDING_BALANCE END) AS CURRENT_OUTSTANDING_BALANCE\r\n    , (CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE_PHP ELSE CURRENT_PBD.OUTSTANDING_BALANCE_PHP END) AS CURRENT_OUTSTANDING_BALANCE_PHP\r\n    , CURRENT_PBD.OUTSTANDING_BALANCE AS PREVIOUS_OUTSTANDING_BALANCE\r\n    , CURRENT_PBD.OUTSTANDING_BALANCE_PHP AS PREVIOUS_OUTSTANDING_BALANCE_PHP\r\n    , COALESCE((CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE ELSE CURRENT_PBD.OUTSTANDING_BALANCE END),0) \r\n    + COALESCE((CASE WHEN TMP.DAYOFYEAR = 1 THEN 0 ELSE P_RUNNINGBAL.TOTAL_CURRENT_OUTSTANDING_BALANCE END),0) AS TOTAL_CURRENT_OUTSTANDING_BALANCE\r\n    , COALESCE((CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE_PHP ELSE CURRENT_PBD.OUTSTANDING_BALANCE_PHP END),0) \r\n    + COALESCE((CASE WHEN TMP.DAYOFYEAR = 1 THEN 0 ELSE P_RUNNINGBAL.TOTAL_CURRENT_OUTSTANDING_BALANCE_PHP END),0) AS TOTAL_CURRENT_OUTSTANDING_BALANCE_PHP\t\r\n    , TMP.DAYOFYEAR\r\n    , (COALESCE((CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE ELSE CURRENT_PBD.OUTSTANDING_BALANCE END),0) \r\n    + COALESCE((CASE WHEN TMP.DAYOFYEAR = 1 THEN 0 ELSE P_RUNNINGBAL.TOTAL_CURRENT_OUTSTANDING_BALANCE END),0)) / TMP.DAYOFYEAR AS YTD_BALANCE\r\n\t, (COALESCE((CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE_PHP ELSE CURRENT_PBD.OUTSTANDING_BALANCE_PHP END),0) \r\n    + COALESCE((CASE WHEN TMP.DAYOFYEAR = 1 THEN 0 ELSE P_RUNNINGBAL.TOTAL_CURRENT_OUTSTANDING_BALANCE_PHP END),0)) / TMP.DAYOFYEAR AS YTD_BALANCE_PHP\r\n\t, TMP.MONTH_END\r\nFROM\r\n    (\r\n \t\tSELECT \r\n              FULLDATE\r\n            , Previous_Business_Day\r\n            , Business_Day_Flag\r\n            , DAYOFYEAR\r\n            , YEAR\r\n            , CUST_ID\r\n            , GAM_ACID\r\n            , ACCT_CRNCY_CODE\r\n            , GAM_BANK_ID\r\n            , GAM_SCHM_TYPE\r\n\t\t\t, DATE_DIM.MONTH_END\r\n\t\t\t, DEP_ACCOUNT_STATUS\r\n          FROM EDS.DATE_DIM\r\n          JOIN EDS.DEPOSIT_FACT\r\n            ON 1 = 1\r\n            AND SUBSTRING(GAM_SCHM_CODE, 1, 2) <> '09'\r\n\t\t\tAND ACCT_CRNCY_CODE <> 'PHP'\r\n            JOIN (SELECT MAX(AS_OF_DATE) MAX_AS_OF_DATE FROM EDS.DEPOSIT_FACT WHERE AS_OF_DATE <= CAST(@process_date AS DATE)) MX\r\n            ON MX.MAX_AS_OF_DATE = AS_OF_DATE  OR (DEP_ACCOUNT_STATUS = 'C' AND CAST(@process_date AS DATE)>=AS_OF_DATE )\r\n        WHERE (FULLDATE =CAST(@process_date AS DATE) )  \r\n    ) TMP\r\nLEFT JOIN EDS.DEPOSIT_FACT CURRENT_BD\r\n    ON  TMP.FULLDATE = CURRENT_BD.AS_OF_DATE\r\n        AND TMP.GAM_ACID = CURRENT_BD.GAM_ACID\r\nLEFT JOIN EDS.DEPOSIT_FACT CURRENT_PBD\r\n    ON  TMP.Previous_Business_Day = CURRENT_PBD.AS_OF_DATE\r\n        AND TMP.GAM_ACID = CURRENT_PBD.GAM_ACID\r\nLEFT JOIN EDS.DEPOSIT_NONPHP_YTD P_RUNNINGBAL\r\n    ON  DATEADD(DD,-1,TMP.FULLDATE) = P_RUNNINGBAL.FULLDATE\r\n        AND TMP.GAM_ACID = P_RUNNINGBAL.GAM_ACID\r\n   "
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "With latest_pdate as (select dateadd(dd,1,max(process_Date)) fulldate\nfrom \nom.om_task_run where task_name='TSK_EDS_DEP_DEPOSIT_NONPHP_YTD' AND STATUS_ID=3)\nselect \n    latest_pdate.fulldate\nfrom \nlatest_pdate\ninner join eds.date_dim\n    on latest_pdate.fulldate = date_dim.fulldate\n    and WeekDayName in ('Saturday','Sunday')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "Get Process Date Failed",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "No Weekend Process date retrieved, Terminating execution.",
+								"errorCode": "100"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"tables": {
+				"type": "string"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "DEP"
+			}
+		},
+		"variables": {
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"CheckFEstatus": {
+				"type": "String",
+				"defaultValue": "True"
+			},
+			"Source": {
+				"type": "String",
+				"defaultValue": "DEP"
+			},
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-08-06T05:12:26Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

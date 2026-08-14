@@ -1,0 +1,125 @@
+{
+	"name": "StgTo_EDS_RIB_TRANSACTIONDETAILS",
+	"properties": {
+		"activities": [
+			{
+				"name": "RIB_TRANSACTIONDETAILS_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": {
+							"value": "@concat('SELECT COUNT(1) CNT FROM D360.STG_EDS_',pipeline().parameters.tables,' WHERE H = ''D''')",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": {
+								"value": "@concat('STG_EDS_',pipeline().parameters.tables)",
+								"type": "Expression"
+							}
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "RIB_TRANSACTIONDETAILS_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('RIB_TRANSACTIONDETAILS_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "EDS_RIB_TRANSACTIONDETAILS",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "TestSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"parameters": [
+											{
+												"name": "DatetoProcessed",
+												"type": "Datetime",
+												"value": {
+													"value": "@pipeline().parameters.DatetoProcessed",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											}
+										],
+										"type": "NonQuery",
+										"text": "DELETE FROM EDS.RIB_TRANSACTIONDETAILS WHERE AS_OF_DATE = CAST(@DatetoProcessed AS DATE);\r\n\r\nINSERT INTO EDS.RIB_TRANSACTIONDETAILS(\r\nAS_OF_DATE\r\n,BANK_ID\r\n,TXN_ID\r\n,REQ_SR_NO\r\n,DB_TS\r\n,CP_ENTITY_TYPE\r\n,CP_ENTITY_ID\r\n,CP_ENTITY_EXTN1\r\n,CP_ENTITY_EXTN2\r\n,CP_ENTITY_EXTN3\r\n,CP_ENTITY_NICKNAME\r\n,CP_REMARKS\r\n,CP_ROUTING_NO\r\n,CP_ACCT_CRN\r\n,TRAN_ACT_ENTITY_TYPE\r\n,TRAN_ACT_ENTITY_ID\r\n,TRAN_ACT_ENTITY_EXTN1\r\n,TRAN_ACT_ENTITY_EXTN2\r\n,TRAN_ACT_ENTITY_NICKNAME\r\n,TRAN_ACT_REMARKS\r\n,TRAN_ACT_CRN\r\n,VALUE_DATE\r\n,CHANNEL_ID\r\n,ENTRY_AMT\r\n,TOTAL_ENTRY_AMT\r\n,LIMIT_AMT_IN_HOMECRN\r\n,LIMIT_RATE\r\n,LIMIT_RATE_CODE\r\n,CHARGE_AMT\r\n,CHARGE_CRN\r\n,NW_COMMISSION_AMT\r\n,NW_COMMISSION_CRN\r\n,NW_COMMISSION_INDICATOR\r\n,TRANSACTION_PURPOSE\r\n,MANDATE_NO\r\n,NETWORK_ID\r\n,ADDITIONAL_REMARKS\r\n,NETWORK_PRODUCT\r\n,DEAL_REFERENCE_NO\r\n,NEGOTIATED_RATE\r\n,TRACE_ACCOUNT\r\n,TRACE_ACCOUNT_BANK_CODE\r\n,TRACE_ACCOUNT_BRANCH_ID\r\n,DELIVERY_MODE\r\n,ORDERING_PARTY_CUST_ID\r\n,ORDERING_PARTY\r\n,ORDERING_PARTY_ADDRESS\r\n,ORDERING_PARTY_CITY_ZIP\r\n,ORDERING_PARTY_STATE\r\n,ORDERING_PARTY_COUNTRY\r\n,INTERMEDIARY_BANK_REF_NO\r\n,ENTRY_RMKS\r\n,DEL_FLG\r\n,R_CRE_ID\r\n,R_CRE_TIME\r\n,R_MOD_ID\r\n,R_MOD_TIME\r\n,TXN_ENTRY_STATUS\r\n,RESPONSE_CODE\r\n,RESPONSE_MSG\r\n,PYMT_SRL_NO\r\n,NO_OF_RETRIES\r\n,HOST_REF_NO\r\n,BNF_DISPLAY_ID\r\n,BORPI_DWNLD_DT\r\n,BORPI_DWNLD_FILE_NUM\r\n,CONSUMER_CODE\r\n,BENEFICIARY_REFERENCE\r\n,EXTRA_TRANSACTION_INFO\r\n,NOTIFICATION_REF_NO\r\n,EXTERNAL_REF_NO\r\n,LAST6_ACCT_NUM\r\n,isActive\r\n,isLatest\r\n,BNK_CODE\r\n,SOURCE_CODE\r\n,FILE_NAME\r\n,insert_dttm\r\n)\r\nSELECT \r\n@DatetoProcessed AS AS_OF_DATE\r\n,BANK_ID\r\n,TXN_ID\r\n,REQ_SR_NO\r\n,DB_TS\r\n,CP_ENTITY_TYPE\r\n,CP_ENTITY_ID\r\n,CP_ENTITY_EXTN1\r\n,CP_ENTITY_EXTN2\r\n,CP_ENTITY_EXTN3\r\n,CP_ENTITY_NICKNAME\r\n,CP_REMARKS\r\n,CP_ROUTING_NO\r\n,CP_ACCT_CRN\r\n,TRAN_ACT_ENTITY_TYPE\r\n,TRAN_ACT_ENTITY_ID\r\n,TRAN_ACT_ENTITY_EXTN1\r\n,TRAN_ACT_ENTITY_EXTN2\r\n,TRAN_ACT_ENTITY_NICKNAME\r\n,TRAN_ACT_REMARKS\r\n,TRAN_ACT_CRN\r\n,VALUE_DATE\r\n,CHANNEL_ID\r\n,ENTRY_AMT\r\n,TOTAL_ENTRY_AMT\r\n,LIMIT_AMT_IN_HOMECRN\r\n,LIMIT_RATE\r\n,LIMIT_RATE_CODE\r\n,CHARGE_AMT\r\n,CHARGE_CRN\r\n,NW_COMMISSION_AMT\r\n,NW_COMMISSION_CRN\r\n,NW_COMMISSION_INDICATOR\r\n,TRANSACTION_PURPOSE\r\n,MANDATE_NO\r\n,NETWORK_ID\r\n,ADDITIONAL_REMARKS\r\n,NETWORK_PRODUCT\r\n,DEAL_REFERENCE_NO\r\n,NEGOTIATED_RATE\r\n,TRACE_ACCOUNT\r\n,TRACE_ACCOUNT_BANK_CODE\r\n,TRACE_ACCOUNT_BRANCH_ID\r\n,DELIVERY_MODE\r\n,ORDERING_PARTY_CUST_ID\r\n,ORDERING_PARTY\r\n,ORDERING_PARTY_ADDRESS\r\n,ORDERING_PARTY_CITY_ZIP\r\n,ORDERING_PARTY_STATE\r\n,ORDERING_PARTY_COUNTRY\r\n,INTERMEDIARY_BANK_REF_NO\r\n,ENTRY_RMKS\r\n,DEL_FLG\r\n,R_CRE_ID\r\n,R_CRE_TIME\r\n,R_MOD_ID\r\n,R_MOD_TIME\r\n,TXN_ENTRY_STATUS\r\n,RESPONSE_CODE\r\n,RESPONSE_MSG\r\n,PYMT_SRL_NO\r\n,NO_OF_RETRIES\r\n,HOST_REF_NO\r\n,BNF_DISPLAY_ID\r\n,BORPI_DWNLD_DT\r\n,BORPI_DWNLD_FILE_NUM\r\n,CONSUMER_CODE\r\n,BENEFICIARY_REFERENCE\r\n,EXTRA_TRANSACTION_INFO\r\n,NOTIFICATION_REF_NO\r\n,EXTERNAL_REF_NO\r\n,LAST6_ACCT_NUM\r\n,1 as isActive\r\n,1 as isLatest\r\n,left(FILE_NAME, 5) as BNK_CODE\r\n,substring(FILE_NAME,7,3) as SOURCE_CODE\r\n,FILE_NAME\r\n,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATETIME) as insert_dttm\r\nFROM D360.STG_EDS_RIB_TRANSACTIONDETAILS\r\nWHERE H = 'D'\r\n"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"tables": {
+				"type": "string"
+			},
+			"DatetoProcessed": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-07-08T02:48:52Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

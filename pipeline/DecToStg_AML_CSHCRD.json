@@ -1,0 +1,1172 @@
+{
+	"name": "DecToStg_AML_CSHCRD",
+	"properties": {
+		"description": "AML DecToStg pipeline for CSHCRD; covers 2 approved manifest table(s).",
+		"activities": [
+			{
+				"name": "Require_Approved_Execution",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.ExecutionMode, 'ApprovedDateSliceReload')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Unapproved_Execution",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "ExecutionMode must be ApprovedDateSliceReload.",
+								"errorCode": "AML_EXECUTION_NOT_APPROVED"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Execution_Approved",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Require_Valid_MissingFilePolicy",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(equals(pipeline().parameters.MissingFilePolicy, 'Fail'), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Invalid_MissingFilePolicy",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "MissingFilePolicy must be Fail or Skip.",
+								"errorCode": "AML_INVALID_MISSING_FILE_POLICY"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "MissingFilePolicy_Valid",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "GetFile_ACCOUNTS",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv_AML",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('*CSHCRD-ACCT_', pipeline().parameters.DateToProcess, '*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/CSHCRD",
+							"ColumnDelimiter": "|",
+							"FirstRowAsHeader": true,
+							"RowDelimiter": "\n",
+							"EncodingName": "UTF-8"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "RequireFileOrSkip_ACCOUNTS",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "GetFile_ACCOUNTS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(not(empty(activity('GetFile_ACCOUNTS').output.childItems)), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_ACCOUNTS_MissingFile",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "No source file matched @concat('*CSHCRD-ACCT_', pipeline().parameters.DateToProcess, '*') under dev/decrypted/CSHCRD, and MissingFilePolicy is Fail.",
+								"errorCode": "AML_SOURCE_FILE_MISSING"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Accept_ACCOUNTS_FilePolicy",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "IfFile_ACCOUNTS",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "RequireFileOrSkip_ACCOUNTS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@not(empty(activity('GetFile_ACCOUNTS').output.childItems))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Skip_ACCOUNTS_NoFile",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Start_ACCOUNTS",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_START]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_CSHCRD_ACCOUNTS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DateToProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Copy_ACCOUNTS",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Start_ACCOUNTS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										},
+										{
+											"name": "H",
+											"value": "D"
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/CSHCRD",
+										"wildcardFileName": {
+											"value": "@concat('*CSHCRD-ACCT_', pipeline().parameters.DateToProcess, '*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": {
+										"value": "@concat('DECLARE @DateToProcess varchar(8) = ''', replace(pipeline().parameters.DateToProcess, '''', ''''''), '''; IF LEN(@DateToProcess) <> 8 OR @DateToProcess LIKE ''%[^0-9]%'' OR TRY_CONVERT(date, @DateToProcess, 112) IS NULL THROW 50000, ''DateToProcess must be a valid yyyyMMdd date.'', 1; DELETE FROM [D360].[STG_ACCOUNTS] WHERE CHARINDEX(''CSHCRD-ACCT_'' + @DateToProcess, [FILE_NAME]) > 0;')",
+										"type": "Expression"
+									},
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "ACCOUNTNUMBER"
+											},
+											"sink": {
+												"name": "ACCOUNTNUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCOUNTTYPE"
+											},
+											"sink": {
+												"name": "ACCOUNTTYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "INITIALDEPOSIT"
+											},
+											"sink": {
+												"name": "INITIALDEPOSIT"
+											}
+										},
+										{
+											"source": {
+												"name": "BRANCHCODE"
+											},
+											"sink": {
+												"name": "BRANCHCODE"
+											}
+										},
+										{
+											"source": {
+												"name": "OPENINGDATE"
+											},
+											"sink": {
+												"name": "OPENINGDATE"
+											}
+										},
+										{
+											"source": {
+												"name": "CLOSINGDATE"
+											},
+											"sink": {
+												"name": "CLOSINGDATE"
+											}
+										},
+										{
+											"source": {
+												"name": "SOURCE"
+											},
+											"sink": {
+												"name": "SOURCE"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCOUNTBALANCE"
+											},
+											"sink": {
+												"name": "ACCOUNTBALANCE"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCOUNT_STATUS"
+											},
+											"sink": {
+												"name": "ACCOUNT_STATUS"
+											}
+										},
+										{
+											"source": {
+												"name": "CURRENCY"
+											},
+											"sink": {
+												"name": "CURRENCY"
+											}
+										},
+										{
+											"source": {
+												"name": "CUSTOMERNO"
+											},
+											"sink": {
+												"name": "CUSTOMERNO"
+											}
+										},
+										{
+											"source": {
+												"name": "DATE_CREATED"
+											},
+											"sink": {
+												"name": "DATE_CREATED"
+											}
+										},
+										{
+											"source": {
+												"name": "DATE_LAST_MODIFIED"
+											},
+											"sink": {
+												"name": "DATE_LAST_MODIFIED"
+											}
+										},
+										{
+											"source": {
+												"name": "BUSINESS_DATE"
+											},
+											"sink": {
+												"name": "BUSINESS_DATE"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME"
+											},
+											"sink": {
+												"name": "FILE_NAME"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm"
+											},
+											"sink": {
+												"name": "insert_dttm"
+											}
+										},
+										{
+											"source": {
+												"name": "H"
+											},
+											"sink": {
+												"name": "H"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv_AML",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": "dev/decrypted/CSHCRD",
+										"ColumnDelimiter": "|",
+										"FirstRowAsHeader": true,
+										"RowDelimiter": "\n",
+										"EncodingName": "UTF-8"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_ACCOUNTS"
+									}
+								}
+							]
+						},
+						{
+							"name": "End_ACCOUNTS_Success",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_ACCOUNTS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_CSHCRD_ACCOUNTS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "SUCCESSFUL",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_ACCOUNTS",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "End_ACCOUNTS_Failed",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_ACCOUNTS",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_CSHCRD_ACCOUNTS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "FAILED",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_ACCOUNTS",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Fail_ACCOUNTS_Copy",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "End_ACCOUNTS_Failed",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "Copy into D360.STG_ACCOUNTS failed. Review the Copy activity and OM task evidence.",
+								"errorCode": "AML_COPY_FAILED"
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "GetFile_CSHCRD_TRANSACTIONS",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "IfFile_ACCOUNTS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv_AML",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('*CSHCRD-TXN_', pipeline().parameters.DateToProcess, '*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/CSHCRD",
+							"ColumnDelimiter": "|",
+							"FirstRowAsHeader": true,
+							"RowDelimiter": "\n",
+							"EncodingName": "UTF-8"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "RequireFileOrSkip_CSHCRD_TRANSACTIONS",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "GetFile_CSHCRD_TRANSACTIONS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(not(empty(activity('GetFile_CSHCRD_TRANSACTIONS').output.childItems)), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_CSHCRD_TRANSACTIONS_MissingFile",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "No source file matched @concat('*CSHCRD-TXN_', pipeline().parameters.DateToProcess, '*') under dev/decrypted/CSHCRD, and MissingFilePolicy is Fail.",
+								"errorCode": "AML_SOURCE_FILE_MISSING"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Accept_CSHCRD_TRANSACTIONS_FilePolicy",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "IfFile_CSHCRD_TRANSACTIONS",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "RequireFileOrSkip_CSHCRD_TRANSACTIONS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@not(empty(activity('GetFile_CSHCRD_TRANSACTIONS').output.childItems))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Skip_CSHCRD_TRANSACTIONS_NoFile",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Start_CSHCRD_TRANSACTIONS",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_START]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_CSHCRD_TRANSACTIONS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DateToProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Copy_CSHCRD_TRANSACTIONS",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Start_CSHCRD_TRANSACTIONS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										},
+										{
+											"name": "H",
+											"value": "D"
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/CSHCRD",
+										"wildcardFileName": {
+											"value": "@concat('*CSHCRD-TXN_', pipeline().parameters.DateToProcess, '*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": {
+										"value": "@concat('DECLARE @DateToProcess varchar(8) = ''', replace(pipeline().parameters.DateToProcess, '''', ''''''), '''; IF LEN(@DateToProcess) <> 8 OR @DateToProcess LIKE ''%[^0-9]%'' OR TRY_CONVERT(date, @DateToProcess, 112) IS NULL THROW 50000, ''DateToProcess must be a valid yyyyMMdd date.'', 1; DELETE FROM [D360].[STG_CSHCRD_TRANSACTIONS] WHERE CHARINDEX(''CSHCRD-TXN_'' + @DateToProcess, [FILE_NAME]) > 0;')",
+										"type": "Expression"
+									},
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "TXNDATE"
+											},
+											"sink": {
+												"name": "TXNDATE"
+											}
+										},
+										{
+											"source": {
+												"name": "TXNREFNO"
+											},
+											"sink": {
+												"name": "TXNREFNO"
+											}
+										},
+										{
+											"source": {
+												"name": "AMLA_TXNCODE"
+											},
+											"sink": {
+												"name": "AMLA_TXNCODE"
+											}
+										},
+										{
+											"source": {
+												"name": "TXNSUBTYPE"
+											},
+											"sink": {
+												"name": "TXNSUBTYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "TXNMODE"
+											},
+											"sink": {
+												"name": "TXNMODE"
+											}
+										},
+										{
+											"source": {
+												"name": "CURRENCY_CODE"
+											},
+											"sink": {
+												"name": "CURRENCY_CODE"
+											}
+										},
+										{
+											"source": {
+												"name": "TXNAMOUNT"
+											},
+											"sink": {
+												"name": "TXNAMOUNT"
+											}
+										},
+										{
+											"source": {
+												"name": "INOUT"
+											},
+											"sink": {
+												"name": "INOUT"
+											}
+										},
+										{
+											"source": {
+												"name": "BRANCHCODE"
+											},
+											"sink": {
+												"name": "BRANCHCODE"
+											}
+										},
+										{
+											"source": {
+												"name": "NATURE_PURPOSE"
+											},
+											"sink": {
+												"name": "NATURE_PURPOSE"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCOUNTNUMBER"
+											},
+											"sink": {
+												"name": "ACCOUNTNUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "CORRES_BANK"
+											},
+											"sink": {
+												"name": "CORRES_BANK"
+											}
+										},
+										{
+											"source": {
+												"name": "CORRES_BANK_COUNTRYCODE"
+											},
+											"sink": {
+												"name": "CORRES_BANK_COUNTRYCODE"
+											}
+										},
+										{
+											"source": {
+												"name": "CORRES_BANK_ADDRESS1"
+											},
+											"sink": {
+												"name": "CORRES_BANK_ADDRESS1"
+											}
+										},
+										{
+											"source": {
+												"name": "CORRES_BANK_ADDRESS2"
+											},
+											"sink": {
+												"name": "CORRES_BANK_ADDRESS2"
+											}
+										},
+										{
+											"source": {
+												"name": "CORRES_BANK_ADDRESS3"
+											},
+											"sink": {
+												"name": "CORRES_BANK_ADDRESS3"
+											}
+										},
+										{
+											"source": {
+												"name": "SOURCE"
+											},
+											"sink": {
+												"name": "SOURCE"
+											}
+										},
+										{
+											"source": {
+												"name": "BUSINESS_DATE"
+											},
+											"sink": {
+												"name": "BUSINESS_DATE"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME"
+											},
+											"sink": {
+												"name": "FILE_NAME"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm"
+											},
+											"sink": {
+												"name": "insert_dttm"
+											}
+										},
+										{
+											"source": {
+												"name": "H"
+											},
+											"sink": {
+												"name": "H"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv_AML",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": "dev/decrypted/CSHCRD",
+										"ColumnDelimiter": "|",
+										"FirstRowAsHeader": true,
+										"RowDelimiter": "\n",
+										"EncodingName": "UTF-8"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_CSHCRD_TRANSACTIONS"
+									}
+								}
+							]
+						},
+						{
+							"name": "End_CSHCRD_TRANSACTIONS_Success",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_CSHCRD_TRANSACTIONS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_CSHCRD_TRANSACTIONS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "SUCCESSFUL",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_CSHCRD_TRANSACTIONS",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "End_CSHCRD_TRANSACTIONS_Failed",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_CSHCRD_TRANSACTIONS",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_CSHCRD_TRANSACTIONS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "FAILED",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_CSHCRD_TRANSACTIONS",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Fail_CSHCRD_TRANSACTIONS_Copy",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "End_CSHCRD_TRANSACTIONS_Failed",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "Copy into D360.STG_CSHCRD_TRANSACTIONS failed. Review the Copy activity and OM task evidence.",
+								"errorCode": "AML_COPY_FAILED"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"DateToProcess": {
+				"type": "String"
+			},
+			"ExecutionMode": {
+				"type": "String",
+				"defaultValue": "PlanOnly"
+			},
+			"MissingFilePolicy": {
+				"type": "String",
+				"defaultValue": "Fail"
+			}
+		},
+		"folder": {
+			"name": "AML_ETL/DecToStg"
+		},
+		"annotations": [
+			"AML",
+			"CSHCRD",
+			"DecToStg",
+			"LIVE_PREFLIGHT_REQUIRED",
+			"MISSING_FILE_POLICY_CONFIGURABLE"
+		],
+		"lastPublishTime": "2026-07-31T05:28:44Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

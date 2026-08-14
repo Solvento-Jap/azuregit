@@ -1,0 +1,20 @@
+{
+	"name": "SQL script 308",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "WITH CustomerRiskRatingSK AS (SELECT ISNULL(MAX(CustomerRiskRatingSK),0) RN FROM DW.DimCustomerRiskRating)\n\n,DimCustomer_CRM AS \n(SELECT CustomerId ,CustomerSK ,BankSK,SourceSystemCode,ValidEndDate ,ValidStartDate \n    ,ROW_NUMBER() OVER (PARTITION BY CustomerId ,CustomerSK ORDER BY ValidEndDate ,ValidStartDate) RN_RANK\nFROM DW.DimCustomer WHERE SourceSystemCode = 'CRM' AND CurrentIndicator = 1)\n\n,DimCustCRM AS (SELECT * FROM DimCustomer_CRM WHERE RN_RANK = 1)\n\n,BCOCR AS \n(SELECT CustomerId ,FinancialInstitutionId,SourceCode,RiskRatingTypeId,PeriodStartDate ,CreditRiskId\nFROM BNKM.CustomerOverallCreditRating\nWHERE SourceCode = 'CRM'\nGROUP BY CustomerId  ,FinancialInstitutionId ,SourceCode ,RiskRatingTypeId ,PeriodStartDate ,CreditRiskId)\n\n,CRM AS (\nSELECT DISTINCT\n\tDC.CustomerSK AS CustomerSK\n\t,DC.CustomerID AS CustomerID\n\t,DRRT.RiskRatingTypeSK AS RiskRatingTypeSK\n\t,DRR.RiskRatingSK AS RiskRatingSK\n\t,1 AS CurrentIndicator\n\t,GETDATE() AS ValidStartDate\n\t,'9999-01-01' AS ValidEndDate\n\t,DC.SourceSystemCode AS SourceSystemCode\n\t,0 AS WorkFlowId\n\t,0 AS TaskRunId\n\t,GETDATE() AS InsertDttm                     \nFROM DimCustCRM DC\nLEFT JOIN DW.DimBank DB ON DC.BankSK = DB.BankSK\nLEFT JOIN BCOCR ON DC.CustomerID = BCOCR.CustomerId AND DB.BankID = BCOCR.FinancialInstitutionId\n--LEFT JOIN DW.DimRiskRatingType DRRT ON BCOCR.RiskRatingTypeId = DRRT.RiskRatingTypeID AND DC.BankSK = DRRT.BankSK\n--LEFT JOIN DW.DimRiskRating DRR ON BCOCR.CreditRiskId = DRR.RiskRatingID AND DC.BankSK = DRR.BankSK)\n)\nSELECT count(1) FROM DimCustCRM\nUNION ALL\nSELECT count(1) FROM CRM",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

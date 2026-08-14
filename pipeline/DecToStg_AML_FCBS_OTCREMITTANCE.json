@@ -1,0 +1,909 @@
+{
+	"name": "DecToStg_AML_FCBS_OTCREMITTANCE",
+	"properties": {
+		"description": "AML DecToStg pipeline for CUSTOM.C_CTTIOW -> STG_EDS_DEP_OTCREMITTANCE; CBC-RDP-AML-003 Phase 1; covers 1 approved manifest table.",
+		"activities": [
+			{
+				"name": "Require_Approved_Execution",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.ExecutionMode, 'ApprovedDateSliceReload')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Unapproved_Execution",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "ExecutionMode must be ApprovedDateSliceReload.",
+								"errorCode": "AML_EXECUTION_NOT_APPROVED"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Execution_Approved",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Require_Valid_MissingFilePolicy",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(equals(pipeline().parameters.MissingFilePolicy, 'Fail'), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Invalid_MissingFilePolicy",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "MissingFilePolicy must be Fail or Skip.",
+								"errorCode": "AML_INVALID_MISSING_FILE_POLICY"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "MissingFilePolicy_Valid",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "GetFile_OTCREMITTANCE",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv_AML",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('*CUSTOM.C_CTTIOW-', pipeline().parameters.DateToProcess, '*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/FCBS",
+							"ColumnDelimiter": "|",
+							"FirstRowAsHeader": true,
+							"RowDelimiter": "\r\n",
+							"EncodingName": "UTF-8"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "RequireFileOrSkip_OTCREMITTANCE",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "GetFile_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(not(empty(activity('GetFile_OTCREMITTANCE').output.childItems)), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_OTCREMITTANCE_MissingFile",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "No source file matched @concat('*TRY-TXNS-', pipeline().parameters.DateToProcess, '*') under dev/decrypted/FCBS, and MissingFilePolicy is Fail.",
+								"errorCode": "AML_SOURCE_FILE_MISSING"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Accept_OTCREMITTANCE_FilePolicy",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "IfFile_OTCREMITTANCE",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "RequireFileOrSkip_OTCREMITTANCE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@not(empty(activity('GetFile_OTCREMITTANCE').output.childItems))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Skip_OTCREMITTANCE_NoFile",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Start_OTCREMITTANCE",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_START]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_FCBS_OTCREMITTANCE",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DateToProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Copy_OTCREMITTANCE",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Start_OTCREMITTANCE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 2,
+								"retryIntervalInSeconds": 120
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										},
+										{
+											"name": "date_to_process",
+											"value": {
+												"value": "@pipeline().parameters.DateToProcess",
+												"type": "Expression"
+											}
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/FCBS",
+										"wildcardFileName": {
+											"value": "@concat('*CUSTOM.C_CTTIOW-', pipeline().parameters.DateToProcess, '*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": {
+										"value": "@concat('DECLARE @DateToProcess varchar(8) = ''', replace(pipeline().parameters.DateToProcess, '''', ''''''), '''; IF LEN(@DateToProcess) <> 8 OR @DateToProcess LIKE ''%[^0-9]%'' OR TRY_CONVERT(date, @DateToProcess, 112) IS NULL THROW 50000, ''DateToProcess must be a valid yyyyMMdd date.'', 1; DELETE FROM [D360].[STG_EDS_DEP_OTCREMITTANCE] WHERE CHARINDEX(@DateToProcess, [date_to_process]) > 0;')",
+										"type": "Expression"
+									},
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "H"
+											},
+											"sink": {
+												"name": "H"
+											}
+										},
+										{
+											"source": {
+												"name": "REM_ACCT_NO"
+											},
+											"sink": {
+												"name": "REM_ACCT_NO"
+											}
+										},
+										{
+											"source": {
+												"name": "INT_BANK_NAME"
+											},
+											"sink": {
+												"name": "INT_BANK_NAME"
+											}
+										},
+										{
+											"source": {
+												"name": "INT_BANK_SWIFT_CODE"
+											},
+											"sink": {
+												"name": "INT_BANK_SWIFT_CODE"
+											}
+										},
+										{
+											"source": {
+												"name": "INT_BANK_ACCT_NO"
+											},
+											"sink": {
+												"name": "INT_BANK_ACCT_NO"
+											}
+										},
+										{
+											"source": {
+												"name": "INT_BANK_ADDR"
+											},
+											"sink": {
+												"name": "INT_BANK_ADDR"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_BANK_NAME"
+											},
+											"sink": {
+												"name": "BENE_BANK_NAME"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_BANK_SWIFT_CODE"
+											},
+											"sink": {
+												"name": "BENE_BANK_SWIFT_CODE"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_BANK_ADDR_LINE1"
+											},
+											"sink": {
+												"name": "BENE_BANK_ADDR_LINE1"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_BANK_ADDR_LINE2"
+											},
+											"sink": {
+												"name": "BENE_BANK_ADDR_LINE2"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_BANK_ADDR_LINE3"
+											},
+											"sink": {
+												"name": "BENE_BANK_ADDR_LINE3"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_BANK_CNTRY_CODE"
+											},
+											"sink": {
+												"name": "BENE_BANK_CNTRY_CODE"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_CLIENT_TYPE"
+											},
+											"sink": {
+												"name": "BENE_CLIENT_TYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_ACCT_NO"
+											},
+											"sink": {
+												"name": "BENE_ACCT_NO"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_LNAME"
+											},
+											"sink": {
+												"name": "BENE_LNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_FNAME"
+											},
+											"sink": {
+												"name": "BENE_FNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_MNAME"
+											},
+											"sink": {
+												"name": "BENE_MNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_ADDR_LINE1"
+											},
+											"sink": {
+												"name": "BENE_ADDR_LINE1"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_ADDR_LINE2"
+											},
+											"sink": {
+												"name": "BENE_ADDR_LINE2"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_ADDR_LINE3"
+											},
+											"sink": {
+												"name": "BENE_ADDR_LINE3"
+											}
+										},
+										{
+											"source": {
+												"name": "PURPOSE"
+											},
+											"sink": {
+												"name": "PURPOSE"
+											}
+										},
+										{
+											"source": {
+												"name": "REM_INFO"
+											},
+											"sink": {
+												"name": "REM_INFO"
+											}
+										},
+										{
+											"source": {
+												"name": "CHARGES"
+											},
+											"sink": {
+												"name": "CHARGES"
+											}
+										},
+										{
+											"source": {
+												"name": "COR_BANK_USED"
+											},
+											"sink": {
+												"name": "COR_BANK_USED"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_EXISTING_BANK_CLIENT"
+											},
+											"sink": {
+												"name": "BENE_EXISTING_BANK_CLIENT"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_ACCT_NO_OB"
+											},
+											"sink": {
+												"name": "BENE_ACCT_NO_OB"
+											}
+										},
+										{
+											"source": {
+												"name": "REM_CLIENT_TYPE"
+											},
+											"sink": {
+												"name": "REM_CLIENT_TYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "REM_LNAME"
+											},
+											"sink": {
+												"name": "REM_LNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "REM_FNAME"
+											},
+											"sink": {
+												"name": "REM_FNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "REM_MNAME"
+											},
+											"sink": {
+												"name": "REM_MNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "REM_ADDR_LINE1"
+											},
+											"sink": {
+												"name": "REM_ADDR_LINE1"
+											}
+										},
+										{
+											"source": {
+												"name": "REM_ADDR_LINE2"
+											},
+											"sink": {
+												"name": "REM_ADDR_LINE2"
+											}
+										},
+										{
+											"source": {
+												"name": "REM_ADDR_LINE3"
+											},
+											"sink": {
+												"name": "REM_ADDR_LINE3"
+											}
+										},
+										{
+											"source": {
+												"name": "REM_BANK_CODE"
+											},
+											"sink": {
+												"name": "REM_BANK_CODE"
+											}
+										},
+										{
+											"source": {
+												"name": "REM_BANK_ADDR_LINE1"
+											},
+											"sink": {
+												"name": "REM_BANK_ADDR_LINE1"
+											}
+										},
+										{
+											"source": {
+												"name": "REM_BANK_ADDR_LINE2"
+											},
+											"sink": {
+												"name": "REM_BANK_ADDR_LINE2"
+											}
+										},
+										{
+											"source": {
+												"name": "REM_BANK_ADDR_LINE3"
+											},
+											"sink": {
+												"name": "REM_BANK_ADDR_LINE3"
+											}
+										},
+										{
+											"source": {
+												"name": "REM_BANK_CNTRY_CODE"
+											},
+											"sink": {
+												"name": "REM_BANK_CNTRY_CODE"
+											}
+										},
+										{
+											"source": {
+												"name": "TRAN_ID"
+											},
+											"sink": {
+												"name": "TRAN_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "TRAN_DATE"
+											},
+											"sink": {
+												"name": "TRAN_DATE"
+											}
+										},
+										{
+											"source": {
+												"name": "RCRE_TIME"
+											},
+											"sink": {
+												"name": "RCRE_TIME"
+											}
+										},
+										{
+											"source": {
+												"name": "RCRE_USER_ID"
+											},
+											"sink": {
+												"name": "RCRE_USER_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "BANK_ID"
+											},
+											"sink": {
+												"name": "BANK_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "MENU_ID"
+											},
+											"sink": {
+												"name": "MENU_ID"
+											}
+										},
+										{
+											"source": {
+												"name": "DEL_FLG"
+											},
+											"sink": {
+												"name": "DEL_FLG"
+											}
+										},
+										{
+											"source": {
+												"name": "FREE_TEXT_1"
+											},
+											"sink": {
+												"name": "FREE_TEXT_1"
+											}
+										},
+										{
+											"source": {
+												"name": "FREE_TEXT_2"
+											},
+											"sink": {
+												"name": "FREE_TEXT_2"
+											}
+										},
+										{
+											"source": {
+												"name": "FREE_TEXT_3"
+											},
+											"sink": {
+												"name": "FREE_TEXT_3"
+											}
+										},
+										{
+											"source": {
+												"name": "REM_BANK_NAME"
+											},
+											"sink": {
+												"name": "REM_BANK_NAME"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME"
+											},
+											"sink": {
+												"name": "FILE_NAME"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm"
+											},
+											"sink": {
+												"name": "insert_dttm"
+											}
+										},
+										{
+											"source": {
+												"name": "date_to_process"
+											},
+											"sink": {
+												"name": "date_to_process"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv_AML",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": {
+											"value": "@concat('*CUSTOM.C_CTTIOW-', pipeline().parameters.DateToProcess, '*')",
+											"type": "Expression"
+										},
+										"SourceCode": "dev/decrypted/FCBS",
+										"ColumnDelimiter": "|",
+										"FirstRowAsHeader": true,
+										"RowDelimiter": "\r\n",
+										"EncodingName": "UTF-8"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_EDS_DEP_OTCREMITTANCE"
+									}
+								}
+							]
+						},
+						{
+							"name": "End_OTCREMITTANCE_Success",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_OTCREMITTANCE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_FCBS_OTCREMITTANCE",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "SUCCESSFUL",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_EDS_DEP_OTCREMITTANCE",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "End_OTCREMITTANCE_Failed",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_OTCREMITTANCE",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_FCBS_OTCREMITTANCE",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "FAILED",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_EDS_DEP_OTCREMITTANCE",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Fail_OTCREMITTANCE_Copy",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "End_OTCREMITTANCE_Failed",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "Copy into D360.STG_EDS_DEP_OTCREMITTANCE failed. Review the Copy activity and OM task evidence.",
+								"errorCode": "AML_COPY_FAILED"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"DateToProcess": {
+				"type": "String"
+			},
+			"ExecutionMode": {
+				"type": "String",
+				"defaultValue": "PlanOnly"
+			},
+			"MissingFilePolicy": {
+				"type": "String",
+				"defaultValue": "Fail"
+			}
+		},
+		"folder": {
+			"name": "AML_ETL/DecToStg"
+		},
+		"annotations": [
+			"AML",
+			"FCBS",
+			"DecToStg",
+			"CBC-RDP-AML-003",
+			"PHASE_1"
+		],
+		"lastPublishTime": "2026-08-11T06:43:06Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

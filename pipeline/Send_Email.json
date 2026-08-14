@@ -1,0 +1,338 @@
+{
+	"name": "Send_Email",
+	"properties": {
+		"activities": [
+			{
+				"name": "Logic_App_Email",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "Set Eml Recipient",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"method": "POST",
+					"url": {
+						"value": "https://prod-23.southeastasia.logic.azure.com:443/workflows/ef3f59e71d3c4e77b4fd9e5a6cc07b31/triggers/When_a_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_a_HTTP_request_is_received%2Frun&sv=1.0&sig=-Ltp4UouW338vPcAhcJyAFdEOQaUaf1LLVZf1YlgQOs",
+						"type": "Expression"
+					},
+					"connectVia": {
+						"referenceName": "AutoResolveIntegrationRuntime",
+						"type": "IntegrationRuntimeReference"
+					},
+					"body": {
+						"value": "{\n    \"Eml_Sender\" : \"@{variables('V_eml_sender_set')}\",\n    \"Eml_Recipient\" : \"@{variables('V_eml_recipient_set')}\",\n    \"Eml_Subject\" : \"@{variables('V_subject_src_sys')}\",\n    \"MessageStatus\" : \"@{variables('V_job_summary_details')}\"\n}",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Set Job Summary Details",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Get Job Summary Details",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "V_job_summary_details",
+					"value": {
+						"value": "@activity('Get Job Summary Details').output.resultsets[0].rows[0].body",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Get Job Summary Details",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Set ENV",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "run_datetime",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.RunDateTime",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "datetoprocess",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.ProcessDate",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "src_sys",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "pipelinename",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.PipelineName",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "end_datetime",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.EndDateTime",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "syn_workspace",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().DataFactory",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "ENV",
+									"type": "String",
+									"value": {
+										"value": "@variables('V_ENV_set')",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "BatchNo",
+									"type": "Int32",
+									"value": {
+										"value": "@pipeline().parameters.BatchNo",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "\r\nDECLARE @intro nvarchar(max)\r\nDECLARE @tr_style nvarchar(max)\r\nDECLARE @header nvarchar(max)\r\nDECLARE @body nvarchar(max)\r\nDECLARE @err_header nvarchar(max)\r\nDECLARE @err_body nvarchar(max)\r\nDECLARE @err_hash_header nvarchar(max)\r\nDECLARE @err_hash_body nvarchar(max)\r\nDECLARE @err_rw_header nvarchar(max)\r\nDECLARE @err_rw_body nvarchar(max)\r\n\r\nset @intro = (SELECT CONCAT('<p><b>Environment: ',@ENV,' - [',@syn_workspace,']','</b></p><p><b>Workflow Name: ',@pipelinename,'</b></p><p><b>Process Date: ',CONVERT(VARCHAR,@datetoprocess,23),'</b></p><p><b>Start DateTime: ',CONVERT(VARCHAR,@run_datetime,120),'</b></p><p><b>End DateTime: ',CONVERT(VARCHAR,@end_datetime,120),'</b></p>'))\r\n\r\nset @tr_style = '<style>table {border-collapse: collapse;width: 100%; font-family: Aptos; font-size: 11pt;}th, td {text-align: left;padding: 2px;border: 1px solid #BFBFBF;} tr:nth-child(2n) {background-color: #D6EEEE;}  .failed { background-color: #F8CBAD; }  .notexecuted { background-color: #F8CBAD; } .disabled { background-color: #DDEBF7; }  .successful { background-color: #C6E0B4; } .running { background-color: #FFE699; }</style>'\r\n\r\n/***Summary Details***/\r\nSET @header = '<p><b>Job Execution Summary:</b></p><table><tr><th>Task Name</th><th>Status</th><th>Rejected Rows Count</th><th>Skipped Rows Count</th><th>Start datetime</th><th>End datetime</th></tr>'\r\n\r\n\r\n\r\nSET @body = (SELECT CONCAT(STRING_AGG('<tr '+(CASE WHEN OTED.TASK_NAME IS NOT NULL THEN 'class=''failed''' WHEN OS.STATUS IS NULL AND TD.DEPENDENT_TASK_NAME IS NULL AND OT.TASK_NAME NOT LIKE '%TSK_PRE_STG%' THEN 'class=''disabled''' WHEN OS.STATUS IS NULL AND TD.DEPENDENT_TASK_NAME IS NOT NULL AND (COALESCE(TD.F_FLAG,0) > 0 OR OTED.TASK_NAME IS NOT NULL) THEN 'class=''failed''' WHEN OS.STATUS IS NULL AND TD.DEPENDENT_TASK_NAME IS NOT NULL AND (COALESCE(TD.F_FLAG,0) > 0 OR TD.ERR_TASK_NAME IS NOT NULL) THEN 'class=''failed''' WHEN OS.STATUS IS NULL AND TD.DEPENDENT_TASK_NAME IS NOT NULL AND COALESCE(TD.F_FLAG,0) = 0 THEN 'class=''disabled''' WHEN COALESCE(OCAD.ROWSSKIPPED,0) > 0 THEN 'class=''failed''' WHEN COALESCE(OCAD.ROWSREJECTED,0) > 0 THEN 'class=''failed''' WHEN OS.STATUS = 'RUNNING' THEN 'class=''running''' WHEN OS.STATUS = 'SUCCESSFUL' THEN 'class=''successful''' WHEN OTED.TASK_NAME IS NULL  AND OT.TASK_NAME LIKE '%TSK_PRE_STG%' THEN 'class=''successful''' WHEN OS.STATUS = 'FAILED' THEN 'class=''failed''' else 'class=''failed''' END)+'><td>'+CAST(OT.TASK_NAME AS NVARCHAR(MAX))+'</td><td>'+(CASE WHEN OTED.TASK_NAME IS NOT NULL THEN 'FAILED' WHEN OS.STATUS IS NULL AND TD.DEPENDENT_TASK_NAME IS NULL AND OT.TASK_NAME NOT LIKE '%TSK_PRE_STG%' THEN 'DISABLED' WHEN OS.STATUS IS NULL AND TD.DEPENDENT_TASK_NAME IS NOT NULL AND (COALESCE(TD.F_FLAG,0) > 0 OR TD.ERR_TASK_NAME IS NOT NULL) THEN 'PRE-REQUISITE FAILED' WHEN OS.STATUS IS NULL AND TD.DEPENDENT_TASK_NAME IS NOT NULL AND COALESCE(TD.F_FLAG,0) = 0 THEN 'DISABLED' WHEN OS.STATUS = 'SUCCESSFUL' AND COALESCE(OCAD.ROWSREJECTED,0) > 0 AND COALESCE(OCAD.ROWSSKIPPED,0) > 0 THEN 'SUCCESSFUL WITH REJECTED AND SKIPPED RECORD/S' WHEN OS.STATUS = 'SUCCESSFUL' AND COALESCE(OCAD.ROWSREJECTED,0) > 0 THEN 'SUCCESSFUL WITH REJECTED RECORD/S' WHEN OS.STATUS = 'SUCCESSFUL' AND COALESCE(OCAD.ROWSSKIPPED,0) > 0 THEN 'SUCCESSFUL WITH SKIPPED RECORD/S' WHEN OTED.TASK_NAME IS NULL  AND OT.TASK_NAME LIKE '%TSK_PRE_STG%' AND COALESCE(OCAD.ROWSREJECTED,0) > 0 AND COALESCE(OCAD.ROWSSKIPPED,0) > 0 THEN 'SUCCESSFUL WITH REJECTED AND SKIPPED RECORD/S' WHEN OTED.TASK_NAME IS NULL  AND OT.TASK_NAME LIKE '%TSK_PRE_STG%' AND COALESCE(OCAD.ROWSREJECTED,0) > 0  THEN 'SUCCESSFUL WITH REJECTED RECORD/S' WHEN OTED.TASK_NAME IS NULL  AND OT.TASK_NAME LIKE '%TSK_PRE_STG%' AND COALESCE(OCAD.ROWSSKIPPED,0) > 0  THEN 'SUCCESSFUL WITH SKIPPED RECORD/S' WHEN OTED.TASK_NAME IS NULL  AND OT.TASK_NAME LIKE '%TSK_PRE_STG%' THEN 'SUCCESSFUL' ELSE COALESCE(OS.STATUS,'UNKNOWN') END)+'</td><td>'+CAST(COALESCE(OCAD.ROWSREJECTED,0) AS NVARCHAR(MAX))+'</td><td>'+CAST(COALESCE(OCAD.ROWSSKIPPED,0) AS NVARCHAR(MAX))+'</td><td>'+COALESCE(CAST(REPLACE(CONVERT(VARCHAR,OTR.START_DATETIME,126),'T',' ') AS NVARCHAR(MAX)),'-')+'</td><td>'+COALESCE(CAST(REPLACE(CONVERT(VARCHAR,OTR.END_DATETIME,126),'T',' ') AS NVARCHAR(MAX)),'-')+'</td></tr>','') WITHIN GROUP (ORDER BY OTR.START_DATETIME,OT.TASK_NAME), '</table>')\r\n\tFROM OM.OM_TASKS OT \r\n\tLEFT JOIN OM.OM_TASK_RUN OTR\r\n\t\t ON OTR.TASK_NAME=OT.TASK_NAME\r\n\t\t AND OTR.PROCESS_DATE = @datetoprocess \r\n\t\t AND (CASE WHEN OT.TABLE_TYPE = 'SCD TYPE 2' THEN @run_datetime else OTR.CREATE_DATETIME END) >= @run_datetime\r\n\tLEFT JOIN OM.OM_COPY_ACTIVITY_DTL OCAD\r\n\t\t ON OT.TASK_NAME = OCAD.TASK_NAME\r\n\t\t AND OCAD.PROCESS_DATE = @datetoprocess \r\n\t\t AND OCAD.CREATE_DATETIME >= @run_datetime\r\n\tLEFT JOIN OM.OM_STATUS OS\r\n\t\t ON OTR.STATUS_ID = OS.STATUS_ID\r\n\tLEFT JOIN OM.OM_TASK_ERROR_DTL OTED\r\n\t\t\tON OTED.TASK_NAME=OT.TASK_NAME\r\n\t\t\tAND OTED.PROCESS_DATE = @datetoprocess\r\n\t\t\tAND OTED.CREATE_DATETIME >= @run_datetime\r\n\tLEFT JOIN \t(\r\n\t\tSELECT \r\n\t\tEDD.FULLDATE,OTD.DEPENDENT_TASK_NAME,OTED.TASK_NAME ERR_TASK_NAME,MAX(COALESCE((CASE WHEN COALESCE(EDD.MONTH_END,'N')='Y' AND COALESCE(OTD.MONTHEND,'N')<>'Y'  THEN 0 WHEN OS.STATUS <> 'SUCCESSFUL' THEN 1 ELSE 0 END),0)) F_FLAG\r\n\t\tFROM \r\n\t\t\t[OM].[OM_TASK_DEPENDENCY] OTD\r\n\t\tINNER JOIN\r\n\t\t\t[EDS].[DATE_DIM] EDD\r\n\t\t\tON\r\n\t\t\tEDD.FULLDATE = @datetoprocess \r\n\t\tLEFT JOIN\r\n\t\t\t[OM].[OM_TASKS] OT\r\n\t\t\tON\r\n\t\t\tOT.TASK_NAME = OTD.TASK_NAME\r\n\t\t\tAND coalesce(OT.BATCH_NO,1) = @BatchNo\r\n\t\tLEFT JOIN\r\n\t\t\t[OM].[OM_TASK_RUN] OTR\r\n\t\t\tON\r\n\t\t\tOTD.TASK_NAME =  OTR.TASK_NAME\r\n\t\t\tAND CASE WHEN OT.FREQUENCY_LOADING = 'WEEKDAYS' AND EDD.BUSINESS_DAY_FLAG = 'N' THEN EDD.PREVIOUS_BUSINESS_DAY\r\n\t\t\t\t\t ELSE EDD.FULLDATE END = OTR.PROCESS_DATE\r\n\t\t\tAND OTR.STATUS_ID NOT IN (SELECT STATUS_ID FROM OM.OM_STATUS WHERE STATUS = 'FOR RE-EXECUTION')\r\n\t\tLEFT JOIN   \r\n\t\t\t[OM].[OM_STATUS] OS\r\n\t\t\tON\r\n\t\t\tOTR.STATUS_ID =  OS.STATUS_ID\r\n\t\tLEFT JOIN OM.OM_TASK_ERROR_DTL OTED\r\n\t\t\tON OTED.TASK_NAME=OT.TASK_NAME\r\n\t\t\tAND OTED.PROCESS_DATE = @datetoprocess\r\n\t\t\tAND OTED.CREATE_DATETIME >= @run_datetime\r\n\t\tGROUP BY\r\n\t\t\tEDD.FULLDATE,OTD.DEPENDENT_TASK_NAME,OTED.TASK_NAME\r\n\t) TD\r\n\t\t ON OT.TASK_NAME = TD.DEPENDENT_TASK_NAME\r\n\r\n\tWHERE  OT.SOURCE_CODE = @src_sys\r\n\t\tAND OT.DATA_LAYER LIKE '%EDS%'\r\n\t\tAND coalesce(OT.BATCH_NO,1) = @BatchNo\r\n)\r\n\r\n/***Error Details***/\r\nSET @err_header = '<p><b>Job Execution Error Details:</b></p><table><tr><th>Task Name</th><th>Error Description</th><th>Run DateTime</th></tr>'\r\n\r\nSET @err_body = (SELECT CONCAT(STRING_AGG('<tr><td>'+CAST(OTED.TASK_NAME AS NVARCHAR(MAX))+'</td><td>'+CAST(ERROR_DESC AS NVARCHAR(MAX))+'</td><td>'+CAST(REPLACE(CONVERT(VARCHAR,OTED.CREATE_DATETIME,126),'T',' ') AS NVARCHAR(MAX))+'</td></tr>','') WITHIN GROUP (ORDER BY OTED.CREATE_DATETIME),'</table>')\r\nFROM OM.OM_TASK_ERROR_DTL OTED\r\nJOIN OM.OM_TASKS OT\r\n     ON OTED.TASK_NAME=OT.TASK_NAME\r\n\tAND OT.DATA_LAYER LIKE '%EDS%'\r\n\tAND coalesce(OT.BATCH_NO,1) = @BatchNo\r\nWHERE PROCESS_DATE = @datetoprocess\r\n     AND OT.SOURCE_CODE = @src_sys\r\n     AND OTED.CREATE_DATETIME >= @run_datetime)\r\n\t \r\n\t \r\n\t \r\n\r\n/***Error Hash Details***/\r\nSET @err_hash_header = '<p><b>Mismatched Source and Target hash totals:</b></p><table><tr><th>Filename</th><th>Run DateTime</th><th>Metrics</th><th>Source and Target Comparison</th></tr>'\r\n\r\nSET @err_hash_body = (SELECT CONCAT(STRING_AGG('<tr '+(CASE WHEN [Source] = [Target] THEN 'class=''successful''' WHEN [Source] <> [Target] THEN 'class=''failed''' END)+'><td>'+CAST([FILE_NAME] AS NVARCHAR(MAX))+'</td><td>'+CAST([INSERT_DTTM] AS NVARCHAR(MAX))+'</td><td>'+CAST(Metrics AS NVARCHAR(MAX))+'</td><td>'+(CASE WHEN [Source] = [Target] THEN 'MATCH' WHEN [Source] <> [Target] THEN 'NOT MATCH' END)+'</td></tr>','') WITHIN GROUP (ORDER BY INSERT_DTTM),'</table>')\r\nFROM\r\n(\r\nselect \r\n*,\r\nRANK() OVER (PARTITION BY [FILE_NAME],[Metrics],[DATE] ORDER BY [INSERT_DTTM] DESC) RNK\r\nfrom  [EDS].[EDS_HASH_LOG_TBL]\r\nWHERE \r\ncast([Date] as DATE) = cast(@datetoprocess as DATE)\r\nand SUBSTRING([FILE_NAME],7,3) = @src_sys\r\nand  [Source] <> [Target] \r\n) SRC_HASHLOG WHERE RNK=1)\r\n\r\n\r\n\r\n\r\nSELECT CONCAT(@intro,@tr_style,@header,@body,@err_header,@err_body,@err_hash_header,@err_hash_body) as body;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Set Eml_Subject_Source_Code",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Set Job Summary Details",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "V_subject_src_sys",
+					"value": {
+						"value": "@concat(coalesce(pipeline().parameters.ENV,variables('V_ENV_set')),' - ',coalesce(pipeline().parameters.Eml_Subject,variables('V_eml_subject')),' ',pipeline().parameters.PipelineName,' - ',replace(pipeline().parameters.ProcessDate,'T00:00:00',''))",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Set Eml Sender",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Set Eml_Subject_Source_Code",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "V_eml_sender_set",
+					"value": {
+						"value": "@coalesce(pipeline().parameters.Eml_Sender,variables('V_eml_sender'))",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Set Eml Recipient",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Set Eml Sender",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "V_eml_recipient_set",
+					"value": {
+						"value": "@coalesce(pipeline().parameters.Eml_Recipient,variables('V_eml_recipient'))",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Set ENV",
+				"type": "SetVariable",
+				"dependsOn": [],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "V_ENV_set",
+					"value": {
+						"value": "@concat(coalesce(pipeline().parameters.ENV,variables('V_ENV')))",
+						"type": "Expression"
+					}
+				}
+			}
+		],
+		"parameters": {
+			"src_sys": {
+				"type": "string"
+			},
+			"PipelineName": {
+				"type": "string"
+			},
+			"ProcessDate": {
+				"type": "string"
+			},
+			"RunDateTime": {
+				"type": "string"
+			},
+			"Eml_Sender": {
+				"type": "string",
+				"defaultValue": "donotreply@advisory.chinabank.ph"
+			},
+			"Eml_Recipient": {
+				"type": "string",
+				"defaultValue": "mafarcon@chinabank.ph,wobautista@chinabank.ph,maccortez@chinabank.ph,gmtflores@chinabank.ph,jmmamangon@chinabank.ph,rsblabay@chinabank.ph,jayar.gavina@solventoph.com,tommy.dizon@solventoph.com,arland.bindoy@solventoph.com,japeth.hernandez@solventoph.com,jccgomez@chinabank.ph,mrcdizon@chinabank.ph,japescultura@chinabank.ph,jolenizo@chinabank.ph,KJMPALO@chinabank.ph,JJSKAK@chinabank.ph,KRBRIVERA@chinabank.ph,JJPSALIPANDE@chinabank.ph,MEPIQUERO@chinabank.ph,RSDELAMBOTIQUE@chinabank.ph,MJMBANARIA@chinabank.ph,AEAGELI@chinabank.ph,JMSIBAG@chinabank.ph,JRFVIZCARRA@chinabank.ph,LDPBUNANIG@chinabank.ph,CECANONG@chinabank.ph,NSTALBINO@chinabank.ph,LQDEOGRACIAS@chinabank.ph"
+			},
+			"Eml_Subject": {
+				"type": "string",
+				"defaultValue": "Execution Details for"
+			},
+			"EndDateTime": {
+				"type": "string"
+			},
+			"ENV": {
+				"type": "string",
+				"defaultValue": "[D360-DEV]"
+			},
+			"BatchNo": {
+				"type": "string",
+				"defaultValue": "1"
+			}
+		},
+		"variables": {
+			"V_job_summary_details": {
+				"type": "String"
+			},
+			"V_subject_src_sys": {
+				"type": "String"
+			},
+			"V_eml_sender": {
+				"type": "String",
+				"defaultValue": "donotreply@advisory.chinabank.ph"
+			},
+			"V_eml_recipient": {
+				"type": "String",
+				"defaultValue": "mafarcon@chinabank.ph,wobautista@chinabank.ph,maccortez@chinabank.ph,gmtflores@chinabank.ph,jmmamangon@chinabank.ph,rsblabay@chinabank.ph,jayar.gavina@solventoph.com,arland.bindoy@solventoph.com,japeth.hernandez@solventoph.com,jccgomez@chinabank.ph,mrcdizon@chinabank.ph,japescultura@chinabank.ph,jolenizo@chinabank.ph,KJMPALO@chinabank.ph,JJSKAK@chinabank.ph,KRBRIVERA@chinabank.ph,JJPSALIPANDE@chinabank.ph,MEPIQUERO@chinabank.ph,RSDELAMBOTIQUE@chinabank.ph,MJMBANARIA@chinabank.ph,AEAGELI@chinabank.ph,JMSIBAG@chinabank.ph,JRFVIZCARRA@chinabank.ph,LDPBUNANIG@chinabank.ph,CECANONG@chinabank.ph,NSTALBINO@chinabank.ph,LQDEOGRACIAS@chinabank.ph"
+			},
+			"V_eml_subject": {
+				"type": "String",
+				"defaultValue": "Execution Details for"
+			},
+			"V_eml_sender_set": {
+				"type": "String"
+			},
+			"V_eml_recipient_set": {
+				"type": "String"
+			},
+			"V_ENV": {
+				"type": "String",
+				"defaultValue": "[D360-DEV]"
+			},
+			"V_ENV_set": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-02-06T05:29:11Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

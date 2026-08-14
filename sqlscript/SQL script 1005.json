@@ -1,0 +1,17 @@
+{
+	"name": "SQL script 1005",
+	"properties": {
+		"content": {
+			"query": "DROP PROCEDURE [DW].[SP_CI_Cards_Retail]\nGO\n\nSET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nCREATE PROC [DW].[SP_CI_Cards_Retail] AS\nBEGIN\n\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'CI_Cards_Retail') \nBEGIN\n   TRUNCATE TABLE  DW.CI_Cards_Retail;\nEND;\n\nWITH DIMCUSTOMERACCOUNT AS\n(\n    SELECT AccountID,CustomerSK,BANKSK,BRANCHSK,ACCOUNTSK,CustomerID,SourceSystemCode,ValidStartDate \n    FROM DW.DIMCUSTOMERACCOUNT\n    WHERE SourceSystemCode = 'CCD' AND CurrentIndicator = 1 AND ShareIndicator = 'Y'\n\n\n)\nINSERT INTO   DW.CI_Cards_Retail\nSELECT DISTINCT\n    DCA.AccountId AS AccountID\n    ,DCA.CustomerID AS CustomerID\n    ,CASE WHEN DDC.GlobalCIF IS NOT NULL THEN REPLACE(DDC.GlobalCIF,'Global_CIF_','Entity_CIF_')\n      ELSE CONCAT('Entity_CIF_', DDC.SourceSystemCode, '_', DDC.CustomerID) END AS EntityCIF\n    ,DDC.FCBSCIF AS FCBSCIF\n    ,DDB.BankID AS BankCode\n    ,DDBR.BranchID AS BranchCode\n    ,DDBR.BranchName AS BranchName\n    ,DDBR.Area AS Area\n    ,DDBR.Region AS Region\n    ,DCA.SourceSystemCode AS Source\n    ,DDP.ProductGroup AS ProductGrouping\n    ,DDP.Productname AS ProductType\n    ,CONCAT(DDP.ProductGroup,'-',DDP.ProductName) AS ProductDetails\n    ,DDA.AccountOpenedDate AS OpenedDate\n    ,DFC.RelationshipExposure AS RelationshipExposure\n    ,DFL.StatementBalance AS StatementBalance\n    ,DFLC.CurrentCreditLimit AS CreditLimit\n    ,DFC.BusinessDateSK AS BusinessDate\n    ,DCA.ValidStartDate AS LastUpdatedDate\n    ,CONCAT(DCA.AccountId,DCA.CustomerID,DDB.BankID,DCA.SourceSystemCode) as AccountKey\n\nFROM DIMCUSTOMERACCOUNT DCA\n    JOIN (SELECT CustomerSK ,FCBSCIF,GlobalCIF,SourceSystemCode,CustomerID FROM DW.DimCustomer WHERE CustomerType = 'Retail') DDC ON DCA.CustomerSK = DDC.CustomerSK\n    LEFT JOIN (SELECT BANKSK,BankID FROM DW.DIMBANK) DDB ON DCA.BANKSK = DDB.BANKSK\n    LEFT JOIN (SELECT BranchID,BranchName,Area,Region,BRANCHSK FROM DW.DIMBRANCH) DDBR ON DCA.BRANCHSK = DDBR.BRANCHSK\n    LEFT JOIN (SELECT ACCOUNTSK,PRODUCTSK FROM DW.DIMACCOUNTPRODUCT) DAP ON DCA.ACCOUNTSK = DAP.ACCOUNTSK\n    LEFT JOIN (SELECT ProductGroup,ProductName,PRODUCTSK FROM DW.DIMPRODUCT) DDP ON DAP.PRODUCTSK = DDP.PRODUCTSK \n    LEFT JOIN (SELECT AccountOpenedDate,ACCOUNTSK FROM DW.DIMACCOUNT) DDA ON DCA.ACCOUNTSK = DDA.ACCOUNTSK\n    LEFT JOIN (SELECT RelationshipExposure,BusinessDateSK,ACCOUNTSK  FROM DW.FACTCARDSRELATIONSHIPEXPOSURE WHERE BusinessDateSK = (SELECT MAX(BusinessDateSK) FROM DW.FACTCARDSRELATIONSHIPEXPOSURE )) DFC ON DCA.ACCOUNTSK = DFC.ACCOUNTSK\n    LEFT JOIN (SELECT ACCOUNTSK,StatementBalance FROM DW.FactCardsOutstandingBalance) DFL ON DCA.ACCOUNTSK = DFL.ACCOUNTSK\n    LEFT JOIN (SELECT ACCOUNTSK,CurrentCreditLimit FROM DW.FactCardsCreditLimit) DFLC ON DCA.ACCOUNTSK = DFLC.ACCOUNTSK\n    \nGROUP BY\nDCA.AccountId\n,DCA.CustomerId\n,DDC.CustomerID\n,DDC.GlobalCIF\n,DDC.SourceSystemCode\n,DDB.BankId\n,DDBR.BranchID\n,DDBR.BranchName\n,DDBR.Area\n,DDBR.Region\n,DCA.SourceSystemCode\n,DDP.ProductGroup\n,DDP.ProductName\n,DDA.AccountOpenedDate\n,DFC.BusinessDateSK\n,DCA.ValidStartDate\n,RelationshipExposure\n,DFC.BusinessDateSK\n,DFL.StatementBalance\n,DFLC.CurrentCreditLimit\n,DDC.FCBSCIF\nEND\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

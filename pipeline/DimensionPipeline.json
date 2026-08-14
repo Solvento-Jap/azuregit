@@ -1,0 +1,617 @@
+{
+	"name": "DimensionPipeline",
+	"properties": {
+		"activities": [
+			{
+				"name": "Dimension_DimBranch",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Filter_DEP_Verified_Accounts",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Dimension_DimBranch",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@variables('V_DatetoProcessed')",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Dimension_DimRiskRatingType",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Dimension_DimProduct_Run",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Dimension_DimRiskRatingType",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@variables('V_DatetoProcessed')",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Dimension_DimRiskRating",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Dimension_DimRiskRatingType",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Dimension_DimRiskRating",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@variables('V_DatetoProcessed')",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Dimension_DimCustomer",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Dimension_DimRiskRating",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Dimension_DimCustomer",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@variables('V_DatetoProcessed')",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@empty(pipeline().parameters.DatetoProcessed)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE_copy1",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_PROCESS_DATE_PARAM",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_PROCESS_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_DatetoProcessed",
+								"value": {
+									"value": "@pipeline().parameters.DatetoProcessed",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": "SELECT MIN(PROCESS_DATE) PROCESS_DATE FROM [OM].[OM_TASK_RUN] WHERE DATA_LAYER='BNKM' AND TASK_NAME LIKE '%CRM%' AND STATUS_ID = 3\nAND\nPROCESS_DATE NOT IN (SELECT DISTINCT PROCESS_DATE FROM [OM].[OM_TASK_RUN] WHERE DATA_LAYER='DW')",
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "OM_TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_PROCESS_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_DatetoProcessed",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.PROCESS_DATE",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Dimension_DimProduct_Run",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Dimension_DimBranch",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Dimension_DimProduct_Run",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@variables('V_DatetoProcessed')",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Dimension_DimAccount_Run",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Dimension_DimCustomer",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Dimension_DimAccount_Run",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@variables('V_DatetoProcessed')",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Dimension_DimCustomerAccount",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "DW_DIM_Remove_DEP_Unverified_Accounts",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Dimension_DimCustomerAccount_Run",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@variables('V_DatetoProcessed')",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Dimension_DimAccountProduct",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Dimension_DimCustomerAccount",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Dimension_DimAccountProduct_Run",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@variables('V_DatetoProcessed')",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Dimension_DimCustomerRiskRating",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Dimension_DimAccountProduct",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Dimension_DimCustomerRiskRating",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@variables('V_DatetoProcessed')",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Dimension_DimCustomerAccountProduct",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Dimension_DimCustomerRiskRating",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Dimension_DimCustomerAccountProduct",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@variables('V_DatetoProcessed')",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "DW_DIM_Remove_DEP_Unverified_Accounts",
+				"type": "ExecutePipeline",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Dimension_DimAccount_Run",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "DW_DIM_Remove_DEP_Unverified_Accounts",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@variables('V_DatetoProcessed')",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Filter_DEP_Verified_Accounts",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Filter_DEP_Verified_Accounts",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@variables('V_DatetoProcessed')",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Dimension_DimCustomerNameURL",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Dimension_DimCustomerAccountProduct",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Dimension_DimCustomerNameURL",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@variables('V_DatetoProcessed')",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "Dim_DupeCheck",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "AGG_FACT_Pipeline",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "DimDupCheck",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "Result",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Dim_DupeCheck",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "select tablename, Type from [DW].[DimDupe] where CNT <> 0 order by Type ASC"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Dimension_DimCustomerNameURL_Enhancements",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Dimension_DimCustomerNameURL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Dimension_DimCustomerNameURL_Enhancements",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"DatetoProcessed": {
+							"value": "@variables('V_DatetoProcessed')",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "AGG_FACT_Pipeline",
+				"type": "ExecutePipeline",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Dimension_DimCustomerNameURL_Enhancements",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "AGG_FACT_Pipeline",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			}
+		],
+		"parameters": {
+			"DatetoProcessed": {
+				"type": "string"
+			}
+		},
+		"variables": {
+			"V_DatetoProcessed": {
+				"type": "String"
+			}
+		},
+		"folder": {
+			"name": "Deployed_asof_20240201"
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-03-25T06:34:49Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

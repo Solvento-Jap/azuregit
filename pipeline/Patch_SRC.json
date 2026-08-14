@@ -1,0 +1,291 @@
+{
+	"name": "Patch_SRC",
+	"properties": {
+		"activities": [
+			{
+				"name": "BACKUP",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "TB_NAME",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.table",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "DECLARE @BUTB_NAME AS VARCHAR(50);\nDECLARE @BUDATE AS VARCHAR(10);\n\nSET @BUDATE = CONVERT(VARCHAR(8),GETDATE(),112);\nSET @BUTB_NAME = CONCAT(@TB_NAME, '_BU_',@BUDATE);\n\nEXEC('SELECT * INTO ' + @BUTB_NAME + ' FROM '+ @TB_NAME);"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Count For_Update",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "BACKUP",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "TB_NAME",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.table",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "FIELD",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.field",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "SOURCE_FIELD",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.src_field",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "SOURCE",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.src",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "EXEC('SELECT '+@FIELD+', COUNT(1) FOR_UPDATE FROM '+@TB_NAME\n+' WHERE ('+@FIELD+' IS NULL \n    OR '+@FIELD+' LIKE ''%1900%'' \n    OR '+@FIELD+' LIKE ''%2099%'' \n    OR '+@FIELD+' LIKE ''%9999-01-01%''\n    OR '+@FIELD+' = ''9999-01-01'')\n    AND '+@SOURCE_FIELD+' = '''+@SOURCE+'''\nGROUP BY '+@FIELD+';');"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Update",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Count For_Update",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "TB_NAME",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.table",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "FIELD",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.field",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "SOURCE_FIELD",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.src_field",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "SOURCE",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.src",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "EXEC('UPDATE '+@TB_NAME\r\n+' SET '+@FIELD+' = ''9999-12-31''\r\nWHERE ('+@FIELD+' IS NULL \r\n    OR '+@FIELD+' LIKE ''%1900%'' \r\n    OR '+@FIELD+' LIKE ''%2099%'' \r\n    OR '+@FIELD+' LIKE ''%9999-01-01%''\r\n    OR '+@FIELD+' = ''9999-01-01'')\r\n    AND '+@SOURCE_FIELD+' = '''+@SOURCE+''';');"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Validate For_Update",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Update",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "TB_NAME",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.table",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "FIELD",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.field",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "SOURCE_FIELD",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.src_field",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "SOURCE",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.src",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "EXEC('SELECT '+@FIELD+', COUNT(1) [COUNT] FROM '+@TB_NAME\n+' WHERE ('+@FIELD+' IS NULL \n    OR '+@FIELD+' LIKE ''%1900%'' \n    OR '+@FIELD+' LIKE ''%2099%'' \n    OR '+@FIELD+' LIKE ''%9999-01-01%''\n    OR '+@FIELD+' = ''9999-01-01'')\n    AND '+@SOURCE_FIELD+' = '''+@SOURCE+'''\nGROUP BY '+@FIELD\n+' UNION ALL \n SELECT '+@FIELD+', COUNT(1) [COUNT] FROM '+@TB_NAME\n+' WHERE '+@FIELD+' = ''9999-12-31''\n\tAND '+@SOURCE_FIELD+' = '''+@SOURCE+'''\nGROUP BY '+@FIELD+';');"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"parameters": {
+			"table": {
+				"type": "string"
+			},
+			"field": {
+				"type": "string"
+			},
+			"src_field": {
+				"type": "string"
+			},
+			"src": {
+				"type": "string"
+			}
+		},
+		"variables": {
+			"TB_NAME": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-02-19T03:48:51Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

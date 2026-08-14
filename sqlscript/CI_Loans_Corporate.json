@@ -1,0 +1,20 @@
+{
+	"name": "CI_Loans_Corporate",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "alter PROC [DW].[SP_CI_Loans_Corporate]\nAS\nBEGIN\n\n\n\nDROP TABLE  DW.CI_Loans_Corporate;\n\n\nWITH DimCustomerAccount_LNS AS\n(\n    SELECT\n        DCA.AccountID ,DCA.CustomerID ,DCA.SourceSystemCode ,DCA.ValidStartDate ,DCA.CustomerSK ,DCA.BankSK ,DCA.BranchSK ,DCA.AccountSK ,DA.AccountOpenedDate ,DB.BankID \n    FROM DW.DimCustomerAccount DCA\n    LEFT JOIN DW.DimAccount DA ON DCA.AccountSK = DA.AccountSK\n    LEFT JOIN DW.DimBank DB ON DCA.BankSK = DB.BankSK \n    WHERE DCA.SourceSystemCode = 'LNS' AND DCA.CurrentIndicator = '1' AND DB.BankID IN ('CBC01', 'CBC11')\n    GROUP BY DCA.AccountID ,DCA.CustomerID ,DCA.SourceSystemCode ,DCA.ValidStartDate ,DCA.CustomerSK ,DCA.BankSK ,DCA.BranchSK ,DCA.AccountSK ,DA.AccountOpenedDate,DB.BankID \n)\n\nSELECT \n    DCA.AccountID\n    ,DCA.CustomerID\n    ,CASE WHEN DC.GlobalCIF IS NOT NULL THEN REPLACE(DC.GlobalCIF,'Global_CIF_','Entity_CIF_')\n      ELSE CONCAT('Entity_CIF_', DC.SourceSystemCode, '_', DC.CustomerID) END AS EntityCIF\n    ,DCA.BankID AS BankCode\n    ,DBr.BranchID AS BranchCode\n    ,DBr.BranchName\n    ,DBr.Area\n    ,DBr.Region\n    ,DCA.SourceSystemCode AS Source\n    ,DP.ProductGroup AS ProductGrouping\n    ,DP.ProductName as ProductType\n    ,CONCAT(DP.ProductGroup,'-',DP.ProductName) AS ProductDetails\n    ----,DP.FcbsApplication AS Application ----This column does not exist in DIM PRODUCT\n    ,DCA.AccountOpenedDate AS OpenedDate\n    ,FLRE.TotalRelationshipExposureFull AS RelationshipExposure_Full\n    ,FLRE.TotalRelationshipExposureProrated AS RelationshipExposure_Shared\n    ,FLOB.OutstandingBalanceFull AS DueForTheMonth_Full\n    ,FLOB.OutstandingBalanceProrated AS DueForTheMonth_Shared\n    ,FLCL.CreditLimitAmountFull AS CreditLimit_Full\n    ,FLCL.CreditLimitAmountProrated AS CreditLimit_Shared\n    ,FLRE.BusinessDateSK AS BusinessDate\n    ,DCA.ValidStartDate AS LastUpdatedDate\n    ,CONCAT(DCA.AccountId,DCA.CustomerID,DCA.BankID,DCA.SourceSystemCode) as AccountKey    \n    INTO DW.CI_Loans_Corporate\nFROM DimCustomerAccount_LNS DCA\nJOIN (SELECT CustomerSK ,GlobalCIF,SourceSystemCode,CustomerID FROM DW.DimCustomer WHERE CustomerType = 'Corporate') DC ON DCA.CustomerSK = DC.CustomerSK\nLEFT JOIN (SELECT AccountSK,ProductSK FROM DW.DimAccountProduct) DAP ON DCA.AccountSK = DAP.AccountSK\nLEFT JOIN (SELECT BranchSK ,BranchID ,BranchName ,Area ,Region FROM DW.DimBranch) DBr ON DCA.BranchSK = DBr.BranchSK\nLEFT JOIN (SELECT ProductSK ,ProductGroup ,ProductName FROM DW.DimProduct) DP ON DAP.ProductSK = DP.ProductSK\nLEFT JOIN (SELECT AccountSK ,TotalRelationshipExposureFull ,TotalRelationshipExposureProrated ,BusinessDateSK FROM DW.FactLoansRelationshipExposure WHERE BusinessDateSK IN (SELECT MAX(BusinessDateSK) FROM  DW.FactLoansRelationshipExposure )) FLRE ON DCA.AccountSK = FLRE.AccountSK\nLEFT JOIN (SELECT AccountSK ,OutstandingBalanceFull ,OutstandingBalanceProrated FROM DW.FactLoansOutstandingBalance WHERE BusinessDateSK IN (SELECT MAX(BusinessDateSK) FROM  DW.FactLoansOutstandingBalance )) FLOB ON DCA.AccountSK = FLOB.AccountSK ----NO DATA\nLEFT JOIN (SELECT AccountSK ,CreditLimitAmountFull ,CreditLimitAmountProrated FROM DW.FactLoansCreditLimit WHERE BusinessDateSK IN (SELECT MAX(BusinessDateSK) FROM  DW.FactLoansCreditLimit) ) FLCL ON DCA.AccountSK = FLCL.AccountSK ----NO DATA\nGROUP BY\nDCA.AccountID\n,DCA.CustomerID\n,DC.GlobalCIF\n,DC.SourceSystemCode\n,DC.CustomerID\n,DCA.BankID\n,DBr.BranchID\n,DBr.BranchName\n,DBr.Area\n,DBr.Region\n,DCA.SourceSystemCode\n,DP.ProductGroup\n,DP.ProductName\n,DCA.AccountOpenedDate\n,FLRE.TotalRelationshipExposureFull\n,FLRE.TotalRelationshipExposureProrated\n,FLOB.OutstandingBalanceFull\n,FLOB.OutstandingBalanceProrated\n,FLCL.CreditLimitAmountFull\n,FLCL.CreditLimitAmountProrated\n,FLRE.BusinessDateSK\n,DCA.ValidStartDate\n\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

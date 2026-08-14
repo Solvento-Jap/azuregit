@@ -1,0 +1,150 @@
+{
+	"name": "dep_dimaccount_src_chck",
+	"properties": {
+		"activities": [
+			{
+				"name": "ACCT_DEP",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "DatetoProcessed",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.DatetoProcessed",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "NonQuery",
+							"text": "\r\n\r\nWITH ACCOUNT_SK\r\nAS(\r\nSELECT ISNULL(MAX(AccountSk),0) RN FROM DW.DIMACCOUNT \r\n\r\n)\r\n\r\nSELECT\r\nROW_NUMBER() OVER(ORDER BY (SELECT NULL)) + (SELECT RN FROM ACCOUNT_SK) AS AccountSK, AccountID, AccountName, AccountOpenedDate, AccountStatus, CurrencyCode, ProfitCostCode, BankSK ,BranchSK ,SourceSystemCode ,CurrentIndicator ,ValidStartDate ,ValidEndDate ,WorkFlowId ,TaskRunId ,InsertDttm\r\nINTO DW.ACCOUNT_DEP_TEST\r\nFROM \r\n(SELECT DISTINCT\r\nBCA.CustomerAccountId AS AccountID\r\n,BCA.CustomerAccountName AS AccountName\r\n,BCA.CustomerAccountOpenedDate AS AccountOpenedDate\r\n,CASE\r\n     WHEN BCCACCT.ClosedAccountIndicator = 'Y' AND BCA.CustomerAccountClosedDate <= CONVERT(DATE,@DatetoProcessed) AND BCAF.FcbsApplication IN ('CAA', 'SBA', 'TDA') \r\n     THEN 'Closed'\r\n     WHEN BCCACCT.ClosedAccountIndicator = 'N' AND BCAF.FcbsApplication IN ('CAA', 'SBA') \r\n     THEN BDAS.DepositAccountStatusTypeId\r\n     WHEN BCCACCT.ClosedAccountIndicator = 'Y' AND BCA.CustomerAccountClosedDate > CONVERT(DATE,@DatetoProcessed) AND BCAF.FcbsApplication IN ('CAA', 'SBA') \r\n     THEN BDAS.DepositAccountStatusTypeId\r\n     WHEN BCCACCT.ClosedAccountIndicator = 'Y' AND BCA.CustomerAccountClosedDate > CONVERT(DATE,@DatetoProcessed) AND BCAF.FcbsApplication IN ('TDA') \r\n     THEN  BDAS.DepositAccountStatusTypeId\r\n     WHEN BCCACCT.ClosedAccountIndicator = 'N' AND BCAF.FcbsApplication IN ('TDA') \r\n     THEN BDAS.DepositAccountStatusTypeId\r\n     END AS AccountStatus \r\n,CASE \r\n     WHEN BCAF.ProductId IN ('00013','01013') OR BCCA.EmployeePayrollAccountIndicator = 'Y' \r\n     THEN 'Y' ELSE 'N' END AS PayrollIndicator\r\n,BCA.IsoCurrencyCode AS CurrencyCode\r\n,BCCC.ProfitCostCenterId AS ProfitCostCode\r\n,DDB.BankSK AS BankSK\r\n,DDBRAN.BranchSK AS BranchSK\r\n,BCA.SourceSystemCode AS SourceSystemCode\r\n,1 AS CurrentIndicator\r\n,@DatetoProcessed AS ValidStartDate\r\n,'9999-12-31' AS ValidEndDate\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\n\r\nFROM (SELECT DISTINCT CustomerAccountId,CustomerAccountName,CustomerAccountOpenedDate,CustomerAccountClosedDate,IsoCurrencyCode,SourceSystemCode,FINANCIALINSTITUTIONID,BRANCHID FROM BNKM.CustomerAccount where SourceSystemCode = 'DEP' ) BCA \r\nJOIN (SELECT CUSTOMERACCOUNTID,SourceSystemCode,FinancialInstitutionId,PERIODENDDATE,ProductId,FINANCIALPRODUCTID,PeriodStartDate,FcbsApplication FROM BNKM.CustomerAccountFinancialProduct  ) BCAF ON convert(varchar,BCA.CUSTOMERACCOUNTID) = convert(varchar,BCAF.CUSTOMERACCOUNTID) AND BCAF.SourceSystemCode = BCA.SourceSystemCode  AND BCA.FinancialInstitutionId = BCAF.FinancialInstitutionId AND CONVERT(DATE,BCA.CustomerAccountOpenedDate) = CONVERT(DATE,BCAF.PeriodStartDate)  \r\nJOIN DW.RefDepositVerifiedAccounts rdva on BCA.CustomerAccountId = rdva.FORACID and BCA.FINANCIALINSTITUTIONID = rdva.Bnk_code and BCA.CustomerAccountOpenedDate = rdva.ACCT_OPN_DATE\r\nLEFT JOIN (SELECT FinancialProductId,SourceSystemCode,FinancialInstitutionId,FcbsApplicationId FROM DW.FINPRODAPP) FPA ON CONVERT(VARCHAR,BCAF.ProductId) = CONVERT(VARCHAR,FPA.FinancialProductId) AND BCAF.FinancialInstitutionId = FPA.FinancialInstitutionId AND BCAF.SourceSystemCode = FPA.SourceSystemCode\r\nLEFT JOIN (SELECT CustomerAccountId,FinancialInstitutionId,SourceSystemCode,ClosedAccountIndicator FROM BNKM.CoreCustomerAccount WHERE SourceSystemCode = 'DEP'  ) BCCACCT ON BCA.CustomerAccountId = BCCACCT.CustomerAccountId AND BCA.FinancialInstitutionId = BCCACCT.FinancialInstitutionId  AND BCA.SourceSystemCode = BCCACCT.SourceSystemCode\r\n--LEFT JOIN (SELECT CustomerAccountId,FinancialInstitutionId,DepositAccountStatusTypeId FROM BNKM.DepositAccountStatus WHERE PeriodEndTimestamp IS NULL) BDAS ON BCA.CustomerAccountId = BDAS.CustomerAccountId AND BCA.FinancialInstitutionId = BDAS.FinancialInstitutionId \r\nLEFT JOIN (SELECT ROW_NUMBER() OVER(PARTITION BY CustomerAccountId ORDER BY PeriodStartTimeStamp desc) rn, CustomerAccountId,FinancialInstitutionId,DepositAccountStatusTypeId FROM BNKM.DepositAccountStatus WHERE  @DatetoProcessed between PeriodStartTimeStamp and replace(isnull(PeriodEndTimeStamp,'9999-12-31'),'1900-01-01','9999-12-31')) BDAS ON BCA.CustomerAccountId = BDAS.CustomerAccountId AND BCA.FinancialInstitutionId = BDAS.FinancialInstitutionId  AND BDAS.RN = 1\r\nLEFT JOIN (SELECT CUSTOMERACCOUNTID,FINANCIALINSTITUTIONID,SourceSystemCode,EmployeePayrollAccountIndicator FROM DW.CORECUSTACCPYROLL WHERE SourceSystemCode = 'DEP') BCCA ON BCA.CUSTOMERACCOUNTID = BCCA.CUSTOMERACCOUNTID AND BCA.FINANCIALINSTITUTIONID = BCCA.FINANCIALINSTITUTIONID AND BCA.SourceSystemCode = BCCA.SourceSystemCode\r\nLEFT JOIN DW.DimBank DDB ON BCA.FINANCIALINSTITUTIONID = DDB.BANKID\r\nLEFT JOIN DW.DimBranch DDBRAN ON BCA.BRANCHID = DDBRAN.BRANCHID AND DDBRAN.CurrentIndicator = 1 \r\nLEFT JOIN (SELECT CustomerAccountId,FinancialInstitutionId,SourceSystemCode,ProfitCostCenterId FROM DW.CoreCustAccProCostCenter WHERE ProfitCostCenterTypeId = 'Account PCC Code 1' AND SourceSystemCode = 'DEP') BCCC ON BCA.CustomerAccountId = BCCC.CustomerAccountId AND BCA.FinancialInstitutionId = BCCC.FinancialInstitutionId AND BCA.SourceSystemCode = BCCC.SourceSystemCode \r\nWHERE BCA.SourceSystemCode = 'DEP'\r\nAND LEFT(TRIM(BCAF.ProductId),2) <> '09'\r\nAND FPA.FcbsApplicationId IN ('CAA', 'SBA', 'TDA')\r\nAND BCA.CustomerAccountOpenedDate <= CONVERT(DATE,@DatetoProcessed)\r\n\r\n)A\r\n\r\n\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ACCT_DEP_chck1",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ACCT_DEP",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "DatetoProcessed",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.DatetoProcessed",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "SELECT BCA.CUSTOMERACCOUNTID\r\nFROM (SELECT DISTINCT CustomerAccountId,CustomerAccountName,CustomerAccountOpenedDate,CustomerAccountClosedDate,IsoCurrencyCode,SourceSystemCode,FINANCIALINSTITUTIONID,BRANCHID FROM BNKM.CustomerAccount where SourceSystemCode = 'DEP' ) BCA\r\nJOIN (SELECT CUSTOMERACCOUNTID,SourceSystemCode,FinancialInstitutionId,PERIODENDDATE,ProductId,FINANCIALPRODUCTID,PeriodStartDate,FcbsApplication FROM BNKM.CustomerAccountFinancialProduct  ) BCAF ON convert(varchar,BCA.CUSTOMERACCOUNTID) = convert(varchar,BCAF.CUSTOMERACCOUNTID) AND BCAF.SourceSystemCode = BCA.SourceSystemCode  AND BCA.FinancialInstitutionId = BCAF.FinancialInstitutionId AND CONVERT(DATE,BCA.CustomerAccountOpenedDate) = CONVERT(DATE,BCAF.PeriodStartDate)  \r\nJOIN DW.RefDepositVerifiedAccounts rdva on BCA.CustomerAccountId = rdva.FORACID and BCA.FINANCIALINSTITUTIONID = rdva.Bnk_code and BCA.CustomerAccountOpenedDate = rdva.ACCT_OPN_DATE\r\nLEFT JOIN (SELECT FinancialProductId,SourceSystemCode,FinancialInstitutionId,FcbsApplicationId FROM DW.FINPRODAPP) FPA ON CONVERT(VARCHAR,BCAF.ProductId) = CONVERT(VARCHAR,FPA.FinancialProductId) AND BCAF.FinancialInstitutionId = FPA.FinancialInstitutionId AND BCAF.SourceSystemCode = FPA.SourceSystemCode\r\nLEFT JOIN (SELECT CustomerAccountId,FinancialInstitutionId,SourceSystemCode,ClosedAccountIndicator FROM BNKM.CoreCustomerAccount WHERE SourceSystemCode = 'DEP'  ) BCCACCT ON BCA.CustomerAccountId = BCCACCT.CustomerAccountId AND BCA.FinancialInstitutionId = BCCACCT.FinancialInstitutionId  AND BCA.SourceSystemCode = BCCACCT.SourceSystemCode\r\n--LEFT JOIN (SELECT CustomerAccountId,FinancialInstitutionId,DepositAccountStatusTypeId FROM BNKM.DepositAccountStatus WHERE PeriodEndTimestamp IS NULL) BDAS ON BCA.CustomerAccountId = BDAS.CustomerAccountId AND BCA.FinancialInstitutionId = BDAS.FinancialInstitutionId\r\nLEFT JOIN (SELECT ROW_NUMBER() OVER(PARTITION BY CustomerAccountId ORDER BY PeriodStartTimeStamp desc) rn, CustomerAccountId,FinancialInstitutionId,DepositAccountStatusTypeId FROM BNKM.DepositAccountStatus WHERE  @dateprocessed between PeriodStartTimeStamp and replace(isnull(PeriodEndTimeStamp,'9999-12-31'),'1900-01-01','9999-12-31')) BDAS ON BCA.CustomerAccountId = BDAS.CustomerAccountId AND BCA.FinancialInstitutionId = BDAS.FinancialInstitutionId  AND BDAS.RN = 1\r\nLEFT JOIN (SELECT CUSTOMERACCOUNTID,FINANCIALINSTITUTIONID,SourceSystemCode,EmployeePayrollAccountIndicator FROM DW.CORECUSTACCPYROLL WHERE SourceSystemCode = 'DEP') BCCA ON BCA.CUSTOMERACCOUNTID = BCCA.CUSTOMERACCOUNTID AND BCA.FINANCIALINSTITUTIONID = BCCA.FINANCIALINSTITUTIONID AND BCA.SourceSystemCode = BCCA.SourceSystemCode\r\nLEFT JOIN DW.DimBank DDB ON BCA.FINANCIALINSTITUTIONID = DDB.BANKID\r\nLEFT JOIN DW.DimBranch DDBRAN ON BCA.BRANCHID = DDBRAN.BRANCHID AND DDBRAN.CurrentIndicator = 1\r\nLEFT JOIN (SELECT CustomerAccountId,FinancialInstitutionId,SourceSystemCode,ProfitCostCenterId FROM DW.CoreCustAccProCostCenter WHERE ProfitCostCenterTypeId = 'Account PCC Code 1' AND SourceSystemCode = 'DEP') BCCC ON BCA.CustomerAccountId = BCCC.CustomerAccountId AND BCA.FinancialInstitutionId = BCCC.FinancialInstitutionId AND BCA.SourceSystemCode = BCCC.SourceSystemCode\r\nWHERE BCA.SourceSystemCode = 'DEP'\r\n--AND LEFT(TRIM(BCAF.ProductId),2) <> '09'\r\nAND BCAF.ProductId NOT LIKE '09%'\r\nAND FPA.FcbsApplicationId IN ('CAA', 'SBA', 'TDA')\r\nAND BCA.CustomerAccountOpenedDate <= CONVERT(DATE,@dateprocessed)\r\nAND BCA.CUSTOMERACCOUNTID = '0043da5f6ca6faae32c9d3b90adea99d'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ACCT_DEP_chck2",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ACCT_DEP_chck1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "DatetoProcessed",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.DatetoProcessed",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "SELECT * FROM DW.ACCOUNT_DEP_TEST WHERE ACCOUNTID = '0043da5f6ca6faae32c9d3b90adea99d'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"parameters": {
+			"DatetoProcessed": {
+				"type": "string",
+				"defaultValue": "2024-01-22"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-02-05T10:46:47Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

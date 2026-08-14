@@ -1,0 +1,39 @@
+{
+	"name": "dep_dimacct_chk",
+	"properties": {
+		"activities": [
+			{
+				"name": "Script1",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "\r\nWITH\r\nCTE AS\r\n(\r\n    SELECT FORACID, ENTITY_CRE_FLG, ACCT_OPN_DATE, BNK_CODE, SOURCE_CODE, ISLATEST, ISACTIVE, SCHM_CODE, SCHM_TYPE, DEL_FLG, INSERT_DTTM\r\n    FROM  ( SELECT \r\n\t\t\tFORACID, ENTITY_CRE_FLG, ACCT_OPN_DATE, BNK_CODE, SOURCE_CODE, ISLATEST, ISACTIVE, SCHM_CODE, SCHM_TYPE, DEL_FLG\r\n\t\t\t, FILE_NAME\r\n\t\t\t, 0 WorkFlowI\r\n\t\t\t, 0 TaskRunId\r\n\t\t\t, CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) Insert_Dttm\r\n\t\t\t, ROW_NUMBER () OVER(PARTITION BY FORACID,BANK_ID ORDER BY LEFT(RIGHT(FILE_NAME ,12),8) DESC) RN\r\n\t\t\tFROM BUSC.DEP_GENERALACCOUNTMASTER A\r\n\t\t\tWHERE A.ENTITY_CRE_FLG = 'Y' AND A.SCHM_CODE NOT LIKE '09%' AND LEFT(RIGHT(A.FILE_NAME,12),8) <= '20240122' ) BDG\r\n    WHERE RN = 1 and FORACID NOT IN (SELECT ACCOUNTID FROM DW.DIMACCOUNT WHERE SOURCESYSTEMCODE = 'DEP' AND CURRENTINDICATOR = 1))\r\n\r\nSELECT COUNT(1) cnt FROM CTE A\r\nINNER JOIN  DW.RefDepositVerifiedAccounts B\r\nON B.FORACID = A.FORACID AND CAST(CONVERT(CHAR(8),B.ACCT_OPN_DATE,112) AS INT) = CAST(CONVERT(CHAR(8),A.ACCT_OPN_DATE,112) AS INT)\r\nINNER JOIN (SELECT CustomerAccountID FROM BNKM.CustomerAccount WHERE SourceSystemCode = 'DEP') CA on CA.CustomerAccountId = A.FORACID\r\n\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-02-05T10:46:42Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

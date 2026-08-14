@@ -1,0 +1,17 @@
+{
+	"name": "SQL script 1087",
+	"properties": {
+		"content": {
+			"query": "--#1 BACKUP TRU_ACCOUNT TABLE\nDECLARE @sql NVARCHAR(MAX);\nDECLARE @TGT_CNT [NUMERIC](15,0);\nDECLARE @BKUP_CNT [NUMERIC](15,0);\nDECLARE @tableName NVARCHAR(128);\nDECLARE @ticketNumber NVARCHAR(128);\nDECLARE @backupName NVARCHAR(128);\nDECLARE @SUFFIX INT = 0;\nDECLARE @BU_DATE CHAR(8);\n \nSET @BU_DATE = CONVERT(CHAR(8), CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATE), 112);\nSET @tableName = 'TRU_ACCOUNT';\nSET @ticketNumber = 'INC0042658';\nSET @backupName = @tableName+ '_' + @ticketNumber + '_BU_' + @BU_DATE;\n \nIF EXISTS (\n    SELECT 1\n    FROM INFORMATION_SCHEMA.TABLES\n    WHERE TABLE_NAME = @backupName AND TABLE_SCHEMA = 'D360'\n)\nBEGIN\n    -- Find the highest suffix number\n    SELECT TOP 1\n        @SUFFIX = TRY_CAST(RIGHT(TABLE_NAME, CHARINDEX('_', REVERSE(TABLE_NAME)) - 1) AS INT)\n    FROM INFORMATION_SCHEMA.TABLES\n    WHERE\n        TABLE_NAME LIKE @backupName + '_%'\n        AND TABLE_SCHEMA = 'D360'\n        AND ISNUMERIC(RIGHT(TABLE_NAME, CHARINDEX('_', REVERSE(TABLE_NAME)) - 1)) = 1\n    ORDER BY CAST(RIGHT(TABLE_NAME, CHARINDEX('_', REVERSE(TABLE_NAME)) - 1) AS NUMERIC(15,0)) DESC;\n \n    -- If no _1 exists, make _1. Otherwise, increment.\n    SET @SUFFIX = ISNULL(@SUFFIX, 0) + 1;\n    SET @backupName = @backupName + '_' + CAST(@SUFFIX AS VARCHAR);\nEND\n \nSET @sql = '\nCREATE TABLE D360.' + QUOTENAME(@backupName) + '\nWITH\n(\n    DISTRIBUTION= ROUND_ROBIN, HEAP\n)\nAS\nSELECT *\nFROM EDS.' + @tableName + ';';\n \nEXEC sp_executesql @sql;\n\n\nDECLARE @sql_code NVARCHAR(MAX) = ('\n\nDECLARE @V_TGT_REC_CNT [NUMERIC](15,0) \nDECLARE @V_BKUP_CNT [NUMERIC](15,0) \n\nSELECT @V_TGT_REC_CNT=COUNT(*) FROM EDS.' + @tablename + '\nSELECT @V_BKUP_CNT=COUNT(*) FROM  D360.' + QUOTENAME(@backupName) + '\t\n\nIF(@V_TGT_REC_CNT<>@V_BKUP_CNT)\nBEGIN\n\n   DECLARE @errmsg1 NVARCHAR(2048) = ''Record count: @V_TGT_REC_CNT from target table '+@tablename+' does not match with the record:@V_BKUP_CNT from table '+ QUOTENAME(@backupName) + ''';\n   \n   THROW 50001, @errmsg1, 1;  \nEND \n\nPRINT N''Target table ' + @tablename + ' Record count: '+ @V_TGT_REC_CNT +'''\nPRINT N''Backup table ' + QUOTENAME(@backupName) + ' Record count: '+ @V_BKUP_CNT +'''\n');\n\t\nEXEC sp_executesql @sql_code;\n\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

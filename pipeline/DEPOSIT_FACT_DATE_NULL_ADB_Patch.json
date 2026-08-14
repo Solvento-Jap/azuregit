@@ -1,0 +1,483 @@
+{
+	"name": "DEPOSIT_FACT_DATE_NULL_ADB_Patch",
+	"properties": {
+		"activities": [
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_Previous_Year_Last_Bus_Day_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_Previous_Year_Last_Bus_Day_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "Previous_Year_Last_Bus_Day",
+								"value": {
+									"value": "@pipeline().parameters.ytd_StartDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('select fulldate\nfrom \n    eds.eds_ctl ect\ninner join \n    eds.date_dim dd\n    on \n    ect.DEPOSITS_DATE=dd.previous_business_day\n    and dd.business_day_flag=''Y''')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "GET_PROCESS_DATE_Previous_Year_Last_Bus_Day",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT Previous_Year_Last_Bus_Day FROM EDS.DATE_DIM WHERE FULLDATE =''',variables('V_startDate'),'''')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "DATE_DIM"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_YTD_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE_Previous_Year_Last_Bus_Day",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "Previous_Year_Last_Bus_Day",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE_Previous_Year_Last_Bus_Day').output.firstRow.Previous_Year_Last_Bus_Day\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "NULL_ADB_PATCH",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "EDS_DEPOSIT_MTD_YTD_UAT",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "start",
+									"type": "String",
+									"value": {
+										"value": "@variables('v_startDate')",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "end",
+									"type": "String",
+									"value": {
+										"value": "@variables('v_endDate')",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "ytd",
+									"type": "String",
+									"value": {
+										"value": "@variables('Previous_Year_Last_Bus_Day')",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "DECLARE @startdate_process DATE = @start;\r\nDECLARE @enddate_process DATE = @end;\r\nDECLARE @ytd_startDate_process DATE = @ytd;\r\n \r\nUPDATE DFD \r\nSET \r\n DFD.MONTHLY_TOT_OUT_BAL = YTD.MONTHLY_TOTAL_OUTSTANDING_BALANCE\r\n,DFD.MONTHLY_TOT_OUT_BAL_PHP = YTD.MONTHLY_TOTAL_OUTSTANDING_BALANCE_PHP\r\n,DFD.MTD_BALANCE = YTD.MTD_BALANCE\r\n,DFD.MTD_BALANCE_PHP = YTD.MTD_BALANCE_PHP\r\n,DFD.CURRENT_OUTSTANDING_BALANCE = YTD.CURRENT_OUTSTANDING_BALANCE \r\n,DFD.CURRENT_OUTSTANDING_BALANCE_PHP = YTD.CURRENT_OUTSTANDING_BALANCE_PHP\r\n,DFD.TOT_CUR_OUT_BAL = YTD.TOTAL_CURRENT_OUTSTANDING_BALANCE\r\n,DFD.TOT_CUR_OUT_BAL_PHP = YTD.TOTAL_CURRENT_OUTSTANDING_BALANCE_PHP\r\n,DFD.YTD_BALANCE = YTD.YTD_BALANCE\r\n,DFD.YTD_BALANCE_PHP = YTD.YTD_BALANCE_PHP\r\nFROM EDS.DEPOSIT_FACT_DATE DFD \r\nINNER JOIN EDS.DEPOSIT_MTD_YTD_UAT YTD ON DFD.GAM_ACID = YTD.GAM_ACID AND DFD.GAM_BANK_ID = YTD.GAM_BANK_ID AND DFD.AS_OF_DATE = YTD.FULLDATE\r\nWHERE DFD.AS_OF_DATE = DFD.ACCT_CLS_DATE AND DFD.DEP_ACCOUNT_STATUS = 'C' AND DFD.AS_OF_DATE BETWEEN @startdate_process AND @enddate_process\r\nAND DFD.GAM_BANK_ID = 'CBC01'\r\nAND SUBSTRING(DFD.GAM_SCHM_CODE, 1, 2) <> '09'\r\nAND DFD.DEL_FLG = 'N';\r\n\r\n\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "D360_DEPO_BALANCE_ONLY",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "endDate",
+									"type": "String",
+									"value": {
+										"value": "@substring(variables('V_endDate'),0,10)",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "DECLARE @endDate_process DATE;\r\nSET @endDate_process = @endDate;\r\n\r\nDROP TABLE D360.DEPO_BALANCE_ONLY;\r\n\r\nCREATE TABLE D360.DEPO_BALANCE_ONLY\r\nWITH\r\n(\r\n    DISTRIBUTION = HASH(GAM_ACID)\r\n,    HEAP\r\n)\r\nAS\r\nSELECT AS_OF_DATE\r\n    ,CUST_ID\r\n    ,GAM_ACID\r\n    ,ACCT_CRNCY_CODE\r\n    ,GAM_BANK_ID\r\n    ,GAM_SCHM_TYPE\r\n    ,GAM_SCHM_CODE\r\n    ,OUTSTANDING_BALANCE\r\n    ,OUTSTANDING_BALANCE_PHP\r\n\t,ACCUMULATED_CURRBAL\r\n    ,DEP_ACCOUNT_STATUS\r\nFROM EDS.DEPOSIT_FACT\r\nWHERE GAM_BANK_ID = 'CBC01'\r\n\tAND SUBSTRING(GAM_SCHM_CODE, 1, 2) <> '09'\r\n\tAND DEL_FLG = 'N'\r\n\t--AND\t(\r\n\t--\t\tDEP_ACCOUNT_STATUS <> 'C' \r\n\t--\t\tOR (DEP_ACCOUNT_STATUS IS NULL AND ACCT_OPN_DATE = AS_OF_DATE)\r\n\t--\t)\r\n\tAND AS_OF_DATE <= @endDate_process\r\n-- where ACCT_CRNCY_CODE <> 'PHP'\r\n;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "D360_DEPO_YTD_ALLDATES",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "D360_DEPO_BALANCE_ONLY",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "endDate",
+									"type": "String",
+									"value": {
+										"value": "@substring(variables('V_endDate'),0,10)",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "ytd_startDate",
+									"type": "String",
+									"value": {
+										"value": "@substring(variables('Previous_Year_Last_Bus_Day'),0,10)",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "DECLARE @endDate_process DATE;\r\nSET @endDate_process = @endDate;\r\n\r\nDECLARE @ytd_startDate_process DATE;\r\nSET @ytd_startDate_process = @ytd_startDate;\r\n\r\nDROP TABLE D360.DEPO_YTD_ALLDATES;\r\n\r\nCREATE TABLE D360.DEPO_YTD_ALLDATES\r\nWITH\r\n(\r\n    DISTRIBUTION = HASH(GAM_ACID)\r\n,    HEAP\r\n)\r\nAS\r\n\tSELECT FULLDATE\r\n\t\t, Previous_Business_Day\r\n\t\t, Business_Day_Flag\r\n\t\t, DAYOFYEAR\r\n\t\t, LastDayOfMonth\r\n\t\t, Day\r\n--\t\t, case when month_end = 'Y' then DATEDIFF(day, fulldate, LastDayOfMonth) else 0 end month_end_diff\r\n\t\t, DATEDIFF(day, fulldate, LastDayOfMonth) month_end_diff\r\n\t\t, YEAR\r\n\t\t, MONTH\r\n\t\t, CUST_ID\r\n\t\t, GAM_ACID\r\n\t\t, ACCT_CRNCY_CODE\r\n\t\t, GAM_BANK_ID\r\n\t\t, GAM_SCHM_TYPE\r\n\t\t, MONTH_END\r\n\tFROM EDS.DATE_DIM\r\n\tJOIN EDS.DEPOSIT_FACT\r\n\t\tON 1 = 1\r\n\t\tAND SUBSTRING(GAM_SCHM_CODE, 1, 2) <> '09'\r\n\t\tAND GAM_BANK_ID = 'CBC01'\r\n\t\t--AND (AS_OF_DATE = @endDate_process OR (DEP_ACCOUNT_STATUS = 'C' and  AS_OF_DATE < @endDate_process))\r\n\t\tAND AS_OF_DATE = ACCT_CLS_DATE \r\n\tWHERE FULLDATE BETWEEN @ytd_startDate_process AND @endDate_process;\r\n--\tWHERE FULLDATE = '2024-10-31'\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "EDS_DEPOSIT_MTD_YTD_UAT",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "D360_DEPO_YTD_ALLDATES",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "DROP TABLE EDS.DEPOSIT_MTD_YTD_UAT;\r\n\r\nCREATE TABLE EDS.DEPOSIT_MTD_YTD_UAT\r\nWITH\r\n(\r\n    DISTRIBUTION = HASH(GAM_ACID)\r\n,    HEAP\r\n)\r\nAS\r\nSELECT\r\n      TMP.FULLDATE\r\n    , TMP.Previous_Business_Day\r\n    , TMP.CUST_ID\r\n    , TMP.GAM_ACID\r\n    , TMP.ACCT_CRNCY_CODE\r\n    , TMP.GAM_BANK_ID\r\n    , TMP.GAM_SCHM_TYPE\r\n    , (CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE ELSE CURRENT_PBD.OUTSTANDING_BALANCE END) AS CURRENT_OUTSTANDING_BALANCE\r\n    , (CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE_PHP ELSE CURRENT_PBD.OUTSTANDING_BALANCE_PHP END) AS CURRENT_OUTSTANDING_BALANCE_PHP\r\n--    , CURRENT_PBD.OUTSTANDING_BALANCE AS PREVIOUS_OUTSTANDING_BALANCE\r\n--    , CURRENT_PBD.OUTSTANDING_BALANCE_PHP AS PREVIOUS_OUTSTANDING_BALANCE_PHP\r\n    , SUM(CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE ELSE CURRENT_PBD.OUTSTANDING_BALANCE END)\r\n        OVER(PARTITION BY YEAR, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW ) AS TOTAL_CURRENT_OUTSTANDING_BALANCE\r\n    , SUM(CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE_PHP ELSE CURRENT_PBD.OUTSTANDING_BALANCE_PHP END)\r\n        OVER(PARTITION BY YEAR, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW ) AS TOTAL_CURRENT_OUTSTANDING_BALANCE_PHP\r\n\t, COALESCE(DEP_YTD.ACCUMULATED_CURRBAL, CURRENT_BD.ACCUMULATED_CURRBAL)\tAS ACCUMULATED_CURRBAL\r\n    , CAST(DAYOFYEAR AS SMALLINT) DAYOFYEAR\r\n    , LastDayOfMonth\r\n    , CAST(Day AS SMALLINT) Day\r\n\t, month_end_diff\r\n    , (\r\n--\t\tCASE \r\n--\t\t\tWHEN TMP.ACCT_CRNCY_CODE <> 'PHP' THEN \r\n\t\t\t\t(\r\n\t\t\t\t\tSUM(CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE ELSE CURRENT_PBD.OUTSTANDING_BALANCE END)\r\n\t\t\t\t\t\tOVER(PARTITION BY YEAR, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) \r\n\t\t\t\t\t+ case when month_end = 'Y' then month_end_diff * CURRENT_BD.OUTSTANDING_BALANCE else 0 end\r\n\t\t\t\t) / (DAYOFYEAR + case when month_end = 'Y' then month_end_diff else 0 end)\r\n--\t\t\tELSE COALESCE(DEP_YTD.ACCUMULATED_CURRBAL, CURRENT_BD.ACCUMULATED_CURRBAL) / DAYOFYEAR\r\n--\t\tEND\r\n\t) AS YTD_BALANCE\r\n\t\r\n    , (\r\n--\t\tCASE \r\n--\t\t\tWHEN TMP.ACCT_CRNCY_CODE <> 'PHP' THEN\r\n\t\t\t\t(\r\n\t\t\t\t\tSUM(CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE_PHP ELSE CURRENT_PBD.OUTSTANDING_BALANCE_PHP END)\r\n\t\t\t\t\t\tOVER(PARTITION BY YEAR, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW )\r\n\t\t\t\t\t+ case when month_end = 'Y' then month_end_diff * CURRENT_BD.OUTSTANDING_BALANCE_PHP else 0 end\r\n\t\t\t\t) / (DAYOFYEAR + case when month_end = 'Y' then month_end_diff else 0 end)\r\n--\t\t\tELSE COALESCE(DEP_YTD.ACCUMULATED_CURRBAL, CURRENT_BD.ACCUMULATED_CURRBAL) / DAYOFYEAR\r\n--\t\tEND\r\n\t) AS YTD_BALANCE_PHP\r\n\t\r\n    , ((SUM(CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE ELSE CURRENT_PBD.OUTSTANDING_BALANCE END)\r\n\tOVER(PARTITION BY YEAR, MONTH, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW ) \r\n\t+ case when month_end = 'Y' then month_end_diff else 0 end * CURRENT_BD.OUTSTANDING_BALANCE) \r\n\t/ (DAY + case when month_end = 'Y' then month_end_diff else 0 end)\r\n\t) AS MTD_BALANCE\r\n\t\r\n    , ((SUM(CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE_PHP ELSE CURRENT_PBD.OUTSTANDING_BALANCE_PHP END)\r\n\tOVER(PARTITION BY YEAR, MONTH, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW )\r\n\t+ case when month_end = 'Y' then month_end_diff * CURRENT_BD.OUTSTANDING_BALANCE_PHP else 0 end) \r\n\t/ (DAY + case when month_end = 'Y' then month_end_diff else 0 end)\r\n\t) AS MTD_BALANCE_PHP\t\r\n\r\n    , ((SUM(CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE ELSE CURRENT_PBD.OUTSTANDING_BALANCE END)\r\n\tOVER(PARTITION BY YEAR, MONTH, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW ) \r\n\t+ case when month_end = 'Y' then month_end_diff else 0 end * CURRENT_BD.OUTSTANDING_BALANCE) \r\n\t) AS MONTHLY_TOTAL_OUTSTANDING_BALANCE\r\n\r\n    , ((SUM(CASE WHEN Business_Day_Flag = 'Y' THEN CURRENT_BD.OUTSTANDING_BALANCE_PHP ELSE CURRENT_PBD.OUTSTANDING_BALANCE_PHP END)\r\n\tOVER(PARTITION BY YEAR, MONTH, TMP.GAM_ACID ORDER BY TMP.FULLDATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW )\r\n\t+ case when month_end = 'Y' then month_end_diff * CURRENT_BD.OUTSTANDING_BALANCE_PHP else 0 end) \r\n\t) AS MONTHLY_TOTAL_OUTSTANDING_BALANCE_PHP\t\r\n\t\r\n    , TMP.MONTH_END\r\n\t, CURRENT_BD.DEP_ACCOUNT_STATUS\r\nFROM D360.DEPO_YTD_ALLDATES TMP\r\nLEFT JOIN D360.DEPO_BALANCE_ONLY CURRENT_BD\r\n    ON TMP.GAM_ACID = CURRENT_BD.GAM_ACID\r\n    AND TMP.FULLDATE = CURRENT_BD.AS_OF_DATE\r\n\t\r\nLEFT JOIN D360.DEPO_BALANCE_ONLY CURRENT_PBD\r\n    ON TMP.GAM_ACID = CURRENT_PBD.GAM_ACID \r\n    AND TMP.Previous_Business_Day = CURRENT_PBD.AS_OF_DATE\r\n\t\r\nLEFT JOIN D360.DEP_BUSC_ACCUMULATED_CURRBAL_YTD DEP_YTD\r\n\tON TMP.GAM_ACID = DEP_YTD.ACID\r\n\tAND TMP.GAM_BANK_ID = DEP_YTD.BANK_ID\r\n\tAND TMP.FULLDATE = DEP_YTD.CURRENT_EOD_DATE;\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"ytd_StartDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			}
+		},
+		"variables": {
+			"v_startDate": {
+				"type": "String"
+			},
+			"v_endDate": {
+				"type": "String"
+			},
+			"Previous_Year_Last_Bus_Day": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-06-09T03:11:38Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

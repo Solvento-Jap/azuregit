@@ -1,0 +1,20 @@
+{
+	"name": "SQL script 201",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "-- GET DELTA FROM BUSC\n\nWITH TEMP_BNKM_CustomerOverallCreditRating \nAS(\n    SELECT\n    BCM.MISCELLANEOUSID,\n    BCM.DTDATE1,\n    BCM.STRTEXT21,\n    BCM.STRTEXT27,\n    BCM.STRTEXT20,\n    BCMD.RECORD_STATUS,\n    BCM.INSERT_DTTM,\n    BCM.BANK_ID\n\n    FROM BUSC.CRM_MISCELLANEOUSINFO_DELTA BCMD\n    LEFT JOIN BUSC.CRM_MISCELLANEOUSINFO BCM on BCM.MISCELLANEOUSID = BCMD.MISCELLANEOUSID AND BCMD.BANK_ID = BCM.BANK_ID AND BCM.isLatest = '1'\n\n),\n\n--CHECK IF THERE IS DELTA\n\nTEMP_BNKM_CustomerOverallCreditRating_SRC\nAS(\n    SELECT\n    HASHBYTES('MG5', CONCAT(\n    MISCELLANEOUSID,\n    DTDATE1,\n    STRTEXT21,\n    STRTEXT27,\n    STRTEXT20\n    )) HASHROW, MISCELLANEOUSID, RECORD_STATUS\n    FROM TEMP_BNKM_CustomerOverallCreditRating  WHERE RECORD_STATUS = 'UPDATE'\n),\n\nTEMP_BNKM_CustomerOverallCreditRating_TGT\nAS(\n    SELECT\n    HASHBYTES('MD5',CONCAT(\n    CustomerId,\n    PeriodStartDate,\n    CreditRiskId,\n    CustomerCreditRatingNote,\n    RiskRatingTypeId\n    )) HASHROW, CustomerId\n    FROM BNKM.CustomerOverallCreditRating\n    \n),\n\nTEMP_BNKM_CustomerOverallCreditRating_DELTA\nAS(\n    SELECT\n    SRC.HASHROW AS SRC_HR\n    ,TGT.HASHROW AS TGT_HR\n    ,ISNULL(SRC.MISCELLANEOUSID,TGT.CustomerId) AS CustomerId\n    ,CASE\n        WHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n        ELSE NULL END AS RECORD_STATUS\n\n    FROM TEMP_BNKM_CustomerOverallCreditRating_SRC SRC\n    FULL OUTER JOIN TEMP_BNKM_CustomerOverallCreditRating_TGT TGT ON SRC.MISCELLANEOUSID = TGT.CustomerId \n    WHERE SRC.HASHROW = TGT.HASHROW\n)\n\nUPDATE TGT\nSET\n[CustomerId] = SRC.MISCELLANEOUSID,\n[CreditRatingAgencyId] = NULL,\n[PeriodStartDate] = SRC.DTDATE1,\n[PeriodEndDate] = NULL,\n[CreditRiskId] = SRC.STRTEXT21,\n[CustomerCreditRatingNote] = SRC.STRTEXT27,\n[RiskRatingTypeId] = SRC.STRTEXT20,\n[SourceCode] = 'CRM',\n[FinancialInstitutionId] = SRC.BANK_ID,\n[WorkflowId] = 0,\n[TaskRunId] = 0,\n[InsertDttm] = SRC.INSERT_DTTM\nFROM BNKM.CustomerOverallCreditRating TGT\nJOIN TEMP_BNKM_CustomerOverallCreditRating_DELTA DELTA ON DELTA.CustomerId = TGT.CustomerId AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN TEMP_BNKM_CustomerOverallCreditRating SRC ON SRC.CustomerId = TGT.CustomerId;\n\n\n--GET DELTA FROM BUSC\nWITH TEMP_BNKM_CustomerOverallCreditRating\nAS(\n    SELECT\n    BCM.MISCELLANEOUSID,\n    BCM.DTDATE1,\n    BCM.STRTEXT21,\n    BCM.STRTEXT27,\n    BCM.STRTEXT20,\n    BCMD.RECORD_STATUS,\n    BCM.INSERT_DTTM,\n    BCM.BANK_ID\n    \n    FROM BUSC.CRM_MISCELLANEOUSINFO_DELTA BCMD\nLEFT JOIN BUSC.CRM_MISCELLANEOUSINFO BCM ON BCM.MISCELLANEOUSID = BCMD.MISCELLANEOUSID AND BCM.BANK_ID = BCMD.BANK_ID AND BCM.isLatest = '1'\n)\n\n--INSERT RECORDS TO BNKM\n\nINSERT INTO BNKM.CustomerOverallCreditRating (\n    [CustomerId], \n    [CreditRatingAgencyId], \n    [PeriodStartDate], \n    [PeriodEndDate], \n    [CreditRiskId], \n    [CustomerCreditRatingNote], \n    [RiskRatingTypeId],\n    [SourceCode],\n    [WorkFlowId],\n    [TaskRunId],\n    [InsertDttm]\n    )\n\n    SELECT\n    MISCELLANEOUSID as CustomerId,\n    NULL AS CreditRatingAgencyId,\n    DTDATE1 AS PeriodStartDate,\n    NULL AS PeriodEndDate,\n    STRTEXT21 AS CreditRiskId,\n    STRTEXT27 AS CustomerCreditRatingNote,\n    STRTEXT20 AS RiskRatingTypeId,\n    'CRM' AS SOURCECODE,\n    BANK_ID AS FINANCIALINSTITUTIONId,\n    0 AS WORKFLOWID,\n    0 AS TASKRUNID,\n    INSERT_DTTM AS INSERTDTTM\n    FROM TEMP_BNKM_CustomerOverallCreditRating\n    WHERE RECORD_STATUS IN ('INSERT');\n\n\n\n\n\n\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

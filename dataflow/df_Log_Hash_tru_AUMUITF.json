@@ -1,0 +1,154 @@
+{
+	"name": "df_Log_Hash_tru_AUMUITF",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference"
+					},
+					"name": "source1"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "SQLPool_tgt_Logstable",
+						"type": "DatasetReference"
+					},
+					"name": "sink1"
+				}
+			],
+			"transformations": [
+				{
+					"name": "filter1"
+				},
+				{
+					"name": "derivedColumn1"
+				},
+				{
+					"name": "unpivot1"
+				},
+				{
+					"name": "filter3"
+				},
+				{
+					"name": "aggregate1"
+				},
+				{
+					"name": "join1"
+				},
+				{
+					"name": "derivedColumn2"
+				},
+				{
+					"name": "derivedColumn3"
+				},
+				{
+					"name": "aggregate2"
+				},
+				{
+					"name": "filter4"
+				},
+				{
+					"name": "sort1"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          H as string,",
+				"          FUND as string,",
+				"          CUSTOMER_ID as string,",
+				"          LAST6_CUSTOMER_ID as string,",
+				"          CUSTOMER_NAME as string,",
+				"          CUSTOMER_TYPE as string,",
+				"          BRANCH as string,",
+				"          TRUST_FEE_RATE as string,",
+				"          CURRENCY as string,",
+				"          CUSTOMER_FUND_VALUE as string,",
+				"          TOTAL_FUND_VALUE as string,",
+				"          FX_RATE as string,",
+				"          CUSTOMER_FUND_VALUE_IN_PHP as string,",
+				"          TOTAL_FUND_VALUE_IN_PHP as string,",
+				"          HOLDING_PERCENTAGE as string,",
+				"          ASOFDATE as string,",
+				"          FILE_NAME as string,",
+				"          insert_dttm as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table',",
+				"     staged: true,",
+				"     partitionBy('roundRobin', 3)) ~> source1",
+				"source1 filter(H !='D') ~> filter1",
+				"filter1 derive(Date = toDate(left(right(FILE_NAME, 12),8),'yyyyMMdd'),",
+				"          Count_src = dropLeft(H,2),",
+				"          CUSTOMER_FUND_VALUE_src = CUSTOMER_FUND_VALUE,",
+				"          CUSTOMER_FUND_VALUE_IN_PHP_src = CUSTOMER_FUND_VALUE_IN_PHP,",
+				"          TOTAL_FUND_VALUE_src = TOTAL_FUND_VALUE,",
+				"          TOTAL_FUND_VALUE_IN_PHP_src = TOTAL_FUND_VALUE_IN_PHP) ~> derivedColumn1",
+				"join1 unpivot(output(",
+				"          Metrics as string,",
+				"          Source as string,",
+				"          Target as string",
+				"     ),",
+				"     ungroupBy(source1@FILE_NAME,",
+				"          insert_dttm,",
+				"          Date),",
+				"     lateral: true,",
+				"     ignoreNullPivots: true) ~> unpivot1",
+				"source1 filter(H == 'D') ~> filter3",
+				"filter3 aggregate(groupBy(FILE_NAME),",
+				"     Count_tgt = toString(count(H)),",
+				"          CUSTOMER_FUND_VALUE_tgt = toString(sum(toDouble(CUSTOMER_FUND_VALUE))),",
+				"          CUSTOMER_FUND_VALUE_IN_PHP_tgt = toString(sum(toDouble(CUSTOMER_FUND_VALUE_IN_PHP))),",
+				"          TOTAL_FUND_VALUE_tgt = toString(sum(toDouble(TOTAL_FUND_VALUE))),",
+				"          TOTAL_FUND_VALUE_IN_PHP_tgt = toString(sum(toDouble(TOTAL_FUND_VALUE_IN_PHP)))) ~> aggregate1",
+				"derivedColumn1, aggregate1 join(source1@FILE_NAME == aggregate1@FILE_NAME,",
+				"     joinType:'inner',",
+				"     matchType:'exact',",
+				"     ignoreSpaces: false,",
+				"     broadcast: 'auto')~> join1",
+				"unpivot1 derive(Source = case(like(Metrics, '%src%')  , Source, ''),",
+				"          Target = case(like(Metrics, '%tgt%')  , Source, '')) ~> derivedColumn2",
+				"derivedColumn2 derive(Metrics = case(like(Metrics,'%src%'), replace(Metrics, '_src', ''), replace(Metrics, '_tgt', '')),",
+				"          insert_dttm = toTimestamp(insert_dttm,'yyyy-MM-dd\\'T\\'HH:mm:ss')) ~> derivedColumn3",
+				"derivedColumn3 aggregate(groupBy(FILE_NAME,",
+				"          Date,",
+				"          Metrics,",
+				"          insert_dttm),",
+				"     Source = sum(toFloat(Source)),",
+				"          Target = sum(toFloat(Target))) ~> aggregate2",
+				"aggregate2 filter(Metrics!= 'H' && Metrics!='SOURCE_CODE' && Metrics!='BANK_CODE' && Metrics!='FileName' && Metrics!= 'TABLE_NAME') ~> filter4",
+				"filter4 sort(asc(Date, true),",
+				"     asc(FILE_NAME, true),",
+				"     asc(Metrics, true)) ~> sort1",
+				"sort1 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          ID as integer,",
+				"          File_name as string,",
+				"          Date as date,",
+				"          Load_date as timestamp,",
+				"          Metrics as string,",
+				"          Source as decimal(16,4),",
+				"          Target as decimal(16,4)",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     staged: true,",
+				"     allowCopyCommand: true,",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     partitionBy('roundRobin', 3)) ~> sink1"
+			]
+		}
+	}
+}

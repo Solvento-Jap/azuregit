@@ -1,0 +1,1973 @@
+{
+	"name": "DecToStg_AML_FTI",
+	"properties": {
+		"description": "AML DecToStg pipeline for FTI; covers 3 approved manifest table(s).",
+		"activities": [
+			{
+				"name": "Require_Approved_Execution",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.ExecutionMode, 'ApprovedDateSliceReload')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Unapproved_Execution",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "ExecutionMode must be ApprovedDateSliceReload.",
+								"errorCode": "AML_EXECUTION_NOT_APPROVED"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Execution_Approved",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Require_Valid_MissingFilePolicy",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Require_Approved_Execution",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(equals(pipeline().parameters.MissingFilePolicy, 'Fail'), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_Invalid_MissingFilePolicy",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "MissingFilePolicy must be Fail or Skip.",
+								"errorCode": "AML_INVALID_MISSING_FILE_POLICY"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "MissingFilePolicy_Valid",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "GetFile_FTI_IN_TRANSACTIONS",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "Require_Valid_MissingFilePolicy",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv_AML",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('*VW_DW_INC_REM_TRANSACTIONS_', pipeline().parameters.DateToProcess, '*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/FTI",
+							"ColumnDelimiter": "|",
+							"FirstRowAsHeader": true,
+							"RowDelimiter": "\r\n",
+							"EncodingName": "UTF-8"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "RequireFileOrSkip_FTI_IN_TRANSACTIONS",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "GetFile_FTI_IN_TRANSACTIONS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(not(empty(activity('GetFile_FTI_IN_TRANSACTIONS').output.childItems)), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_FTI_IN_TRANSACTIONS_MissingFile",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "No source file matched @concat('*VW_DW_INC_REM_TRANSACTIONS_', pipeline().parameters.DateToProcess, '*') under dev/decrypted/FTI, and MissingFilePolicy is Fail.",
+								"errorCode": "AML_SOURCE_FILE_MISSING"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Accept_FTI_IN_TRANSACTIONS_FilePolicy",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "IfFile_FTI_IN_TRANSACTIONS",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "RequireFileOrSkip_FTI_IN_TRANSACTIONS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@not(empty(activity('GetFile_FTI_IN_TRANSACTIONS').output.childItems))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Skip_FTI_IN_TRANSACTIONS_NoFile",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Start_FTI_IN_TRANSACTIONS",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_START]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_FTI_IN_TRANSACTIONS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DateToProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Copy_FTI_IN_TRANSACTIONS",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Start_FTI_IN_TRANSACTIONS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										},
+										{
+											"name": "H",
+											"value": "D"
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/FTI",
+										"wildcardFileName": {
+											"value": "@concat('*VW_DW_INC_REM_TRANSACTIONS_', pipeline().parameters.DateToProcess, '*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": {
+										"value": "@concat('DECLARE @DateToProcess varchar(8) = ''', replace(pipeline().parameters.DateToProcess, '''', ''''''), '''; IF LEN(@DateToProcess) <> 8 OR @DateToProcess LIKE ''%[^0-9]%'' OR TRY_CONVERT(date, @DateToProcess, 112) IS NULL THROW 50000, ''DateToProcess must be a valid yyyyMMdd date.'', 1; DELETE FROM [D360].[STG_FTI_IN_TRANSACTIONS] WHERE CHARINDEX(''VW_DW_INC_REM_TRANSACTIONS_'' + @DateToProcess, [FILE_NAME]) > 0;')",
+										"type": "Expression"
+									},
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									}
+								},
+								"enableStaging": false
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv_AML",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": "dev/decrypted/FTI",
+										"ColumnDelimiter": "|",
+										"FirstRowAsHeader": true,
+										"RowDelimiter": "\r\n",
+										"EncodingName": "UTF-8"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_FTI_IN_TRANSACTIONS"
+									}
+								}
+							]
+						},
+						{
+							"name": "End_FTI_IN_TRANSACTIONS_Success",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_FTI_IN_TRANSACTIONS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_FTI_IN_TRANSACTIONS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "SUCCESSFUL",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_FTI_IN_TRANSACTIONS",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "End_FTI_IN_TRANSACTIONS_Failed",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_FTI_IN_TRANSACTIONS",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_FTI_IN_TRANSACTIONS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "FAILED",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_FTI_IN_TRANSACTIONS",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Fail_FTI_IN_TRANSACTIONS_Copy",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "End_FTI_IN_TRANSACTIONS_Failed",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "Copy into D360.STG_FTI_IN_TRANSACTIONS failed. Review the Copy activity and OM task evidence.",
+								"errorCode": "AML_COPY_FAILED"
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "GetFile_FTI_OUT_TRANSACTIONS",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "IfFile_FTI_IN_TRANSACTIONS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv_AML",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('*VW_DW_OUT_FT_TRANSACTIONS_', pipeline().parameters.DateToProcess, '*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/FTI",
+							"ColumnDelimiter": "|",
+							"FirstRowAsHeader": true,
+							"RowDelimiter": "\r\n",
+							"EncodingName": "UTF-8"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "RequireFileOrSkip_FTI_OUT_TRANSACTIONS",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "GetFile_FTI_OUT_TRANSACTIONS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(not(empty(activity('GetFile_FTI_OUT_TRANSACTIONS').output.childItems)), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_FTI_OUT_TRANSACTIONS_MissingFile",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "No source file matched @concat('*VW_DW_OUT_FT_TRANSACTIONS_', pipeline().parameters.DateToProcess, '*') under dev/decrypted/FTI, and MissingFilePolicy is Fail.",
+								"errorCode": "AML_SOURCE_FILE_MISSING"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Accept_FTI_OUT_TRANSACTIONS_FilePolicy",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "IfFile_FTI_OUT_TRANSACTIONS",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "RequireFileOrSkip_FTI_OUT_TRANSACTIONS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@not(empty(activity('GetFile_FTI_OUT_TRANSACTIONS').output.childItems))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Skip_FTI_OUT_TRANSACTIONS_NoFile",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Start_FTI_OUT_TRANSACTIONS",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_START]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_FTI_OUT_TRANSACTIONS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DateToProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Copy_FTI_OUT_TRANSACTIONS",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Start_FTI_OUT_TRANSACTIONS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										},
+										{
+											"name": "H",
+											"value": "D"
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/FTI",
+										"wildcardFileName": {
+											"value": "@concat('*VW_DW_OUT_FT_TRANSACTIONS_', pipeline().parameters.DateToProcess, '*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": {
+										"value": "@concat('DECLARE @DateToProcess varchar(8) = ''', replace(pipeline().parameters.DateToProcess, '''', ''''''), '''; IF LEN(@DateToProcess) <> 8 OR @DateToProcess LIKE ''%[^0-9]%'' OR TRY_CONVERT(date, @DateToProcess, 112) IS NULL THROW 50000, ''DateToProcess must be a valid yyyyMMdd date.'', 1; DELETE FROM [D360].[STG_FTI_OUT_TRANSACTIONS] WHERE CHARINDEX(''VW_DW_OUT_FT_TRANSACTIONS_'' + @DateToProcess, [FILE_NAME]) > 0;')",
+										"type": "Expression"
+									},
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "TXNDATE"
+											},
+											"sink": {
+												"name": "TXNDATE"
+											}
+										},
+										{
+											"source": {
+												"name": "TXNREFERENCENUMBER"
+											},
+											"sink": {
+												"name": "TXNREFERENCENUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "TXNTYPE"
+											},
+											"sink": {
+												"name": "TXNTYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "TXNSUBTYPE"
+											},
+											"sink": {
+												"name": "TXNSUBTYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "TXNMODE"
+											},
+											"sink": {
+												"name": "TXNMODE"
+											}
+										},
+										{
+											"source": {
+												"name": "BRANCHCODE"
+											},
+											"sink": {
+												"name": "BRANCHCODE"
+											}
+										},
+										{
+											"source": {
+												"name": "OLDACCOUNTNUMBER"
+											},
+											"sink": {
+												"name": "OLDACCOUNTNUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "CURRENCYCODE"
+											},
+											"sink": {
+												"name": "CURRENCYCODE"
+											}
+										},
+										{
+											"source": {
+												"name": "CURRENCYAMOUNT"
+											},
+											"sink": {
+												"name": "CURRENCYAMOUNT"
+											}
+										},
+										{
+											"source": {
+												"name": "EFFECTIVITYDATE"
+											},
+											"sink": {
+												"name": "EFFECTIVITYDATE"
+											}
+										},
+										{
+											"source": {
+												"name": "MATURITYDATE"
+											},
+											"sink": {
+												"name": "MATURITYDATE"
+											}
+										},
+										{
+											"source": {
+												"name": "CORBNK_NAME"
+											},
+											"sink": {
+												"name": "CORBNK_NAME"
+											}
+										},
+										{
+											"source": {
+												"name": "CORBNK_ADDRESSLINE1"
+											},
+											"sink": {
+												"name": "CORBNK_ADDRESSLINE1"
+											}
+										},
+										{
+											"source": {
+												"name": "CORBNK_ADDRESSLINE2"
+											},
+											"sink": {
+												"name": "CORBNK_ADDRESSLINE2"
+											}
+										},
+										{
+											"source": {
+												"name": "CORBNK_ADDRESSLINE3"
+											},
+											"sink": {
+												"name": "CORBNK_ADDRESSLINE3"
+											}
+										},
+										{
+											"source": {
+												"name": "CORBNK_COUNTRYCODE"
+											},
+											"sink": {
+												"name": "CORBNK_COUNTRYCODE"
+											}
+										},
+										{
+											"source": {
+												"name": "DEBITCREDITFLAG"
+											},
+											"sink": {
+												"name": "DEBITCREDITFLAG"
+											}
+										},
+										{
+											"source": {
+												"name": "AMOUNTOFCLAIM"
+											},
+											"sink": {
+												"name": "AMOUNTOFCLAIM"
+											}
+										},
+										{
+											"source": {
+												"name": "PURPOSEOFTXN"
+											},
+											"sink": {
+												"name": "PURPOSEOFTXN"
+											}
+										},
+										{
+											"source": {
+												"name": "NUMBEROFSHARES"
+											},
+											"sink": {
+												"name": "NUMBEROFSHARES"
+											}
+										},
+										{
+											"source": {
+												"name": "NETASSETVALUE"
+											},
+											"sink": {
+												"name": "NETASSETVALUE"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCT_ACCOUNTNUMBER"
+											},
+											"sink": {
+												"name": "ACCT_ACCOUNTNUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCT_CUSTOMERNAME"
+											},
+											"sink": {
+												"name": "ACCT_CUSTOMERNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCT_CUSTOMERTYPE"
+											},
+											"sink": {
+												"name": "ACCT_CUSTOMERTYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCT_FIRSTNAME"
+											},
+											"sink": {
+												"name": "ACCT_FIRSTNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCT_MIDDLENAME"
+											},
+											"sink": {
+												"name": "ACCT_MIDDLENAME"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCT_LASTNAME"
+											},
+											"sink": {
+												"name": "ACCT_LASTNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCT_ADDRESSLINE1"
+											},
+											"sink": {
+												"name": "ACCT_ADDRESSLINE1"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCT_ADDRESSLINE2"
+											},
+											"sink": {
+												"name": "ACCT_ADDRESSLINE2"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCT_ADDRESSLINE3"
+											},
+											"sink": {
+												"name": "ACCT_ADDRESSLINE3"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCT_DATEOFBIRTH"
+											},
+											"sink": {
+												"name": "ACCT_DATEOFBIRTH"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCT_PLACEOFBIRTH"
+											},
+											"sink": {
+												"name": "ACCT_PLACEOFBIRTH"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCT_NATIONALITY"
+											},
+											"sink": {
+												"name": "ACCT_NATIONALITY"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCT_IDTYPE"
+											},
+											"sink": {
+												"name": "ACCT_IDTYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCT_TELEPHONENUMBER"
+											},
+											"sink": {
+												"name": "ACCT_TELEPHONENUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "ACCT_NATUREOFBUSINESS"
+											},
+											"sink": {
+												"name": "ACCT_NATUREOFBUSINESS"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_ACCOUNTNUMBER"
+											},
+											"sink": {
+												"name": "BENE_ACCOUNTNUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_CUSTOMERNUMBER"
+											},
+											"sink": {
+												"name": "BENE_CUSTOMERNUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_CUSTOMERTYPE"
+											},
+											"sink": {
+												"name": "BENE_CUSTOMERTYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_FIRSTNAME"
+											},
+											"sink": {
+												"name": "BENE_FIRSTNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_MIDDLENAME"
+											},
+											"sink": {
+												"name": "BENE_MIDDLENAME"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_LASTNAME"
+											},
+											"sink": {
+												"name": "BENE_LASTNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_ADDRESSLINE1"
+											},
+											"sink": {
+												"name": "BENE_ADDRESSLINE1"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_ADDRESSLINE2"
+											},
+											"sink": {
+												"name": "BENE_ADDRESSLINE2"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_ADDRESSLINE3"
+											},
+											"sink": {
+												"name": "BENE_ADDRESSLINE3"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_DATEOFBIRTH"
+											},
+											"sink": {
+												"name": "BENE_DATEOFBIRTH"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_PLACEOFBIRTH"
+											},
+											"sink": {
+												"name": "BENE_PLACEOFBIRTH"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_NATIONALITY"
+											},
+											"sink": {
+												"name": "BENE_NATIONALITY"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_IDTYPE"
+											},
+											"sink": {
+												"name": "BENE_IDTYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_IDNUMBER"
+											},
+											"sink": {
+												"name": "BENE_IDNUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_TELEPHONENUMBER"
+											},
+											"sink": {
+												"name": "BENE_TELEPHONENUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "BENE_NATUREOFBUSINESS"
+											},
+											"sink": {
+												"name": "BENE_NATUREOFBUSINESS"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTERPARTY_ACCOUNTNUMBER"
+											},
+											"sink": {
+												"name": "COUNTERPARTY_ACCOUNTNUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTERPARTY_CUSTOMERNUMBER"
+											},
+											"sink": {
+												"name": "COUNTERPARTY_CUSTOMERNUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTERPARTY_CUSTOMERTYPE"
+											},
+											"sink": {
+												"name": "COUNTERPARTY_CUSTOMERTYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTERPARTY_FIRSTNAME"
+											},
+											"sink": {
+												"name": "COUNTERPARTY_FIRSTNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTERPARTY_MIDDLENAME"
+											},
+											"sink": {
+												"name": "COUNTERPARTY_MIDDLENAME"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTERPARTY_LASTNAME"
+											},
+											"sink": {
+												"name": "COUNTERPARTY_LASTNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTERPARTY_ADDRESSLINE1"
+											},
+											"sink": {
+												"name": "COUNTERPARTY_ADDRESSLINE1"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTERPARTY_ADDRESSLINE2"
+											},
+											"sink": {
+												"name": "COUNTERPARTY_ADDRESSLINE2"
+											}
+										},
+										{
+											"source": {
+												"name": "COUNTERPARTY_ADDRESSLINE3"
+											},
+											"sink": {
+												"name": "COUNTERPARTY_ADDRESSLINE3"
+											}
+										},
+										{
+											"source": {
+												"name": "OTHER_ACCOUNTNUMBER"
+											},
+											"sink": {
+												"name": "OTHER_ACCOUNTNUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "OTHER_CUSTOMERNUMBER"
+											},
+											"sink": {
+												"name": "OTHER_CUSTOMERNUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "OTHER_FIRSTNAME"
+											},
+											"sink": {
+												"name": "OTHER_FIRSTNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "OTHER_MIDDLENAME"
+											},
+											"sink": {
+												"name": "OTHER_MIDDLENAME"
+											}
+										},
+										{
+											"source": {
+												"name": "OTHER_LASTNAME"
+											},
+											"sink": {
+												"name": "OTHER_LASTNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "OTHER_ADDRESSLINE1"
+											},
+											"sink": {
+												"name": "OTHER_ADDRESSLINE1"
+											}
+										},
+										{
+											"source": {
+												"name": "OTHER_ADDRESSLINE2"
+											},
+											"sink": {
+												"name": "OTHER_ADDRESSLINE2"
+											}
+										},
+										{
+											"source": {
+												"name": "OTHER_ADDRESSLINE3"
+											},
+											"sink": {
+												"name": "OTHER_ADDRESSLINE3"
+											}
+										},
+										{
+											"source": {
+												"name": "ISSUER_ACCOUNTNUMBER"
+											},
+											"sink": {
+												"name": "ISSUER_ACCOUNTNUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "ISSUER_CUSTOMERNUMBER"
+											},
+											"sink": {
+												"name": "ISSUER_CUSTOMERNUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "ISSUER_CUSTOMERTYPE"
+											},
+											"sink": {
+												"name": "ISSUER_CUSTOMERTYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "ISSUER_FIRSTNAME"
+											},
+											"sink": {
+												"name": "ISSUER_FIRSTNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "ISSUER_MIDDLENAME"
+											},
+											"sink": {
+												"name": "ISSUER_MIDDLENAME"
+											}
+										},
+										{
+											"source": {
+												"name": "ISSUER_LASTNAME"
+											},
+											"sink": {
+												"name": "ISSUER_LASTNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "ISSUER_ADDRESSLINE1"
+											},
+											"sink": {
+												"name": "ISSUER_ADDRESSLINE1"
+											}
+										},
+										{
+											"source": {
+												"name": "ISSUER_ADDRESSLINE2"
+											},
+											"sink": {
+												"name": "ISSUER_ADDRESSLINE2"
+											}
+										},
+										{
+											"source": {
+												"name": "ISSUER_ADDRESSLINE3"
+											},
+											"sink": {
+												"name": "ISSUER_ADDRESSLINE3"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTOR_ACCOUNTNUMBER"
+											},
+											"sink": {
+												"name": "TRANSACTOR_ACCOUNTNUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTOR_CUSTOMERNUMBER"
+											},
+											"sink": {
+												"name": "TRANSACTOR_CUSTOMERNUMBER"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTOR_CUSTOMERTYPE"
+											},
+											"sink": {
+												"name": "TRANSACTOR_CUSTOMERTYPE"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTOR_FIRSTNAME"
+											},
+											"sink": {
+												"name": "TRANSACTOR_FIRSTNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTOR_MIDDLENAME"
+											},
+											"sink": {
+												"name": "TRANSACTOR_MIDDLENAME"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTOR_LASTNAME"
+											},
+											"sink": {
+												"name": "TRANSACTOR_LASTNAME"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTOR_ADDRESSLINE1"
+											},
+											"sink": {
+												"name": "TRANSACTOR_ADDRESSLINE1"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTOR_ADDRESSLINE2"
+											},
+											"sink": {
+												"name": "TRANSACTOR_ADDRESSLINE2"
+											}
+										},
+										{
+											"source": {
+												"name": "TRANSACTOR_ADDRESSLINE3"
+											},
+											"sink": {
+												"name": "TRANSACTOR_ADDRESSLINE3"
+											}
+										},
+										{
+											"source": {
+												"name": "AS_OF_DATE"
+											},
+											"sink": {
+												"name": "AS_OF_DATE"
+											}
+										},
+										{
+											"source": {
+												"name": "TXNDATESTAMP"
+											},
+											"sink": {
+												"name": "TXNDATESTAMP"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME"
+											},
+											"sink": {
+												"name": "FILE_NAME"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm"
+											},
+											"sink": {
+												"name": "insert_dttm"
+											}
+										},
+										{
+											"source": {
+												"name": "H"
+											},
+											"sink": {
+												"name": "H"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv_AML",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": "dev/decrypted/FTI",
+										"ColumnDelimiter": "|",
+										"FirstRowAsHeader": true,
+										"RowDelimiter": "\r\n",
+										"EncodingName": "UTF-8"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_FTI_OUT_TRANSACTIONS"
+									}
+								}
+							]
+						},
+						{
+							"name": "End_FTI_OUT_TRANSACTIONS_Success",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_FTI_OUT_TRANSACTIONS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_FTI_OUT_TRANSACTIONS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "SUCCESSFUL",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_FTI_OUT_TRANSACTIONS",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "End_FTI_OUT_TRANSACTIONS_Failed",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_FTI_OUT_TRANSACTIONS",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_FTI_OUT_TRANSACTIONS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "FAILED",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_FTI_OUT_TRANSACTIONS",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Fail_FTI_OUT_TRANSACTIONS_Copy",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "End_FTI_OUT_TRANSACTIONS_Failed",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "Copy into D360.STG_FTI_OUT_TRANSACTIONS failed. Review the Copy activity and OM task evidence.",
+								"errorCode": "AML_COPY_FAILED"
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "GetFile_FTI_TXN_TRANSACTIONS",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "IfFile_FTI_OUT_TRANSACTIONS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv_AML",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('*VW_DW_TRANSACTIONS_', pipeline().parameters.DateToProcess, '*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/FTI",
+							"ColumnDelimiter": "|",
+							"FirstRowAsHeader": true,
+							"RowDelimiter": "\r\n",
+							"EncodingName": "UTF-8"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "RequireFileOrSkip_FTI_TXN_TRANSACTIONS",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "GetFile_FTI_TXN_TRANSACTIONS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(not(empty(activity('GetFile_FTI_TXN_TRANSACTIONS').output.childItems)), equals(pipeline().parameters.MissingFilePolicy, 'Skip'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Fail_FTI_TXN_TRANSACTIONS_MissingFile",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "No source file matched @concat('*VW_DW_TRANSACTIONS_', pipeline().parameters.DateToProcess, '*') under dev/decrypted/FTI, and MissingFilePolicy is Fail.",
+								"errorCode": "AML_SOURCE_FILE_MISSING"
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Accept_FTI_TXN_TRANSACTIONS_FilePolicy",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "IfFile_FTI_TXN_TRANSACTIONS",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "RequireFileOrSkip_FTI_TXN_TRANSACTIONS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@not(empty(activity('GetFile_FTI_TXN_TRANSACTIONS').output.childItems))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Skip_FTI_TXN_TRANSACTIONS_NoFile",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Start_FTI_TXN_TRANSACTIONS",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_START]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_FTI_TXN_TRANSACTIONS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DateToProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Copy_FTI_TXN_TRANSACTIONS",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "Start_FTI_TXN_TRANSACTIONS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										},
+										{
+											"name": "H",
+											"value": "D"
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/FTI",
+										"wildcardFileName": {
+											"value": "@concat('*VW_DW_TRANSACTIONS_', pipeline().parameters.DateToProcess, '*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": {
+										"value": "@concat('DECLARE @DateToProcess varchar(8) = ''', replace(pipeline().parameters.DateToProcess, '''', ''''''), '''; IF LEN(@DateToProcess) <> 8 OR @DateToProcess LIKE ''%[^0-9]%'' OR TRY_CONVERT(date, @DateToProcess, 112) IS NULL THROW 50000, ''DateToProcess must be a valid yyyyMMdd date.'', 1; DELETE FROM [D360].[STG_FTI_TXN_TRANSACTIONS] WHERE CHARINDEX(''VW_DW_TRANSACTIONS_'' + @DateToProcess, [FILE_NAME]) > 0;')",
+										"type": "Expression"
+									},
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									}
+								},
+								"enableStaging": false
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv_AML",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": "dev/decrypted/FTI",
+										"ColumnDelimiter": "|",
+										"FirstRowAsHeader": true,
+										"RowDelimiter": "\r\n",
+										"EncodingName": "UTF-8"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_FTI_TXN_TRANSACTIONS"
+									}
+								}
+							]
+						},
+						{
+							"name": "End_FTI_TXN_TRANSACTIONS_Success",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_FTI_TXN_TRANSACTIONS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_FTI_TXN_TRANSACTIONS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "SUCCESSFUL",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_FTI_TXN_TRANSACTIONS",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "End_FTI_TXN_TRANSACTIONS_Failed",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Copy_FTI_TXN_TRANSACTIONS",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": "TSK_STG_AML_FTI_TXN_TRANSACTIONS",
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "STG_EDS",
+										"type": "String"
+									},
+									"status": {
+										"value": "FAILED",
+										"type": "String"
+									},
+									"tablename": {
+										"value": "D360.STG_FTI_TXN_TRANSACTIONS",
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Fail_FTI_TXN_TRANSACTIONS_Copy",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "End_FTI_TXN_TRANSACTIONS_Failed",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": "Copy into D360.STG_FTI_TXN_TRANSACTIONS failed. Review the Copy activity and OM task evidence.",
+								"errorCode": "AML_COPY_FAILED"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"DateToProcess": {
+				"type": "String"
+			},
+			"ExecutionMode": {
+				"type": "String",
+				"defaultValue": "PlanOnly"
+			},
+			"MissingFilePolicy": {
+				"type": "String",
+				"defaultValue": "Fail"
+			}
+		},
+		"folder": {
+			"name": "AML_ETL/DecToStg"
+		},
+		"annotations": [
+			"AML",
+			"FTI",
+			"DecToStg",
+			"LIVE_PREFLIGHT_REQUIRED",
+			"MISSING_FILE_POLICY_CONFIGURABLE"
+		],
+		"lastPublishTime": "2026-07-31T05:32:02Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

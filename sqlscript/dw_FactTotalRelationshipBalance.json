@@ -1,0 +1,20 @@
+{
+	"name": "dw_FactTotalRelationshipBalance",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nALTER PROC [DW].[SP_DW_FactTOTALRELATIONSHIPBALANCE] AS\nBEGIN\n\nWITH TRB AS (\n--SELECT [BusinessDateSK], [BranchSK], [BankSK], [AccountSK], [AccountID], [BalanceAmountFull], [BalanceAmountProrated] \n--FROM DW.FactDepositsOutstandingBalance\n--\n--UNION ALL\n--\n--SELECT [BusinessDateSK], [BranchSK], [BankSK], [AccountSK], [AccountID], [PortfolioEndValueFull], [PortfolioEndValueProrated] \n--FROM DW.FactSecurityPortfolio\n\nSELECT [BusinessDateSK], DFAD.[BranchSK], DFAD.[BankSK], DFAD.[AccountSK], DFAD.[AccountID], [AverageDailBalanceAmountYTDFull], [AverageDailBalanceAmountYTDProrated] \nFROM DW.FactAverageDailyBalanceYTD DFAD\nJOIN DW.DimAccount DDA ON DFAD.AccountSK = DDA.AccountSK\nWHERE DDA.AccountStatus not in ('Closed')\n\nUNION ALL\n\nSELECT [BusinessDateSK], [BranchSK], [BankSK], [AccountSK], [AccountID], [AUMAmountFull], [AUMAmountProrated] \nFROM DW.FactTrustFundValue\n\nUNION ALL\n\nSELECT [BusinessDateSK], [BranchSK], [BankSK], [AccountSK], [AccountID], [OutstandingInvestmentFull], [OutstandingInvestmentProrated] \nFROM DW.FactTreasuryOutstandingInvestment  ) \n\nINSERT INTO DW.FactTotalRelationshipBalance\n(\n [BusinessDateSK]\n,[BranchSK]\n,[BankSK]\n,[CustomerSK]\n,[CustomerID]\n,[FullMarketSegmentSK]\n,[ProratedMarketSegmentSK]\n,[TotalRelationshipBalanceFull]\n,[TotalRelationshipBalanceProrated]\n,[SourceSystemCode]\n,[WorkFlowId]\n,[TaskRunId]\n,[InsertDttm]\n)\nSELECT \n TRB.[BusinessDateSK]\n,TRB.[BranchSK]\n,TRB.[BankSK]\n,TRB.CustomerSK\n,TRB.CustomerID\n,CASE WHEN DMSF.MarketSegmentSK IS NULL AND TRB.TRBAmountFull >= 10000000 THEN 7     \n      WHEN DMSF.MarketSegmentSK IS NULL AND TRB.TRBAmountFull < 1 THEN 1 ELSE DMSF.MarketSegmentSK END AS FullMarketSegmentSK\n,CASE WHEN DMSP.MarketSegmentSK IS NULL AND TRB.TRBAmountProrated >= 10000000 THEN 7 \n      WHEN DMSP.MarketSegmentSK IS NULL AND TRB.TRBAmountProrated < 1 THEN 1 ELSE DMSP.MarketSegmentSK END AS ProratedMarketSegmentSK\n,TRB.TRBAmountFull\n,TRB.TRBAmountProrated \n,TRB.SourceSystemCode\n,TRB.WorkFlowId\n,TRB.TaskRunId\n,TRB.InsertDttm\nFROM\n (\n        SELECT \n          TRB.[BusinessDateSK]\n        , NULL [BranchSK]\n        , TRB.[BankSK]\n        , DCA.CustomerSK AS CustomerSK\n        , DCA.CustomerID AS CustomerID\n        , SUM([AverageDailBalanceAmountYTDFull]) AS TRBAmountFull\n        , SUM([AverageDailBalanceAmountYTDProrated]) AS TRBAmountProrated \n        , DC.SourceSystemCode AS SourceSystemCode\n        , 0 AS WorkFlowId\n        , 0 AS TaskRunId\n        , Getdate() AS InsertDttm\n        FROM TRB\n        LEFT JOIN DW.DimCustomerAccount DCA ON TRB.AccountSK = DCA.AccountSK\n        LEFT JOIN DW.DimCustomer DC ON DCA.CustomerSK = DC.CustomerSK\n        WHERE DCA.ShareIndicator = 'Y'\n        GROUP BY \n         TRB.[BusinessDateSK]\n        ,TRB.[BankSK]\n        ,DCA.CustomerSK\n        ,DCA.CustomerID\n        ,DC.SourceSystemCode\n) TRB\nLEFT JOIN DW.DimMarketSegment DMSF ON ISNULL(TRB.TRBAmountFull,0) >= DMSF.LowerLimit AND ISNULL(TRB.TRBAmountFull,0) < DMSF.UpperLimit\nLEFT JOIN DW.DimMarketSegment DMSP ON ISNULL(TRB.TRBAmountProrated,0) >= DMSP.LowerLimit AND ISNULL(TRB.TRBAmountProrated,0) < DMSP.UpperLimit\nWHERE TRB.CustomerSK IS NOT NULL \n\nEND\nGO\n\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

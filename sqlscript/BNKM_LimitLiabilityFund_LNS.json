@@ -1,0 +1,20 @@
+{
+	"name": "BNKM_LimitLiabilityFund_LNS",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "CREATE PROCEDURE BNKM.SP_LimitLiabilityFund_LNS\nAS\nBEGIN\n\n--GET DELTA FROM BUSC\nWITH TEMP_BNKM_LimitLiabilityFund\nAS(\nSELECT\nBLL.LIMIT_B2KID AS [LimitId]\n,BLL.BANK_ID AS [FinancialInstitutionId]\n,BLL.LCHG_TIME AS [Timestamp]\n,BLL.LIAB AS [LimitLiabilityAmount]\n,BLLD.RECORD_STATUS\n,BLL.INSERT_DTTM AS INSERTDTTM\n,'LNS' AS SOURCESYSTEMCODE\nFROM BUSC.LNS_LIMITLIAB_DELTA BLLD\nLEFT JOIN BUSC.LNS_LIMITLIAB BLL ON BLL.LIMIT_B2KID = BLLD.LIMIT_B2KID AND BLL.ISLATEST = '1'\n)\n\nSELECT * INTO #TEMP_BNKM_LimitLiabilityFund FROM TEMP_BNKM_LimitLiabilityFund;\n\n--CHECK IF THERE IS DELTA\n\nWITH TEMP_BNKM_LimitLiabilityFund_SRC\nAS(\nSELECT\nHASHBYTES('MD5',CONCAT(\n[LimitId]\n,[FinancialInstitutionId]\n,[Timestamp]\n,[LimitLiabilityAmount]\n)) HASHROW, LimitId, RECORD_STATUS\nFROM #TEMP_BNKM_LimitLiabilityFund WHERE RECORD_STATUS = 'UPDATE'\n),\n\n\nTEMP_BNKM_LimitLiabilityFund_TGT\nAS(\nSELECT\nHASHBYTES('MD5',CONCAT(\n[LimitId]\n,[FinancialInstitutionId]\n,[Timestamp]\n,[LimitLiabilityAmount]\n)) HASHROW, LimitId\nFROM BNKM.LimitLiabilityFund\n),\n\n\nTEMP_BNKM_LimitLiabilityFund_DELTA\nAS\n(\nSELECT\nSRC.HASHROW AS SRC_HR\n,TGT.HASHROW AS TGT_HR\n,ISNULL(SRC.LimitId, TGT.LimitId) as LimitId\n,CASE\n    WHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n    ELSE NULL END AS RECORD_STATUS\n\nFROM TEMP_BNKM_LimitLiabilityFund_SRC SRC\nFULL OUTER JOIN TEMP_BNKM_LimitLiabilityFund_TGT TGT\nON SRC.LimitId = TGT.LimitId\nWHERE SRC.HASHROW <> TGT.HASHROW\n)\n\nSELECT * INTO #TEMP_BNKM_LimitLiabilityFund_DELTA FROM TEMP_BNKM_LimitLiabilityFund_DELTA;\n\nUPDATE TGT\nSET\n[LimitId] = SRC.LimitId\n,[FinancialInstitutionId] = SRC.FinancialInstitutionId\n,[Timestamp] = SRC.[Timestamp]\n,[LimitLiabilityAmount] = SRC.LimitLiabilityAmount\nFROM BNKM.LimitLiabilityFund TGT\nJOIN #TEMP_BNKM_LimitLiabilityFund_DELTA DELTA ON DELTA.LimitId = TGT.LimitId AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_LimitLiabilityFund SRC ON SRC.LimitId = TGT.LimitId;\n\n\n--INSERT TO BNKM\nINSERT INTO BNKM.LimitLiabilityFund\n(\n[LimitId]\n,[FinancialInstitutionId]\n,[Timestamp]\n,[LimitLiabilityAmount]\n,[SOURCESYSTEMCODE]\n,[WORKFLOWID]\n,[TASKRUNID]\n,[INSERTDTTM]\n)\n\nSELECT\n[LimitId]\n,[FinancialInstitutionId]\n,[Timestamp]\n,[LimitLiabilityAmount]\n,'LNS' AS [SOURCESYSTEMCODE]\n,0 AS [WORKFLOWID]\n,0 AS [TASKRUNID]\n,[INSERTDTTM]\nFROM #TEMP_BNKM_LimitLiabilityFund\nWHERE RECORD_STATUS = 'INSERT'\n\nDROP TABLE #TEMP_BNKM_LimitLiabilityFund;\nDROP TABLE #TEMP_BNKM_LimitLiabilityFund_DELTA;\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

@@ -1,0 +1,231 @@
+{
+	"name": "CI_Cards_Account_EDS_20250127",
+	"properties": {
+		"description": "Sources data from EDS tables",
+		"activities": [
+			{
+				"name": "Cards Retail",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "START_TASK_CI_EDS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "WITH CAH AS\r\n(\r\n    SELECT\r\n    AS_OF_DATE\r\n    ,CRDACCT_NBR\r\n    ,CRDACCT_CUST_NBR\r\n    ,CUST_CIF_NBR\r\n    ,CRDACCT_BNK_CODE\r\n    ,CRDACCT_SOURCE_CODE\r\n    ,CRDACCT_PDT_NBR\r\n    ,CRDACCT_DTE_OPEN\r\n    ,CRDACCT_OUTSTD_BAL\r\n    ,CRDACCT_OUTSTD_INSTL\r\n    ,CRDACCT_STMT_BAL_RTL\r\n    ,CRDACCT_STMT_BAL_CASH\r\n    ,CRDACCT_CRLIMIT\r\n    FROM eds.EDS_CTL\r\n    INNER JOIN eds.CCD_CREDIT_CARDS_FACT\r\n        ON CRM_DATE = AS_OF_DATE\r\n            AND CRDACCT_NBR IS NOT NULL\r\n    GROUP BY \r\n    AS_OF_DATE\r\n    ,CRDACCT_NBR\r\n    ,CRDACCT_CUST_NBR\r\n    ,CUST_CIF_NBR\r\n    ,CRDACCT_BNK_CODE\r\n    ,CRDACCT_SOURCE_CODE\r\n    ,CRDACCT_PDT_NBR\r\n    ,CRDACCT_DTE_OPEN\r\n    ,CRDACCT_OUTSTD_BAL\r\n    ,CRDACCT_OUTSTD_INSTL\r\n    ,CRDACCT_STMT_BAL_RTL\r\n    ,CRDACCT_STMT_BAL_CASH\r\n    ,CRDACCT_CRLIMIT\r\n)\r\n\r\n, CCD_BRANCH AS\r\n(\r\n    SELECT *\r\n        ,ROW_NUMBER() OVER (PARTITION BY APPM_ACCT_NBR ORDER BY BD DESC) AS RN\r\n    FROM\r\n    (\r\n    SELECT APPM_ACCT_NBR, SUBSTRING(APPM_SOURCE,7,4) AS BRANCH_CODE, LEFT(RIGHT(FILE_NAME,12),8) AS BD FROM busc.CCD_CBCEXAPPMP WHERE isLatest = 1 AND isActive = 1 GROUP BY APPM_ACCT_NBR, SUBSTRING(APPM_SOURCE,7,4), LEFT(RIGHT(FILE_NAME,12),8)\r\n    UNION ALL\r\n    SELECT APPM_ACCT_NBR, SUBSTRING(APPM_SOURCE,7,4) AS BRANCH_CODE, LEFT(RIGHT(FILE_NAME,12),8) AS BD FROM busc.CCD_CBCEXAPPFP WHERE isLatest = 1 AND isActive = 1 GROUP BY APPM_ACCT_NBR, SUBSTRING(APPM_SOURCE,7,4), LEFT(RIGHT(FILE_NAME,12),8)\r\n    ) A\r\n)\r\n\r\nSELECT\r\nCAH.CRDACCT_NBR\tAS\tAccountID\r\n,CAH.CRDACCT_CUST_NBR\tAS\tCustomerID\r\n,NULL\tAS\tEntityCIF\r\n,CAH.CUST_CIF_NBR\tAS\tFCBSCIF\r\n,CAH.CRDACCT_BNK_CODE\tAS\tBankCode\r\n,CCD_BRANCH.BRANCH_CODE\tAS\tBranchCode\r\n,BR.SOL_DESC\tAS\tBranchName\r\n,BR.AREA\tAS\tArea\r\n,BR.REGION\tAS\tRegion\r\n,CAH.CRDACCT_SOURCE_CODE\tAS\tSource\r\n,PROD.PRODUCT_GROUP\tAS\tProductGrouping\r\n,PROD.PRODUCT_DESCRIPTION\tAS\tProductType\r\n,CONCAT(PROD.PRODUCT_GROUP,'-',PROD.PRODUCT_DESCRIPTION)\tAS\tProductDetails\r\n,CAST(CAST(CAH.CRDACCT_DTE_OPEN AS VARCHAR) AS DATE) AS\tOpenedDate\r\n,CASE WHEN CAH.CRDACCT_OUTSTD_BAL > 0 AND CAH.CRDACCT_OUTSTD_INSTL > 0 THEN CAH.CRDACCT_OUTSTD_BAL + CAH.CRDACCT_OUTSTD_INSTL\r\n    WHEN CAH.CRDACCT_OUTSTD_BAL <= 0 AND CAH.CRDACCT_OUTSTD_INSTL <= 0 THEN 0\r\n    WHEN CAH.CRDACCT_OUTSTD_BAL > 0 AND CAH.CRDACCT_OUTSTD_INSTL <= 0  THEN CAH.CRDACCT_OUTSTD_BAL\r\n    WHEN CAH.CRDACCT_OUTSTD_BAL <= 0 AND CAH.CRDACCT_OUTSTD_INSTL > 0  THEN CAH.CRDACCT_OUTSTD_INSTL END AS\tRelationshipExposure_Full\r\n,NULL AS RelationshipExposure_Prorated\r\n,CAH.CRDACCT_STMT_BAL_RTL + CAH.CRDACCT_STMT_BAL_CASH AS\tDueForTheMonth_Full\r\n,NULL\tAS\tDueForTheMonth_Prorated\r\n,CAH.CRDACCT_CRLIMIT\tAS\tCreditLimit_Full\r\n,NULL\tAS\tCreditLimit_Prorated\r\n,CAST(CAST(CAH.AS_OF_DATE AS VARCHAR) AS DATE)\tAS\tBusinessDate\r\n,CAST(CAST(CAH.AS_OF_DATE AS VARCHAR) AS DATE)\tAS\tLastUpdatedDate\r\n,ROW_NUMBER() OVER (ORDER BY CAH.CRDACCT_NBR)\tAS\tAccountKey\r\nFROM CAH\r\n    LEFT JOIN eds.DID_PRODUCTGROUPING PROD\r\n        ON CAST(CAH.CRDACCT_PDT_NBR AS varchar(8)) = PROD.PRODUCT_TYPE\r\n        AND CAH.CRDACCT_BNK_CODE = PROD.BANK_CODE\r\n        AND CAH.AS_OF_DATE BETWEEN PROD.SCD_START_DATE AND PROD.SCD_END_DATE\r\n    LEFT JOIN CCD_BRANCH\r\n        ON CAH.CRDACCT_NBR = CCD_BRANCH.APPM_ACCT_NBR\r\n        AND RN = 1\r\n    LEFT JOIN eds.BRANCH_DIM BR\r\n        ON CCD_BRANCH.BRANCH_CODE = BR.SOL_ID\r\n        AND CAH.AS_OF_DATE BETWEEN BR.SCD_START_DATE AND BR.SCD_END_DATE\r\n        AND BR.BANK_ID = 'CBC01';",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "DelimitedTextSink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"formatSettings": {
+							"type": "DelimitedTextWriteSettings",
+							"quoteAllText": true,
+							"fileExtension": ".txt"
+						}
+					},
+					"enableStaging": false,
+					"translator": {
+						"type": "TabularTranslator",
+						"typeConversion": true,
+						"typeConversionSettings": {
+							"allowDataTruncation": true,
+							"treatBooleanAsNumber": false
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_EDS",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "-"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "CI_csv_gen",
+						"type": "DatasetReference",
+						"parameters": {
+							"Table": "Cards_Retail",
+							"Source": "CARDS",
+							"Types": "Retail"
+						}
+					}
+				]
+			},
+			{
+				"name": "START_TASK_CI_EDS",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_START]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_CI_EDS_',variables('tables'))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_CI",
+							"type": "String"
+						},
+						"process_date": {
+							"value": null,
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_EDS_SUCCESSFUL",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Cards Retail",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_CI_EDS_',variables('tables'))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "SUCCESSFUL",
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "END_TASK_CI_EDS_FAILED",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Cards Retail",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_TASK_END]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_CI_EDS_',variables('tables'))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_CI",
+							"type": "String"
+						},
+						"status": {
+							"value": "FAILED",
+							"type": "String"
+						}
+					}
+				}
+			}
+		],
+		"variables": {
+			"tables": {
+				"type": "String",
+				"defaultValue": "CI_Cards_Retail"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-01-30T02:32:48Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,116 @@
+{
+	"name": "EDS_DID_TRB_SEGMENT_DIM",
+	"properties": {
+		"activities": [
+			{
+				"name": "DID_TRB_SEGMENT_DIM_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT COUNT(1) CNT FROM D360.STG_EDS_DID_TRB_SEGMENT_DIM --WHERE H = 'D'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_EDS_DID_TRB_SEGMENT_DIM"
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "DID_TRB_SEGMENT_DIM_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('DID_TRB_SEGMENT_DIM_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "DID_TRB_SEGMENT_DIM",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"parameters": [
+											{
+												"name": "DATETOPROCESS",
+												"type": "Datetime",
+												"value": {
+													"value": "@pipeline().parameters.DATETOPROCESS",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											}
+										],
+										"type": "NonQuery",
+										"text": "\nTRUNCATE TABLE EDS.TRB_SEGMENT_DIM;\n\nINSERT INTO EDS.TRB_SEGMENT_DIM\n(\n\t\t\t\tTRB_SEGMENT_ID,\n\t\t\t\tVERSION_NUM,\n\t\t\t\tVERSION_NAME,\n\t\t\t\tLOW_LIMIT,\n\t\t\t\tTRB_BRACKET,\n\t\t\t\tSOURCE_CODE,\n\t\t\t\tFILE_NAME, \n\t\t\t\tinsert_dttm\n)\nSELECT\n\t\t\t\tTRB_SEGMENT_ID,\n\t\t\t\tVERSION_NUM,\n\t\t\t\tVERSION_NAME,\n\t\t\t\tLOW_LIMIT,\n\t\t\t\tTRB_BRACKET,\n\t\t\t\tSOURCE_CODE,\n\t\t\t\tSRC.FILE_NAME,\n\t\t\t\tCAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime)\nFROM d360.STG_EDS_DID_TRB_SEGMENT_DIM SRC\n--WHERE H = 'D'\n\n\n"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"DATETOPROCESS": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-02-25T07:23:07Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

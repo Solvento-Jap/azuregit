@@ -1,0 +1,20 @@
+{
+	"name": "LimitLiabilityFund_Remdup",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "STEPS:\n\n--1 CHECK DUPLICATE\nSELECT LimitId,[Timestamp],FinancialInstitutionId,SOURCESYSTEMCODE, count(1)\nFROM bnkm.LimitliabilityFund -- WHERE CUSTOMERACCOUNTID = ''\nGROUP BY LimitId,[Timestamp],FinancialInstitutionId,SOURCESYSTEMCODE\nHAVING count(1) > 1\n\n\n\n--2 TAGGED DUPLICATE   with pipeline alternative\nSELECT ROW_NUMBER() OVER(PARTITION BY  LimitId,[Timestamp],FinancialInstitutionId,SOURCESYSTEMCODE ORDER BY LimitId DESC, INSERTDTTM DESC ) RN , --define PKs in partition by\n* INTO bnkm.LimitliabilityFund_WITH_DUP_20230626  --Name of backup table to store duplicate records\nFROM bnkm.LimitliabilityFund;\n\n\n\n--3 CHECK COUNT MAIN AND BU TABLE\nSELECT COUNT(*) FROM bnkm.LimitliabilityFund_WITH_DUP_20230626\n--90660\n\nSELECT COUNT(*) FROM bnkm.LimitliabilityFund\n--90660\n\n\n--4 CLEAN DUP\nTRUNCATE TABLE bnkm.LimitliabilityFund;\n\n\n\n--5 INSERT BACK UNIQUE RECORDS ONLY\nINSERT INTO bnkm.LimitliabilityFund --Target table to remove duplicate\nSELECT  \n[LimitId]\n,[FinancialInstitutionId]\n,[Timestamp]\n,[LimitLiabilityAmount]\n,[SourceSystemCode]\n,[TaskRunId]\n,[WorkFlowId]\n,[InsertDttm]\n\nFROM bnkm.LimitliabilityFund_WITH_DUP_20230626 -- Name of backup table to store duplicate records\nWHERE RN = 1;\n\n\n--6 CHECK IF STILL HAVE DUP\nSELECT LimitId,[Timestamp],FinancialInstitutionId,SOURCESYSTEMCODE, count(1)\nFROM bnkm.LimitliabilityFund -- WHERE CUSTOMERACCOUNTID = ''\nGROUP BY LimitId,[Timestamp],FinancialInstitutionId,SOURCESYSTEMCODE\nHAVING count(1) > 1\n\n\n\n--7 COUNT\nSELECT COUNT(*) FROM bnkm.LimitliabilityFund_WITH_DUP_20230626\n--90660\nSELECT COUNT(*) FROM bnkm.LimitliabilityFund\n--90660\n\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

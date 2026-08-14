@@ -1,0 +1,20 @@
+{
+	"name": "bnkm_CustomerAccountRelatedDigitalAccount_sed",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "CREATE PROCEDURE BNKM.SP_CUSTOMERACCOUNTRELATEDDIGITALACCOUNT_SED\nAS\nBEGIN\n\nWITH TEMP_BNKM_CustomerAccountRelatedDigitalAccount \nAS(\n    SELECT\n    BSA.AccountCode\n    ,BSA.OnlineID\n    ,BSA.BNK_CODE\n    ,BSAD.RECORD_STATUS\n    ,BSA.INSERT_DTTM\n    FROM BUSC.SED_ACCOUNTS_DELTA BSAD\n    LEFT JOIN BUSC.SED_ACCOUNTS BSA\n    ON BSA.AccountCode = BSAD.AccountCode AND BSA.ISLATEST = '1'\n)\n\nSELECT * INTO #TEMP_BNKM_CustomerAccountRelatedDigitalAccount FROM TEMP_BNKM_CustomerAccountRelatedDigitalAccount;\n\n\n\n--CHECK IF THERE IS DELTA\nWITH TEMP_BNKM_CustomerAccountRelatedDigitalAccount_SRC\nAS(\n    SELECT HASHBYTES('MD5',CONCAT(\n        ACCOUNTCODE\n        ,ONLINEID\n    )) HASHROW, ACCOUNTCODE, RECORD_STATUS\n    FROM #TEMP_BNKM_CustomerAccountRelatedDigitalAccount WHERE RECORD_STATUS = 'UPDATE'\n),\n\nTEMP_BNKM_CustomerAccountRelatedDigitalAccount_TGT\nAS(\n    SELECT HASHBYTES('MD5',CONCAT(\n        CustomerAccountId\n        ,OnlineId\n    )) HASHROW, CustomerAccountId\n    FROM BNKM.CustomerAccountRelatedDigitalAccount\n),\n\nTEMP_BNKM_CustomerAccountRelatedDigitalAccount_DELTA\nAS(\nSELECT \n    SRC.HASHROW AS SRC_HR\n    ,TGT.HASHROW AS TGT_HR\n    ,ISNULL(SRC.ACCOUNTCODE, TGT.CustomerAccountId) AS CustomerAccountId\n    ,CASE\n        WHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n        ELSE NULL END AS RECORD_STATUS\n\n    FROM TEMP_BNKM_CustomerAccountRelatedDigitalAccount_SRC SRC\n    FULL OUTER JOIN TEMP_BNKM_CustomerAccountRelatedDigitalAccount_TGT TGT\n    ON SRC.ACCOUNTCODE = TGT.CustomerAccountId\n    WHERE SRC.HASHROW <> TGT.HASHROW\n)\n\nSELECT * INTO #TEMP_BNKM_CustomerAccountRelatedDigitalAccount_DELTA FROM TEMP_BNKM_CustomerAccountRelatedDigitalAccount_DELTA;\n\nUPDATE TGT\nSET\nCustomerAccountId = SRC.AccountCode\n,OnlineId = SRC.OnlineID\n,SOURCESYSTEMCODE = 'SED'\n,FINANCIALINSTITUTIONID = SRC.BNK_CODE\n,WORKFLOWID = 0\n,TASKRUNID = 0\n,INSERTDTTM = SRC.INSERT_DTTM\nFROM BNKM.CustomerAccountRelatedDigitalAccount TGT\nJOIN #TEMP_BNKM_CustomerAccountRelatedDigitalAccount_DELTA DELTA ON DELTA.CustomerAccountId = TGT.CustomerAccountId AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_CustomerAccountRelatedDigitalAccount SRC ON SRC.AccountCode = TGT.CustomerAccountId;\n\n--INSERT RECORDS TO BNKM\nINSERT INTO BNKM.CustomerAccountRelatedDigitalAccount\n(\n    CustomerAccountId\n    ,OnlineId\n    ,SOURCESYSTEMCODE\n    ,FINANCIALINSTITUTIONID\n    ,WORKFLOWID\n    ,TASKRUNID\n    ,INSERTDTTM\n)\n\nSELECT \nAccountCode AS CustomerAccountId\n,OnlineID AS OnlineId\n,'SED' AS SOURCESYSTEMCODE\n,BNK_CODE AS FINANCIALINSTITUTIONID\n,0 AS WORKFLOWID\n,0 AS TASKRUNID\n,INSERT_DTTM AS INSERTDTTM\nFROM #TEMP_BNKM_CustomerAccountRelatedDigitalAccount\nWHERE RECORD_STATUS = 'INSERT'\n\nDROP TABLE #TEMP_BNKM_CustomerAccountRelatedDigitalAccount;\nDROP TABLE #TEMP_BNKM_CustomerAccountRelatedDigitalAccount_DELTA;\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

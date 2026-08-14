@@ -1,0 +1,20 @@
+{
+	"name": "bnkm_LimitLiabilitySanction_lns",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "CREATE PROCEDURE BNKM.SP_LIMITLIABILITYSANCTION_LNS\nAS\nBEGIN\n--GET DELTA FROM BUSC\nWITH TEMP_BNKM_LimitLiabilitySanction\nAS(\nSELECT\nBLL.LIMIT_B2KID\n,BLL.BANK_ID\n,BLL.LIM_SANCT_DATE\n,BLL.SANCT_LIM\n,BLL.ORIG_SANCT_LIM\n,BLL.LIMIT_DESC\n,BLL.SANCT_AUTH_CODE\n,BLL.SANCT_LEVL_CODE\n,BLL.INSERT_DTTM\n,BLLD.RECORD_STATUS\nFROM BUSC.LNS_LIMITLIAB_DELTA BLLD\nLEFT JOIN BUSC.LNS_LIMITLIAB BLL ON BLL.LIMIT_B2KID = BLLD.LIMIT_B2KID AND BLL.BANK_ID = BLLD.BANK_ID AND BLL.ISLATEST ='1'\n)\n\nSELECT * INTO #TEMP_BNKM_LimitLiabilitySanction FROM TEMP_BNKM_LimitLiabilitySanction;\n\n--CHECK IF THERE IS DELTA\nWITH TEMP_BNKM_LimitLiabilitySanction_SRC\nAS(\nSELECT\nHASHBYTES('MD5', CONCAT(\nLIMIT_B2KID\n,BANK_ID\n,LIM_SANCT_DATE\n,SANCT_LIM\n,ORIG_SANCT_LIM\n,LIMIT_DESC\n,SANCT_AUTH_CODE\n,SANCT_LEVL_CODE\n)) HASHROW, LIMIT_B2KID, RECORD_STATUS\nFROM #TEMP_BNKM_LimitLiabilitySanction WHERE RECORD_STATUS = 'UPDATE'\n),\n\n\nTEMP_BNKM_LimitLiabilitySanction_TGT\nAS(\nSELECT\nHASHBYTES('MD5', CONCAT(\nLimitId\n,FinancialInstitutionId\n,LimSanctDate\n,SanctLim\n,OrigSanctLim\n,LimitDesc\n,SanctAuthCode\n,SanctionLevlCode\n)) HASHROW, LimitId\nFROM BNKM.LimitLiabilitySanction\n),\n\nTEMP_BNKM_LimitLiabilitySanction_DELTA\nAS(\nSELECT\nSRC.HASHROW AS SRC_HR\n,TGT.HASHROW AS TGT_HR\n,ISNULL(SRC.LIMIT_B2KID, TGT.LimitId) AS LimitId\n,CASE\n    WHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n    ELSE NULL END AS RECORD_STATUS\n\nFROM TEMP_BNKM_LimitLiabilitySanction_SRC SRC\nFULL OUTER JOIN TEMP_BNKM_LimitLiabilitySanction_TGT TGT\nON SRC.LIMIT_B2KID = TGT.LimitId\nWHERE SRC.HASHROW <> TGT.HASHROW\n)\n\nSELECT * INTO #TEMP_BNKM_LimitLiabilitySanction_DELTA FROM TEMP_BNKM_LimitLiabilitySanction_DELTA;\n\nUPDATE TGT\nSET\nLimitId = SRC.LIMIT_B2KID\n,FinancialInstitutionId = SRC.BANK_ID\n,LimSanctDate = SRC.LIM_SANCT_DATE\n,SanctLim = SRC.SANCT_LIM\n,OrigSanctLim = SRC.ORIG_SANCT_LIM\n,LimitDesc = SRC.LIMIT_DESC\n,SanctAuthCode = SRC.SANCT_AUTH_CODE\n,SanctionLevlCode = SRC.SANCT_LEVL_CODE\n,SOURCESYSTEMCODE = 'LNS'\n,WORKFLOWID = 0\n,TASKRUNID = 0\n,INSERTDTTM = SRC.INSERT_DTTM\n\nFROM BNKM.LimitLiabilitySanction TGT\nJOIN #TEMP_BNKM_LimitLiabilitySanction_DELTA DELTA ON DELTA.LimitId = TGT.LimitId AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_LimitLiabilitySanction SRC ON SRC.LIMIT_B2KID = TGT.LimitId;\n\n\n--INSERT RECORD TO BNKM\nINSERT INTO BNKM.LimitLiabilitySanction\n(\nLimitId\n,FinancialInstitutionId\n,LimSanctDate\n,SanctLim\n,OrigSanctLim\n,LimitDesc\n,SanctAuthCode\n,SanctionLevlCode\n,SOURCESYSTEMCODE\n,WORKFLOWID\n,TASKRUNID\n,INSERTDTTM\n)\n\nSELECT\nLIMIT_B2KID AS LimitId\n,BANK_ID AS FinancialInstitutionId\n,LIM_SANCT_DATE AS LimSanctDate\n,SANCT_LIM AS SanctLim\n,ORIG_SANCT_LIM AS OrigSanctLim\n,LIMIT_DESC AS LimitDesc\n,SANCT_AUTH_CODE AS SanctAuthCode\n,SANCT_LEVL_CODE AS SanctionLevlCode\n,'LNS' AS SOURCESYSTEMCODE\n,0 AS WORKFLOWID\n,0 AS TASKRUNID\n,INSERT_DTTM AS INSERTDTTM\nFROM #TEMP_BNKM_LimitLiabilitySanction\nWHERE RECORD_STATUS = 'INSERT'\n\nDROP TABLE #TEMP_BNKM_LimitLiabilitySanction;\nDROP TABLE #TEMP_BNKM_LimitLiabilitySanction_DELTA;\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

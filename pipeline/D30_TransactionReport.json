@@ -1,0 +1,630 @@
+{
+	"name": "D30_TransactionReport",
+	"properties": {
+		"activities": [
+			{
+				"name": "set startdate",
+				"type": "SetVariable",
+				"dependsOn": [],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "V_startDate",
+					"value": {
+						"value": "@pipeline().parameters.startdate",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "set enddate",
+				"type": "SetVariable",
+				"dependsOn": [],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "V_endDate",
+					"value": {
+						"value": "@pipeline().parameters.enddate",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "set startdate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "set enddate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(pipeline().parameters.endDate),ticks(pipeline().parameters.startDate)),864000000000),1))",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append variable1",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "ForEach1",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "d360_transactionreport",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "truncate",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": {
+											"value": "@concat('dev/decrypted/d30')",
+											"type": "Expression"
+										},
+										"wildcardFileName": {
+											"value": "@concat(pipeline().parameters.table,'_',replace(substring(item(),0,10),'-',''),'*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"allowCopyCommand": true,
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									},
+									"path": "data360/dev/stg_synapse"
+								},
+								"enableSkipIncompatibleRow": true,
+								"logSettings": {
+									"enableCopyActivityLog": true,
+									"copyActivityLogSettings": {
+										"logLevel": "Warning",
+										"enableReliableLogging": true
+									},
+									"logLocationSettings": {
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+											"type": "LinkedServiceReference"
+										},
+										"path": {
+											"value": "@concat('data360/dev/Logging/D30/',pipeline().TriggerTime)",
+											"type": "Expression"
+										}
+									}
+								},
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "Username",
+												"type": "String"
+											},
+											"sink": {
+												"name": "UserName",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Account Name",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Account Name",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Channel ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Channel ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Transaction Date",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Transaction Date",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Transaction Time",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Transaction Time",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Transaction Reference Number",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Transaction Reference Number",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Originator Account",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Originator Account",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Beneficiary Account Number",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Beneficiary Account Number",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Biller/Transferee Name",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Biller/Transferee Name",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Biller Mnemonic",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Biller Mnemonic",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Bank Code",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Bank Code",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Transferee Bank",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Transferee Bank",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Transaction Category",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Transaction Category",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Transaction Type",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Transaction Type",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Subscriber Account/Card Number",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Subscriber Account/Card Number",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Transaction Currency",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Transaction Currency",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Transaction Amount",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Transaction Amount",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Service/Convenience Currency",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Service/Convenience Currency",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Service/Convenience Fee",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Service/Convenience Fee",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Occurrence",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Occurrence",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Device model/Browser Name",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Device model/Browser Name",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "IP",
+												"type": "String"
+											},
+											"sink": {
+												"name": "IP",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Status",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Status",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Confirmation Reference",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Confirmation Reference",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Payment Reference",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Payment Reference",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Response Code",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Response Code",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Logged Date",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Logged Date",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Logged Time",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Logged Time",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "CIF ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "CIF ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Account Type",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Account Type",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Product Type",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Product Type",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "UserID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "UserID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "LegalEntityID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "LegalEntityID",
+												"type": "String"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": " "
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": {
+											"value": "@concat(pipeline().parameters.src_sys,'_',pipeline().parameters.table)",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "truncate",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "TestSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"parameters": [
+											{
+												"name": "process_date",
+												"type": "String",
+												"value": {
+													"value": "@item()",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											}
+										],
+										"type": "Query",
+										"text": "DECLARE @Date DATE = CAST(@process_date AS DATE);\r\nDELETE FROM eds.d30_TransactionReport\r\nWHERE CASE WHEN ISDATE([Transaction Date])=1 THEN CAST([Transaction Date] AS DATE) END  = @Date;"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "d30"
+			},
+			"table": {
+				"type": "string",
+				"defaultValue": "TransactionReport"
+			},
+			"startdate": {
+				"type": "string"
+			},
+			"enddate": {
+				"type": "string"
+			}
+		},
+		"variables": {
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-12-29T09:54:54Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

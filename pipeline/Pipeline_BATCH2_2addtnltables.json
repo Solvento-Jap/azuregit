@@ -1,0 +1,435 @@
+{
+	"name": "Pipeline_BATCH2_2addtnltables",
+	"properties": {
+		"activities": [
+			{
+				"name": "If Condition1",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('DEP_STOPPAYMENTADDTNLTABLE').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "DEP_STOPPAYMENTADDTNLTABLE",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": "SELECT\n\tSTG.[ACID]\n\t,STG.[BEGIN_CHQ_NUM]\n\t,STG.[REC_TYPE]\n\t,STG.[SP_SRL_NUM]\n\t,STG.[BANK_ID]\n\t,CONVERT(DATE,[VALID_FROM]) AS VALID_FROM\n\t,CONVERT(DATE,[VALID_TO]) AS VALID_TO\n\t,STG.[INSTRUCTION_MODE]\n\t,STG.[AUTO_RENEWAL]\n\t,CONVERT(NUMERIC(3),ISNULL(NULLIF(REPLACE([NUM_OF_RENEWALS],' ',''),''),0)) AS NUM_OF_RENEWALS\n\t,STG.[IS_EXPIRED]\n\t,STG.[ENTITY_CRE_FLG]\n\t,STG.[DEL_FLG]\n\t,STG.[RCRE_USER_ID]\n\t,CONVERT(DATETIME2, STUFF(STUFF(STUFF(RCRE_TIME, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) AS RCRE_TIME\n\t,STG.[LCHG_USER_ID]\n\t,CONVERT(DATETIME2, STUFF(STUFF(STUFF(LCHG_TIME, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) AS LCHG_TIME\n\t,CONVERT(NUMERIC(5),ISNULL(NULLIF(REPLACE([TS_CNT],' ',''),''),0)) AS TS_CNT\n\t,STG.[LINK_SRL_NUM]\n\t,STG.[LINK_BEGIN_CHQ_NUM]\n\t,STG.[LINK_END_CHQ_NUM]\n\t,STG.[CHRG_COLL_FLG]\n\t,1 AS ISACTIVE\n\t,1 AS ISLATEST\n\t,LEFT(FILE_NAME, 5) AS BNK_CODE\n\t,SUBSTRING(FILE_NAME,7,3) AS SOURCE_CODE\n\t,FILE_NAME\n\t,STG.[INSERT_DTTM]\nFROM d360.STG_DEP_STOPPAYMENTADDTNLTABLE STG\nWHERE H = 'd'",
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									},
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									}
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_DEP_STOPPAYMENTADDTNLTABLE"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_TGT",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "DEP_STOPPAYMENTADDTNLTABLE"
+									}
+								}
+							]
+						},
+						{
+							"name": "ErrorExecutionLog",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "DEP_STOPPAYMENTADDTNLTABLE",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@pipeline().TriggerTime",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": {
+											"value": "@activity('DEP_STOPPAYMENTADDTNLTABLE').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": {
+											"value": "@activity('DEP_STOPPAYMENTADDTNLTABLE').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "@concat('FAILED - ',activity('DEP_STOPPAYMENTADDTNLTABLE').error.message)",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "SuccessExecutionLog",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "DEP_STOPPAYMENTADDTNLTABLE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@addHours(pipeline().TriggerTime,+8)",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "SUCCESS",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "DEP_STOPPAYMENTREGTABLE",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": "SELECT\n\tSTG.[ACID]\n\t,STG.[BEGIN_CHQ_NUM]\n\t,STG.[REC_TYPE]\n\t,STG.[SP_SRL_NUM]\n\t,STG.[ENTITY_CRE_FLG]\n\t,STG.[DEL_FLG]\n\t,STG.[PAYEE_NAME]\n\t,CONVERT(DATE,[ACPT_DATE]) AS ACPT_DATE\n\t,STG.[END_CHQ_NUM]\n\t,STG.[CHQ_ALPHA]\n\t,CONVERT(DATE,[CHQ_DATE]) AS CHQ_DATE\n\t,CONVERT(NUMERIC(20,4),ISNULL(NULLIF(REPLACE([CHQ_AMT],' ',''),''),0)) AS CHQ_AMT\n\t,STG.[ACPT_AUTH_ID]\n\t,CONVERT(NUMERIC(20,4),ISNULL(NULLIF(REPLACE([ACCT_BAL],' ',''),''),0)) AS ACCT_BAL\n\t,STG.[SP_REASON_CODE]\n\t,STG.[RCRE_USER_ID]\n\t,CONVERT(DATETIME2, STUFF(STUFF(STUFF(RCRE_TIME, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) AS RCRE_TIME\n\t,STG.[LCHG_USER_ID]\n\t,CONVERT(DATETIME2, STUFF(STUFF(STUFF(LCHG_TIME, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) AS LCHG_TIME\n\t,CONVERT(NUMERIC(5),ISNULL(NULLIF(REPLACE([TS_CNT],' ',''),''),0)) AS TS_CNT\n\t,STG.[PRINT_ADVICE]\n\t,STG.[PRINT_STATUS]\n\t,STG.[BANK_ID]\n\t,STG.[CHQ_NUM_ENTERED]\n\t,1 AS ISACTIVE\n\t,1 AS ISLATEST\n\t,LEFT(FILE_NAME, 5) AS BNK_CODE\n\t,SUBSTRING(FILE_NAME,7,3) AS SOURCE_CODE\n\t,FILE_NAME\n\t,STG.[INSERT_DTTM]\nFROM d360.STG_DEP_STOPPAYMENTREGTABLE STG\nWHERE H = 'd'",
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									},
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									}
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_DEP_STOPPAYMENTREGTABLE"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_TGT",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "DEP_STOPPAYMENTREGTABLE"
+									}
+								}
+							]
+						},
+						{
+							"name": "ErrorExecutionLog_copy1",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "DEP_STOPPAYMENTREGTABLE",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@pipeline().TriggerTime",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": {
+											"value": "@activity('DEP_STOPPAYMENTREGTABLE').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": {
+											"value": "@activity('DEP_STOPPAYMENTREGTABLE').error.message",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "@concat('FAILED - ',activity('DEP_STOPPAYMENTREGTABLE').error.message)",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "SuccessExecutionLog_copy1",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "DEP_STOPPAYMENTREGTABLE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[d360].[StatusExecutionLog]",
+								"storedProcedureParameters": {
+									"RunId": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"PipelineName": {
+										"value": {
+											"value": "@pipeline().Pipeline",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"RunDate": {
+										"value": {
+											"value": "@addHours(pipeline().TriggerTime,+8)",
+											"type": "Expression"
+										},
+										"type": "Datetime"
+									},
+									"SuccessRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FailedRowCount": {
+										"value": null,
+										"type": "String"
+									},
+									"FileName": {
+										"value": null,
+										"type": "String"
+									},
+									"StatusDescription": {
+										"value": {
+											"value": "SUCCESS",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-03-31T08:39:32Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,788 @@
+{
+	"name": "CCD_REMDUP3",
+	"properties": {
+		"activities": [
+			{
+				"name": "CCD_CBCEXCARFP",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) DUP_CNT FROM (\nSELECT CARD_NBR, CARD_ACCT_NBR, count(1) CNT FROM BUSC.CCD_CBCEXCARFP \nWHERE islatest = 1\nGROUP BY CARD_NBR, CARD_ACCT_NBR\nHAVING count(1) > 1 ) A"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CCD_CBCEXCACFP",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) DUP_CNT FROM (\nSELECT CRDACCT_CUST_NBR, CRDACCT_NBR, count(1) CNT FROM BUSC.CCD_CBCEXCACFP \nWHERE islatest = 1\nGROUP BY CRDACCT_CUST_NBR, CRDACCT_NBR\nHAVING count(1) > 1 ) A"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAR_RANKED",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CCD_CBCEXCARFP",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT ROW_NUMBER() OVER(PARTITION BY  CARD_NBR, CARD_ACCT_NBR ORDER BY CARD_NBR DESC, INSERT_DTTM DESC) RN , --define PKs in partition by\n* INTO BUSC.CCD_CBCEXCARFP_WITH_DUP_20240304\nFROM BUSC.CCD_CBCEXCARFP"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAC_RANKED",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CCD_CBCEXCACFP",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT ROW_NUMBER() OVER(PARTITION BY  CRDACCT_CUST_NBR, CRDACCT_NBR ORDER BY CRDACCT_CUST_NBR DESC, INSERT_DTTM DESC) RN , --define PKs in partition by\n* INTO BUSC.CCD_CBCEXCACFP_WITH_DUP_20240304\nFROM BUSC.CCD_CBCEXCACFP"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAR_COUNT RECORDS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CAR_RANKED",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.CCD_CBCEXCARFP"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAR_COUNT RECORD WITH DUPS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CAR_COUNT RECORDS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.CCD_CBCEXCARFP_WITH_DUP_20240304"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAR_BACKUP TABLE",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CAR_COUNT RECORD WITH DUPS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT * INTO BUSC.CCD_CBCEXCARFP_BU_20240304 FROM BUSC.CCD_CBCEXCARFP"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAR_UPDATE ISLATEST",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CAR_BACKUP TABLE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "UPDATE BUSC.CCD_CBCEXCARFP_WITH_DUP_20240304 SET ISLATEST = 0 WHERE RN > 1;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAR_INSERT RANKED",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CAR_TRUNCATE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "INSERT INTO BUSC.CCD_CBCEXCARFP\r\n(\r\nCARD_NBR\r\n,CARD_BANK_NBR\r\n,CARD_PDT_NBR\r\n,CARD_ACCT_NBR\r\n,CARD_STATUS\r\n,CARD_SHORT_NAME\r\n,CARD_CUST_NBR\r\n,CARD_SUP_REL\r\n,CARD_COM_BIL\r\n,CARD_CHGOFF_IND\r\n,CARD_USR_DTA\r\n,CARD_DTE_OPEN\r\n,CARD_DTE_CLOSE\r\n,CARD_DTE_WARN\r\n,CARD_DTE_MEMB\r\n,CARD_DTE_WRTO\r\n,CARD_DTE_USER1\r\n,CARD_DTE_USER2\r\n,CARD_DTE_USER3\r\n,CARD_DTE_LAST_ST_CHG\r\n,CARD_EMB_NAME1\r\n,CARD_EMB_REQ1\r\n,CARD_NBR_OUT1\r\n,CARD_EMB_USRC1\r\n,CARD_DTE_LSTREQ1\r\n,CARD_LSTREQ1\r\n,CARD_EMB_NAME2\r\n,CARD_EMB_REQ2\r\n,CARD_NBR_OUT2\r\n,CARD_EMB_USRC2\r\n,CARD_DTE_LSTREQ2\r\n,CARD_LSTREQ2\r\n,CARD_EMB_NAME3\r\n,CARD_EMB_REQ3\r\n,CARD_NBR_OUT3\r\n,CARD_EMB_USRC3\r\n,CARD_DTE_LSTREQ3\r\n,CARD_LSTREQ3\r\n,CARD_EMB_NAME4\r\n,CARD_EMB_REQ4\r\n,CARD_NBR_OUT4\r\n,CARD_EMB_USRC4\r\n,CARD_DTE_LSTREQ4\r\n,CARD_LSTREQ4\r\n,CARD_TERM\r\n,CARD_EXP_DATE\r\n,CARD_LAST_EXP_DATE\r\n,CARD_MEMB_FEE_DATE\r\n,CARD_JOIN_FEE_DATE\r\n,CARD_LST_ACT_DATE\r\n,CARD_BLK_CODE\r\n,CARD_DTE_BLK_CODE\r\n,CARD_PRV_BLK_CODE\r\n,CARD_DTE_PRVBLK_CODE\r\n,CARD_DTE_PRVBLK_CODE_END\r\n,CARD_AUTH_USG_LMTCDE\r\n,CARD_WAIVE_MEMB_FEE\r\n,CARD_WAIVE_JOIN_FEE\r\n,CARD_WAIVE_SVC_FEE\r\n,CARD_NEW_NBR\r\n,CARD_NEW_NBR_EFFDTE\r\n,CARD_ORG_NBR\r\n,CARD_ORG_NBR_EFFDTE\r\n,CARD_DTE_BPS\r\n,CARD_SEQ_NBR\r\n,CARD_FORMAT_ID\r\n,CARD_BANK_ACCOUNT_1\r\n,CARD_BANK_ACCOUNT_2\r\n,CARD_ATM_LANGUAGE\r\n,CARD_PHOTO_IND\r\n,CARD_SPRT_LIMIT\r\n,FLAG_CARD_SUPP_PERM_CRLIMIT\r\n,CARD_SUPP_PERM_CRLIMIT\r\n,FLAG_CARD_SUPP_PERM_CSHLIMIT\r\n,CARD_SUPP_PERM_CSHLIMIT\r\n,FLAG_CARD_SUPP_TEMP_CRLIMIT\r\n,CARD_SUPP_TEMP_CRLIMIT\r\n,CARD_SUPP_TEMP_CRLIMIT_EFF\r\n,CARD_SUPP_TEMP_CRLIMIT_EXP\r\n,CARD_NODE_ID\r\n,CARD_CLOSE_REASON\r\n,CARD_FILE_BUFFER\r\n,CARD_ACTIVATION_DATE\r\n,CARD_LST_DATE_ACTIVE\r\n,CARD_ACTIVATED_BY\r\n,CARD_MEMBER_SINCE\r\n,CARD_LST_RENEW_DATE\r\n,CARD_LOYALTY_CRD1\r\n,CARD_LOYALTY_CRD2\r\n,CARD_LOYALTY_CRD3\r\n,CARD_LOYALTY_CRD4\r\n,CARD_LOYALTY_CRD5\r\n,CARD_LOYALTY_CRD6\r\n,CARD_LOYALTY_CRD7\r\n,CARD_LOYALTY_CRD8\r\n,CARD_LOYALTY_CRD9\r\n,CARD_LOYALTY_CRD10\r\n,CARD_REPLACE_WAIVE_IND\r\n,CARD_DELIVERY\r\n,CARD_CBC_BUFFER\r\n,CARD_DELTA_DATE\r\n,CARD_CONV_FLD\r\n,CARD_ARCHIVED_IND\r\n,CARD_DTE_ARCHIVED\r\n,CARD_DATE_MAINT\r\n,CARD_USER_MAINT\r\n,CARD_TIME_MAINT\r\n,CARD_FILE_DATE\r\n,LAST6_CARD_ACCT_NBR\r\n,isActive\r\n,isLatest\r\n,BNK_CODE\r\n,SOURCE_CODE\r\n,FILE_NAME\r\n,insert_dttm\r\n) \r\nSELECT  \r\nCARD_NBR\r\n,CARD_BANK_NBR\r\n,CARD_PDT_NBR\r\n,CARD_ACCT_NBR\r\n,CARD_STATUS\r\n,CARD_SHORT_NAME\r\n,CARD_CUST_NBR\r\n,CARD_SUP_REL\r\n,CARD_COM_BIL\r\n,CARD_CHGOFF_IND\r\n,CARD_USR_DTA\r\n,CARD_DTE_OPEN\r\n,CARD_DTE_CLOSE\r\n,CARD_DTE_WARN\r\n,CARD_DTE_MEMB\r\n,CARD_DTE_WRTO\r\n,CARD_DTE_USER1\r\n,CARD_DTE_USER2\r\n,CARD_DTE_USER3\r\n,CARD_DTE_LAST_ST_CHG\r\n,CARD_EMB_NAME1\r\n,CARD_EMB_REQ1\r\n,CARD_NBR_OUT1\r\n,CARD_EMB_USRC1\r\n,CARD_DTE_LSTREQ1\r\n,CARD_LSTREQ1\r\n,CARD_EMB_NAME2\r\n,CARD_EMB_REQ2\r\n,CARD_NBR_OUT2\r\n,CARD_EMB_USRC2\r\n,CARD_DTE_LSTREQ2\r\n,CARD_LSTREQ2\r\n,CARD_EMB_NAME3\r\n,CARD_EMB_REQ3\r\n,CARD_NBR_OUT3\r\n,CARD_EMB_USRC3\r\n,CARD_DTE_LSTREQ3\r\n,CARD_LSTREQ3\r\n,CARD_EMB_NAME4\r\n,CARD_EMB_REQ4\r\n,CARD_NBR_OUT4\r\n,CARD_EMB_USRC4\r\n,CARD_DTE_LSTREQ4\r\n,CARD_LSTREQ4\r\n,CARD_TERM\r\n,CARD_EXP_DATE\r\n,CARD_LAST_EXP_DATE\r\n,CARD_MEMB_FEE_DATE\r\n,CARD_JOIN_FEE_DATE\r\n,CARD_LST_ACT_DATE\r\n,CARD_BLK_CODE\r\n,CARD_DTE_BLK_CODE\r\n,CARD_PRV_BLK_CODE\r\n,CARD_DTE_PRVBLK_CODE\r\n,CARD_DTE_PRVBLK_CODE_END\r\n,CARD_AUTH_USG_LMTCDE\r\n,CARD_WAIVE_MEMB_FEE\r\n,CARD_WAIVE_JOIN_FEE\r\n,CARD_WAIVE_SVC_FEE\r\n,CARD_NEW_NBR\r\n,CARD_NEW_NBR_EFFDTE\r\n,CARD_ORG_NBR\r\n,CARD_ORG_NBR_EFFDTE\r\n,CARD_DTE_BPS\r\n,CARD_SEQ_NBR\r\n,CARD_FORMAT_ID\r\n,CARD_BANK_ACCOUNT_1\r\n,CARD_BANK_ACCOUNT_2\r\n,CARD_ATM_LANGUAGE\r\n,CARD_PHOTO_IND\r\n,CARD_SPRT_LIMIT\r\n,FLAG_CARD_SUPP_PERM_CRLIMIT\r\n,CARD_SUPP_PERM_CRLIMIT\r\n,FLAG_CARD_SUPP_PERM_CSHLIMIT\r\n,CARD_SUPP_PERM_CSHLIMIT\r\n,FLAG_CARD_SUPP_TEMP_CRLIMIT\r\n,CARD_SUPP_TEMP_CRLIMIT\r\n,CARD_SUPP_TEMP_CRLIMIT_EFF\r\n,CARD_SUPP_TEMP_CRLIMIT_EXP\r\n,CARD_NODE_ID\r\n,CARD_CLOSE_REASON\r\n,CARD_FILE_BUFFER\r\n,CARD_ACTIVATION_DATE\r\n,CARD_LST_DATE_ACTIVE\r\n,CARD_ACTIVATED_BY\r\n,CARD_MEMBER_SINCE\r\n,CARD_LST_RENEW_DATE\r\n,CARD_LOYALTY_CRD1\r\n,CARD_LOYALTY_CRD2\r\n,CARD_LOYALTY_CRD3\r\n,CARD_LOYALTY_CRD4\r\n,CARD_LOYALTY_CRD5\r\n,CARD_LOYALTY_CRD6\r\n,CARD_LOYALTY_CRD7\r\n,CARD_LOYALTY_CRD8\r\n,CARD_LOYALTY_CRD9\r\n,CARD_LOYALTY_CRD10\r\n,CARD_REPLACE_WAIVE_IND\r\n,CARD_DELIVERY\r\n,CARD_CBC_BUFFER\r\n,CARD_DELTA_DATE\r\n,CARD_CONV_FLD\r\n,CARD_ARCHIVED_IND\r\n,CARD_DTE_ARCHIVED\r\n,CARD_DATE_MAINT\r\n,CARD_USER_MAINT\r\n,CARD_TIME_MAINT\r\n,CARD_FILE_DATE\r\n,LAST6_CARD_ACCT_NBR\r\n,isActive\r\n,isLatest\r\n,BNK_CODE\r\n,SOURCE_CODE\r\n,FILE_NAME\r\n,insert_dttm\r\nFROM BUSC.CCD_CBCEXCARFP_WITH_DUP_20240304"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAR_COUNT RECORD ISLATEST",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CAR_CHECK FOR DUPS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.CCD_CBCEXCARFP\nWHERE ISLATEST = 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAR_COUNT DUPS ISLATEST",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CAR_COUNT RECORD ISLATEST",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.CCD_CBCEXCARFP_WITH_DUP_20240304\nWHERE ISLATEST = 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAR_CHECK FOR DUPS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CAR_INSERT RANKED",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT CARD_NBR, CARD_ACCT_NBR, count(1) CNT FROM BUSC.CCD_CBCEXCARFP \nWHERE islatest = 1\nGROUP BY CARD_NBR, CARD_ACCT_NBR\nHAVING count(1) > 1 "
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAR_TRUNCATE",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CAR_UPDATE ISLATEST",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "TRUNCATE TABLE BUSC.CCD_CBCEXCARFP"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAC_COUNT RECORDS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CAC_RANKED",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.CCD_CBCEXCACFP"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAC_COUNT RECORDS WITH DUPS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CAC_COUNT RECORDS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.CCD_CBCEXCACFP_WITH_DUP_20240304;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAC_BACKUP TABLE",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CAC_COUNT RECORDS WITH DUPS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT * INTO BUSC.CCD_CBCEXCACFP_BU_20240304 FROM BUSC.CCD_CBCEXCACFP"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAC_UPDATE ISLATEST",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CAC_BACKUP TABLE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "UPDATE BUSC.CCD_CBCEXCACFP_WITH_DUP_20240304 SET ISLATEST = 0 WHERE RN > 1;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAC_INSERT RANKED",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CAC_TRUNCATE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "INSERT INTO BUSC.CCD_CBCEXCACFP\r\n(\r\nCRDACCT_BANK_NBR\r\n,CRDACCT_NBR\r\n,CRDACCT_PDT_NBR\r\n,CRDACCT_STATUS\r\n,CRDACCT_CUST_NBR\r\n,CRDACCT_COR_CUST_NBR\r\n,CRDACCT_STMT_CYC\r\n,CRDACCT_BRANCH_NBR\r\n,CRDACCT_OPER_CODE\r\n,CRDACCT_CHGOFF_IND\r\n,CRDACCT_STMT_BIL\r\n,CRDACCT_PAY_DD_FLAG\r\n,CRDACCT_DD_BANK\r\n,CRDACCT_DD_ACC\r\n,CRDACCT_UP_PROD\r\n,CRDACCT_UP_ACC\r\n,CRDACCT_UP_EFFDTE\r\n,CRDACCT_INTRODUCER\r\n,CRDACCT_DTE_OPEN\r\n,CRDACCT_DTE_CLOSE\r\n,CRDACCT_DTE_WRTO\r\n,CRDACCT_CI_FLAG_RTL\r\n,CRDACCT_INT_RATE_RTL\r\n,CRDACCT_CI_FLAG_CASH\r\n,CRDACCT_INT_RATE_CASH\r\n,CRDACCT_BLK_CODE\r\n,CRDACCT_DTE_BLK_CODE\r\n,CRDACCT_PRV_BLK_CODE\r\n,CRDACCT_DTE_PRVBLK_CODE\r\n,CRDACCT_DTE_PRVBLK_CODE_END\r\n,CRDACCT_PERM_PGM_1\r\n,CRDACCT_PERM_PGM_EFF1\r\n,CRDACCT_PERM_PGM_EXP1\r\n,CRDACCT_PERM_PGM_2\r\n,CRDACCT_PERM_PGM_EFF2\r\n,CRDACCT_PERM_PGM_EXP2\r\n,CRDACCT_PERM_PGM_3\r\n,CRDACCT_PERM_PGM_EFF3\r\n,CRDACCT_PERM_PGM_EXP3\r\n,CRDACCT_PERM_PGM_4\r\n,CRDACCT_PERM_PGM_EFF4\r\n,CRDACCT_PERM_PGM_EXP4\r\n,CRDACCT_PERM_PGM_5\r\n,CRDACCT_PERM_PGM_EFF5\r\n,CRDACCT_PERM_PGM_EXP5\r\n,CRDACCT_DTE_LST_ACCR\r\n,CRDACCT_DTE_ACCR_UNTIL\r\n,CRDACCT_DTE_LST_PURCHASE\r\n,CRDACCT_DTE_LST_CASH_ADV\r\n,CRDACCT_DTE_LST_AGED\r\n,CRDACCT_DTE_LST_DLQ\r\n,CRDACCT_DTE_PRIOR_DLQ\r\n,CRDACCT_DTE_LST_ACTIVE\r\n,CRDACCT_DTE_LST_PYMT\r\n,CRDACCT_DTE_LST_CASH_PYMT\r\n,CRDACCT_DTE_LST_RTL_PYMT\r\n,CRDACCT_DTE_CURR_CREDIT_LIMIT\r\n,CRDACCT_DTE_LST_CREDIT_LIMIT\r\n,CRDACCT_DTE_LST_STMT\r\n,CRDACCT_DTE_PRV_STMT\r\n,CRDACCT_DTE_PYMT_DUE\r\n,CRDACCT_DTE_HIGH_BAL\r\n,CRDACCT_DTE_LST_RTN_CHQ\r\n,CRDACCT_DTE_LST_RATE_CHG_RTL\r\n,CRDACCT_DTE_LST_RATE_CHG_CASH\r\n,CRDACCT_DTE_TEMP_CRLIMIT_EFF\r\n,CRDACCT_DTE_TEMP_CRLIMIT_EXP\r\n,FLAG_TEMP_CRLIMIT\r\n,CRDACCT_TEMP_CRLIMIT\r\n,FLAG_PERM_CRLIMIT\r\n,CRDACCT_PERM_CRLIMIT\r\n,FLAG_CRLIMIT\r\n,CRDACCT_CRLIMIT\r\n,FLAG_LST_CRLIMIT\r\n,CRDACCT_LST_CRLIMIT\r\n,FLAG_CASHLIMIT\r\n,CRDACCT_CASHLIMIT\r\n,FLAG_HI_BALANCE\r\n,CRDACCT_HI_BALANCE\r\n,CRDACCT_NBR_RTN_CHQ\r\n,CRDACCT_NBR_DB_DAYS\r\n,CRDACCT_LATE_CHG_GENERATED\r\n,CRDACCT_FIRST_NOTICE_SENT\r\n,CRDACCT_SECOND_NOTICE_SENT\r\n,CRDACCT_DLQ_CYC_1_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_2_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_3_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_4_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_5_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_6_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_7_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_8_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_9_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_10_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_11_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_12_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_13_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_14_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_15_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_16_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_17_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_18_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_19_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_20_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_21_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_22_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_23_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_24_MNTH_AGO\r\n,FLAG_TOT_AMT_DUE\r\n,CRDACCT_TOT_AMT_DUE\r\n,CRDACCT_CYC_DUE\r\n,CRDACCT_STMT_CYC_DUE\r\n,FLAG_CURR_DUE\r\n,CRDACCT_CURR_DUE\r\n,FLAG_PAST_DUE\r\n,CRDACCT_PAST_DUE\r\n,FLAG_30DAYS_DUE\r\n,CRDACCT_30DAYS_DUE\r\n,FLAG_60DAYS_DUE\r\n,CRDACCT_60DAYS_DUE\r\n,FLAG_90DAYS_DUE\r\n,CRDACCT_90DAYS_DUE\r\n,FLAG_120DAYS_DUE\r\n,CRDACCT_120DAYS_DUE\r\n,FLAG_150DAYS_DUE\r\n,CRDACCT_150DAYS_DUE\r\n,FLAG_180DAYS_DUE\r\n,CRDACCT_180DAYS_DUE\r\n,FLAG_210DAYS_DUE\r\n,CRDACCT_210DAYS_DUE\r\n,CRDACCT_PAST_DUE_CNTER\r\n,CRDACCT_30DAYS_DUE_CNTER\r\n,CRDACCT_60DAYS_DUE_CNTER\r\n,CRDACCT_90DAYS_DUE_CNTER\r\n,CRDACCT_120DAYS_DUE_CNTER\r\n,CRDACCT_150DAYS_DUE_CNTER\r\n,CRDACCT_180DAYS_DUE_CNTER\r\n,CRDACCT_210DAYS_DUE_CNTER\r\n,CRDACCT_NBR_CYC_AGED\r\n,FLAG_STMT_BAL_RTL\r\n,CRDACCT_STMT_BAL_RTL\r\n,FLAG_CURR_BAL_RTL\r\n,CRDACCT_CURR_BAL_RTL\r\n,FLAG_AMT_DB_PUR_RTL\r\n,CRDACCT_AMT_DB_PUR_RTL\r\n,CRDACCT_NBR_DB_PUR_RTL\r\n,FLAG_AMT_CR_PUR_RTL\r\n,CRDACCT_AMT_CR_PUR_RTL\r\n,CRDACCT_NBR_CR_PUR_RTL\r\n,FLAG_AMT_DB_RTL\r\n,CRDACCT_AMT_DB_RTL\r\n,CRDACCT_NBR_DB_RTL\r\n,FLAG_AMT_CR_RTL\r\n,CRDACCT_AMT_CR_RTL\r\n,CRDACCT_NBR_CR_RTL\r\n,FLAG_CTD_PYMT_RTL\r\n,CRDACCT_CTD_PYMT_RTL\r\n,FLAG_CTD_PYMT_REV_RTL\r\n,CRDACCT_CTD_PYMT_REV_RTL\r\n,FLAG_CTD_BILLED_CR_RTL\r\n,CRDACCT_CTD_BILLED_CR_RTL\r\n,FLAG_UNPAID_BILL_PURCHASES\r\n,CRDACCT_UNPAID_BILL_PURCHASES\r\n,FLAG_UNPAID_BILL_INT_RTL\r\n,CRDACCT_UNPAID_BILL_INT_RTL\r\n,FLAG_UNPAID_BILL_SVC_RTL\r\n,CRDACCT_UNPAID_BILL_SVC_RTL\r\n,FLAG_UNPAID_BILL_MSCF_RTL\r\n,CRDACCT_UNPAID_BILL_MSCF_RTL\r\n,FLAG_UNPAID_BILL_INS_RTL\r\n,CRDACCT_UNPAID_BILL_INS_RTL\r\n,FLAG_UNPAID_BILL_MJ_RTL\r\n,CRDACCT_UNPAID_BILL_MJ_RTL\r\n,FLAG_CTD_BAL_RTL\r\n,CRDACCT_CTD_BAL_RTL\r\n,FLAG_CTD_INT_RTL\r\n,CRDACCT_CTD_INT_RTL\r\n,FLAG_CTD_SVC_RTL\r\n,CRDACCT_CTD_SVC_RTL\r\n,FLAG_CTD_MSCF_RTL\r\n,CRDACCT_CTD_MSCF_RTL\r\n,FLAG_CTD_INS_RTL\r\n,CRDACCT_CTD_INS_RTL\r\n,FLAG_CTD_MEMBJOIN_RTL\r\n,CRDACCT_CTD_MEMBJOIN_RTL\r\n,FLAG_DISPUTE_BAL_RTL\r\n,CRDACCT_DISPUTE_BAL_RTL\r\n,FLAG_CTD_DISPUTE_BAL_RTL\r\n,CRDACCT_CTD_DISPUTE_BAL_RTL\r\n,FLAG_STMT_INT_RTL\r\n,CRDACCT_STMT_INT_RTL\r\n,FLAG_LST_STMT_UNPDINT_RTL\r\n,CRDACCT_LST_STMT_UNPDINT_RTL\r\n,FLAG_LST_STMT_UNPDSVC_RTL\r\n,CRDACCT_LST_STMT_UNPDSVC_RTL\r\n,FLAG_LST_STMT_UNPDMSF_RTL\r\n,CRDACCT_LST_STMT_UNPDMSF_RTL\r\n,FLAG_LST_STMT_UNPDINS_RTL\r\n,CRDACCT_LST_STMT_UNPDINS_RTL\r\n,FLAG_LST_STMT_MEMBJOIN_RTL\r\n,CRDACCT_LST_STMT_MEMBJOIN_RTL\r\n,FLAG_CTD_ACCR_INT_RTL\r\n,CRDACCT_CTD_ACCR_INT_RTL\r\n,FLAG_STMT_ACCR_INT_RTL\r\n,CRDACCT_STMT_ACCR_INT_RTL\r\n,FLAG_DLY_CTD_ACCR_INT_RTL\r\n,CRDACCT_DLY_CTD_ACCR_INT_RTL\r\n,FLAG_DLY_STM_ACCR_INT_RTL\r\n,CRDACCT_DLY_STM_ACCR_INT_RTL\r\n,FLAG_DAILY_ACCR_INT_RTL\r\n,CRDACCT_DAILY_ACCR_INT_RTL\r\n,FLAG_ACCUM_STMT_RTL_BAL\r\n,CRDACCT_ACCUM_STMT_RTL_BAL\r\n,CRDACCT_ACCUM_STMT_RTL_DAYS\r\n,FLAG_ACCUM_CTD_RTL_BAL\r\n,CRDACCT_ACCUM_CTD_RTL_BAL\r\n,CRDACCT_ACCUM_CTD_RTL_DAYS\r\n,FLAG_STMT_BAL_CASH\r\n,CRDACCT_STMT_BAL_CASH\r\n,FLAG_CURR_BAL_CASH\r\n,CRDACCT_CURR_BAL_CASH\r\n,FLAG_AMT_DB_ADV_CASH\r\n,CRDACCT_AMT_DB_ADV_CASH\r\n,CRDACCT_NBR_DB_ADV_CASH\r\n,FLAG_AMT_CR_ADV_CASH\r\n,CRDACCT_AMT_CR_ADV_CASH\r\n,CRDACCT_NBR_CR_ADV_CASH\r\n,FLAG_AMT_DB_CASH\r\n,CRDACCT_AMT_DB_CASH\r\n,CRDACCT_NBR_DB_CASH\r\n,FLAG_AMT_CR_CASH\r\n,CRDACCT_AMT_CR_CASH\r\n,CRDACCT_NBR_CR_CASH\r\n,FLAG_CTD_PYMT_CASH\r\n,CRDACCT_CTD_PYMT_CASH\r\n,FLAG_CTD_PYMT_REV_CASH\r\n,CRDACCT_CTD_PYMT_REV_CASH\r\n,FLAG_CTD_BILLED_CR_CASH\r\n,CRDACCT_CTD_BILLED_CR_CASH\r\n,FLAG_UNPAID_BILL_CASH_ADV\r\n,CRDACCT_UNPAID_BILL_CASH_ADV\r\n,FLAG_UNPAID_BILL_INT_CASH\r\n,CRDACCT_UNPAID_BILL_INT_CASH\r\n,FLAG_UNPAID_BILL_SVC_CASH\r\n,CRDACCT_UNPAID_BILL_SVC_CASH\r\n,FLAG_CTD_BAL_CASH\r\n,CRDACCT_CTD_BAL_CASH\r\n,FLAG_CTD_INT_CASH\r\n,CRDACCT_CTD_INT_CASH\r\n,FLAG_CTD_SVC_CASH\r\n,CRDACCT_CTD_SVC_CASH\r\n,FLAG_DISPUTE_BAL_CASH\r\n,CRDACCT_DISPUTE_BAL_CASH\r\n,FLAG_CTD_DISPUTE_BAL_CASH\r\n,CRDACCT_CTD_DISPUTE_BAL_CASH\r\n,FLAG_STMT_INT_CASH\r\n,CRDACCT_STMT_INT_CASH\r\n,FLAG_LST_STMT_UNPDINT_CASH\r\n,CRDACCT_LST_STMT_UNPDINT_CASH\r\n,FLAG_LST_STMT_UNPDSVC_CASH\r\n,CRDACCT_LST_STMT_UNPDSVC_CASH\r\n,FLAG_CTD_ACCR_INT_CASH\r\n,CRDACCT_CTD_ACCR_INT_CASH\r\n,FLAG_STMT_ACCR_INT_CASH\r\n,CRDACCT_STMT_ACCR_INT_CASH\r\n,FLAG_DLY_CTD_ACCR_INT_CASH\r\n,CRDACCT_DLY_CTD_ACCR_INT_CASH\r\n,FLAG_DLY_STM_ACCR_INT_CASH\r\n,CRDACCT_DLY_STM_ACCR_INT_CASH\r\n,FLAG_DAILY_ACCR_INT_CASH\r\n,CRDACCT_DAILY_ACCR_INT_CASH\r\n,FLAG_ACCUM_STMT_CASH_BAL\r\n,CRDACCT_ACCUM_STMT_CASH_BAL\r\n,CRDACCT_ACCUM_STMT_CASH_DAYS\r\n,FLAG_ACCUM_CTD_CASH_BAL\r\n,CRDACCT_ACCUM_CTD_CASH_BAL\r\n,CRDACCT_ACCUM_CTD_CASH_DAYS\r\n,FLAG_OUTSTD_BAL\r\n,CRDACCT_OUTSTD_BAL\r\n,FLAG_TOTAL_DAILY_ACCR_INT\r\n,CRDACCT_TOTAL_DAILY_ACCR_INT\r\n,FLAG_DAILY_OVERLIMIT_AMT\r\n,CRDACCT_DAILY_OVERLIMIT_AMT\r\n,FLAG_ACCR_OVERLIMIT\r\n,CRDACCT_ACCR_OVERLIMIT\r\n,FLAG_DAILY_OLMT_PER_DIEM\r\n,CRDACCT_DAILY_OLMT_PER_DIEM\r\n,FLAG_AGGR_OLMT_AMT\r\n,CRDACCT_AGGR_OLMT_AMT\r\n,FLAG_TOTAL_AMT_DISPUTE\r\n,CRDACCT_TOTAL_AMT_DISPUTE\r\n,CRDACCT_TOTAL_NBR_DISPUTE\r\n,FLAG_AMT_CHGOFF_RTL\r\n,CRDACCT_AMT_CHGOFF_RTL\r\n,FLAG_AMT_CHGOFF_CASH\r\n,CRDACCT_AMT_CHGOFF_CASH\r\n,FLAG_LST_PYMT_AMT\r\n,CRDACCT_LST_PYMT_AMT\r\n,FLAG_CONV_BAL\r\n,CRDACCT_CONV_BAL\r\n,FLAG_LST_DEBIT_AMT\r\n,CRDACCT_LST_DEBIT_AMT\r\n,FLAG_LST_PURCHASE_AMT\r\n,CRDACCT_LST_PURCHASE_AMT\r\n,FLAG_LAST_ADVANCE_AMT\r\n,CRDACCT_LAST_ADVANCE_AMT\r\n,FLAG_OUTSTD_AUTH_BAL\r\n,CRDACCT_OUTSTD_AUTH_BAL\r\n,CRDACCT_OUTSTD_AUTH_NBR\r\n,FLAG_CASH_PYMT_TDY\r\n,CRDACCT_CASH_PYMT_TDY\r\n,FLAG_OTHER_PYMT_TDY\r\n,CRDACCT_OTHER_PYMT_TDY\r\n,FLAG_AVAIL_CREDIT\r\n,CRDACCT_AVAIL_CREDIT\r\n,FLAG_CASH_OUTSTD_AUTH_BAL\r\n,CRDACCT_CASH_OUTSTD_AUTH_BAL\r\n,CRDACCT_CASH_OUTSTD_AUTH_NBR\r\n,FLAG_CASH_AUTH_AMT_TDY\r\n,CRDACCT_CASH_AUTH_AMT_TDY\r\n,FLAG_AVAIL_CASH\r\n,CRDACCT_AVAIL_CASH\r\n,CRDACCT_GRACE_DAYS\r\n,FLAG_OL_AMT_BILLED\r\n,CRDACCT_OL_AMT_BILLED\r\n,FLAG_OVERPAY_AMT\r\n,CRDACCT_OVERPAY_AMT\r\n,CRDACCT_CARD_RNWAL_MESG\r\n,FLAG_ODD_DOLLAR\r\n,CRDACCT_ODD_DOLLAR\r\n,FLAG_DLY_CREDIT_INT_ACCR\r\n,CRDACCT_DLY_CREDIT_INT_ACCR\r\n,FLAG_CREDIT_INT_ACCR\r\n,CRDACCT_CREDIT_INT_ACCR\r\n,FLAG_CREDIT_AGGR_BAL\r\n,CRDACCT_CREDIT_AGGR_BAL\r\n,CRDACCT_CREDIT_AGGR_DAYS\r\n,CRDACCT_BPS_JOIN_DATE\r\n,CRDACCT_BPS_END_DATE\r\n,FLAG_PRIOR_YR_BP\r\n,CRDACCT_PRIOR_YR_BP\r\n,FLAG_YTD_BP_STMT\r\n,CRDACCT_YTD_BP_STMT\r\n,FLAG_CTD_BP_ADD\r\n,CRDACCT_CTD_BP_ADD\r\n,FLAG_CTD_BP_DED\r\n,CRDACCT_CTD_BP_DED\r\n,FLAG_MTD_BP_ADD\r\n,CRDACCT_MTD_BP_ADD\r\n,FLAG_MTD_BP_DED\r\n,CRDACCT_MTD_BP_DED\r\n,FLAG_MTD_BP_MDB\r\n,CRDACCT_MTD_BP_MDB\r\n,CRDACCT_CURR_COLL\r\n,CRDACCT_PERM_COLL\r\n,CRDACCT_DTE_INTO_COLL\r\n,CRDACCT_COLL_RSN_CODE\r\n,CRDACCT_COLL_CLASS\r\n,CRDACCT_COLL_HST_CODE\r\n,CRDACCT_COLL_BLK_CODE\r\n,FLAG_COLL_BALANCE\r\n,CRDACCT_COLL_BALANCE\r\n,FLAG_COLL_TOT_AMT_DUE\r\n,CRDACCT_COLL_TOT_AMT_DUE\r\n,FLAG_COLL_OL_AMT\r\n,CRDACCT_COLL_OL_AMT\r\n,FLAG_COLL_OL_PERCENT\r\n,CRDACCT_COLL_OL_PERCENT\r\n,FLAG_COLL_RST_BAL\r\n,CRDACCT_COLL_RST_BAL\r\n,CRDACCT_DD_AMT_IND\r\n,CRDACCT_MGM_GEN_DATE\r\n,CRDACCT_MGM_PRV_COUNT\r\n,CRDACCT_MGM_CUR_COUNT\r\n,CRDACCT_UTL_GEN_DATE\r\n,CRDACCT_UTLT_PRV_COUNT\r\n,CRDACCT_UTLT_CUR_COUNT\r\n,FLAG_UTLS_PRV_SPEND\r\n,CRDACCT_UTLS_PRV_SPEND\r\n,FLAG_UTLS_CUR_SPEND\r\n,CRDACCT_UTLS_CUR_SPEND\r\n,CRDACCT_BP_EXP_DTE\r\n,FLAG_CTD_BP_CUR_DED\r\n,CRDACCT_CTD_BP_CUR_DED\r\n,FLAG_MTD_BP_CUR_DED\r\n,CRDACCT_MTD_BP_CUR_DED\r\n,FLAG_MTD_BP_CUR_MDB\r\n,CRDACCT_MTD_BP_CUR_MDB\r\n,CRDACCT_LAST_BP_EXP_DTE\r\n,FLAG_INSTL_LMT\r\n,CRDACCT_INSTL_LMT\r\n,FLAG_AVAIL_INSTL\r\n,CRDACCT_AVAIL_INSTL\r\n,FLAG_INSTL_BAL\r\n,CRDACCT_INSTL_BAL\r\n,FLAG_OUTSTD_INSTL\r\n,CRDACCT_OUTSTD_INSTL\r\n,FLAG_CTD_AMT_INSTL\r\n,CRDACCT_CTD_AMT_INSTL\r\n,FLAG_UNPAID_BILL_INSTL_RTL\r\n,CRDACCT_UNPAID_BILL_INSTL_RTL\r\n,FLAG_UNPD_BIL_STD_INS_RTL\r\n,CRDACCT_UNPD_BIL_STD_INS_RTL\r\n,FLAG_STDALN_INST\r\n,CRDACCT_STDALN_INST\r\n,FLAG_AVL_STDALN_INSR\r\n,CRDACCT_AVL_STDALN_INSR\r\n,FLAG_OUTSTD_STDALN\r\n,CRDACCT_OUTSTD_STDALN\r\n,FLAG_CTD_AMT_STDALN\r\n,CRDACCT_CTD_AMT_STDALN\r\n,CRDACCT_ACP\r\n,CRDACCT_DELAY_LATE_PYMT_GEN\r\n,CRDACCT_DELAY_LATE_PYMT_DTE\r\n,FLAG_YTD_SPEND\r\n,CRDACCT_YTD_SPEND\r\n,FLAG_PRV_YTD_SPEND\r\n,CRDACCT_PRV_YTD_SPEND\r\n,CRDACCT_NODE_ID\r\n,CRDACCT_PAYM_SKIP_FLAG\r\n,CRDACCT_PAYM_SKIP_EXP\r\n,CRDACCT_APPL_SRC_CODE\r\n,CRDACCT_CR_SAFE_ENROL\r\n,CRDACCT_RISK_RATING\r\n,CRDACCT_CBC_ACCT_NBR\r\n,CRDACCT_SOA_IND\r\n,CRDACCT_NOTIFY_IND\r\n,CRDACCT_CBC_BUFFER\r\n,CRDACCT_DELTA_DATE\r\n,CRDACCT_ARCHIVED_IND\r\n,CRDACCT_DTE_ARCHIVED\r\n,CRDACCT_PAYMENT_COUNTER\r\n,FLAG_STMT_MIN_AMT_DUE\r\n,CRDACCT_STMT_MIN_AMT_DUE\r\n,CRDACCT_SYS_BLK\r\n,CRDACCT_DTE_PP_TAGGING\r\n,CRDACCT_HOLD_ACCOUNT\r\n,FLAG_HOLD_AMOUNT\r\n,CRDACCT_HOLD_AMOUNT\r\n,CRDACCT_AGENT_CODE\r\n,CRDACCT_REF_NAME\r\n,CRDACCT_BILLED_LPC_DTE\r\n,FLAG_BILLED_LPC_AMT\r\n,CRDACCT_BILLED_LPC_AMT\r\n,CRDACCT_DATE_MAINT\r\n,CRDACCT_USER_MAINT\r\n,CRDACCT_TIME_MAINT\r\n,CRDACCT_FILE_DATE\r\n,LAST6_CRDACCT_NBR\r\n,isActive\r\n,isLatest\r\n,BNK_CODE\r\n,SOURCE_CODE\r\n,FILE_NAME\r\n,insert_dttm\r\n) \r\nSELECT  \r\nCRDACCT_BANK_NBR\r\n,CRDACCT_NBR\r\n,CRDACCT_PDT_NBR\r\n,CRDACCT_STATUS\r\n,CRDACCT_CUST_NBR\r\n,CRDACCT_COR_CUST_NBR\r\n,CRDACCT_STMT_CYC\r\n,CRDACCT_BRANCH_NBR\r\n,CRDACCT_OPER_CODE\r\n,CRDACCT_CHGOFF_IND\r\n,CRDACCT_STMT_BIL\r\n,CRDACCT_PAY_DD_FLAG\r\n,CRDACCT_DD_BANK\r\n,CRDACCT_DD_ACC\r\n,CRDACCT_UP_PROD\r\n,CRDACCT_UP_ACC\r\n,CRDACCT_UP_EFFDTE\r\n,CRDACCT_INTRODUCER\r\n,CRDACCT_DTE_OPEN\r\n,CRDACCT_DTE_CLOSE\r\n,CRDACCT_DTE_WRTO\r\n,CRDACCT_CI_FLAG_RTL\r\n,CRDACCT_INT_RATE_RTL\r\n,CRDACCT_CI_FLAG_CASH\r\n,CRDACCT_INT_RATE_CASH\r\n,CRDACCT_BLK_CODE\r\n,CRDACCT_DTE_BLK_CODE\r\n,CRDACCT_PRV_BLK_CODE\r\n,CRDACCT_DTE_PRVBLK_CODE\r\n,CRDACCT_DTE_PRVBLK_CODE_END\r\n,CRDACCT_PERM_PGM_1\r\n,CRDACCT_PERM_PGM_EFF1\r\n,CRDACCT_PERM_PGM_EXP1\r\n,CRDACCT_PERM_PGM_2\r\n,CRDACCT_PERM_PGM_EFF2\r\n,CRDACCT_PERM_PGM_EXP2\r\n,CRDACCT_PERM_PGM_3\r\n,CRDACCT_PERM_PGM_EFF3\r\n,CRDACCT_PERM_PGM_EXP3\r\n,CRDACCT_PERM_PGM_4\r\n,CRDACCT_PERM_PGM_EFF4\r\n,CRDACCT_PERM_PGM_EXP4\r\n,CRDACCT_PERM_PGM_5\r\n,CRDACCT_PERM_PGM_EFF5\r\n,CRDACCT_PERM_PGM_EXP5\r\n,CRDACCT_DTE_LST_ACCR\r\n,CRDACCT_DTE_ACCR_UNTIL\r\n,CRDACCT_DTE_LST_PURCHASE\r\n,CRDACCT_DTE_LST_CASH_ADV\r\n,CRDACCT_DTE_LST_AGED\r\n,CRDACCT_DTE_LST_DLQ\r\n,CRDACCT_DTE_PRIOR_DLQ\r\n,CRDACCT_DTE_LST_ACTIVE\r\n,CRDACCT_DTE_LST_PYMT\r\n,CRDACCT_DTE_LST_CASH_PYMT\r\n,CRDACCT_DTE_LST_RTL_PYMT\r\n,CRDACCT_DTE_CURR_CREDIT_LIMIT\r\n,CRDACCT_DTE_LST_CREDIT_LIMIT\r\n,CRDACCT_DTE_LST_STMT\r\n,CRDACCT_DTE_PRV_STMT\r\n,CRDACCT_DTE_PYMT_DUE\r\n,CRDACCT_DTE_HIGH_BAL\r\n,CRDACCT_DTE_LST_RTN_CHQ\r\n,CRDACCT_DTE_LST_RATE_CHG_RTL\r\n,CRDACCT_DTE_LST_RATE_CHG_CASH\r\n,CRDACCT_DTE_TEMP_CRLIMIT_EFF\r\n,CRDACCT_DTE_TEMP_CRLIMIT_EXP\r\n,FLAG_TEMP_CRLIMIT\r\n,CRDACCT_TEMP_CRLIMIT\r\n,FLAG_PERM_CRLIMIT\r\n,CRDACCT_PERM_CRLIMIT\r\n,FLAG_CRLIMIT\r\n,CRDACCT_CRLIMIT\r\n,FLAG_LST_CRLIMIT\r\n,CRDACCT_LST_CRLIMIT\r\n,FLAG_CASHLIMIT\r\n,CRDACCT_CASHLIMIT\r\n,FLAG_HI_BALANCE\r\n,CRDACCT_HI_BALANCE\r\n,CRDACCT_NBR_RTN_CHQ\r\n,CRDACCT_NBR_DB_DAYS\r\n,CRDACCT_LATE_CHG_GENERATED\r\n,CRDACCT_FIRST_NOTICE_SENT\r\n,CRDACCT_SECOND_NOTICE_SENT\r\n,CRDACCT_DLQ_CYC_1_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_2_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_3_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_4_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_5_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_6_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_7_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_8_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_9_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_10_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_11_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_12_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_13_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_14_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_15_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_16_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_17_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_18_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_19_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_20_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_21_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_22_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_23_MNTH_AGO\r\n,CRDACCT_DLQ_CYC_24_MNTH_AGO\r\n,FLAG_TOT_AMT_DUE\r\n,CRDACCT_TOT_AMT_DUE\r\n,CRDACCT_CYC_DUE\r\n,CRDACCT_STMT_CYC_DUE\r\n,FLAG_CURR_DUE\r\n,CRDACCT_CURR_DUE\r\n,FLAG_PAST_DUE\r\n,CRDACCT_PAST_DUE\r\n,FLAG_30DAYS_DUE\r\n,CRDACCT_30DAYS_DUE\r\n,FLAG_60DAYS_DUE\r\n,CRDACCT_60DAYS_DUE\r\n,FLAG_90DAYS_DUE\r\n,CRDACCT_90DAYS_DUE\r\n,FLAG_120DAYS_DUE\r\n,CRDACCT_120DAYS_DUE\r\n,FLAG_150DAYS_DUE\r\n,CRDACCT_150DAYS_DUE\r\n,FLAG_180DAYS_DUE\r\n,CRDACCT_180DAYS_DUE\r\n,FLAG_210DAYS_DUE\r\n,CRDACCT_210DAYS_DUE\r\n,CRDACCT_PAST_DUE_CNTER\r\n,CRDACCT_30DAYS_DUE_CNTER\r\n,CRDACCT_60DAYS_DUE_CNTER\r\n,CRDACCT_90DAYS_DUE_CNTER\r\n,CRDACCT_120DAYS_DUE_CNTER\r\n,CRDACCT_150DAYS_DUE_CNTER\r\n,CRDACCT_180DAYS_DUE_CNTER\r\n,CRDACCT_210DAYS_DUE_CNTER\r\n,CRDACCT_NBR_CYC_AGED\r\n,FLAG_STMT_BAL_RTL\r\n,CRDACCT_STMT_BAL_RTL\r\n,FLAG_CURR_BAL_RTL\r\n,CRDACCT_CURR_BAL_RTL\r\n,FLAG_AMT_DB_PUR_RTL\r\n,CRDACCT_AMT_DB_PUR_RTL\r\n,CRDACCT_NBR_DB_PUR_RTL\r\n,FLAG_AMT_CR_PUR_RTL\r\n,CRDACCT_AMT_CR_PUR_RTL\r\n,CRDACCT_NBR_CR_PUR_RTL\r\n,FLAG_AMT_DB_RTL\r\n,CRDACCT_AMT_DB_RTL\r\n,CRDACCT_NBR_DB_RTL\r\n,FLAG_AMT_CR_RTL\r\n,CRDACCT_AMT_CR_RTL\r\n,CRDACCT_NBR_CR_RTL\r\n,FLAG_CTD_PYMT_RTL\r\n,CRDACCT_CTD_PYMT_RTL\r\n,FLAG_CTD_PYMT_REV_RTL\r\n,CRDACCT_CTD_PYMT_REV_RTL\r\n,FLAG_CTD_BILLED_CR_RTL\r\n,CRDACCT_CTD_BILLED_CR_RTL\r\n,FLAG_UNPAID_BILL_PURCHASES\r\n,CRDACCT_UNPAID_BILL_PURCHASES\r\n,FLAG_UNPAID_BILL_INT_RTL\r\n,CRDACCT_UNPAID_BILL_INT_RTL\r\n,FLAG_UNPAID_BILL_SVC_RTL\r\n,CRDACCT_UNPAID_BILL_SVC_RTL\r\n,FLAG_UNPAID_BILL_MSCF_RTL\r\n,CRDACCT_UNPAID_BILL_MSCF_RTL\r\n,FLAG_UNPAID_BILL_INS_RTL\r\n,CRDACCT_UNPAID_BILL_INS_RTL\r\n,FLAG_UNPAID_BILL_MJ_RTL\r\n,CRDACCT_UNPAID_BILL_MJ_RTL\r\n,FLAG_CTD_BAL_RTL\r\n,CRDACCT_CTD_BAL_RTL\r\n,FLAG_CTD_INT_RTL\r\n,CRDACCT_CTD_INT_RTL\r\n,FLAG_CTD_SVC_RTL\r\n,CRDACCT_CTD_SVC_RTL\r\n,FLAG_CTD_MSCF_RTL\r\n,CRDACCT_CTD_MSCF_RTL\r\n,FLAG_CTD_INS_RTL\r\n,CRDACCT_CTD_INS_RTL\r\n,FLAG_CTD_MEMBJOIN_RTL\r\n,CRDACCT_CTD_MEMBJOIN_RTL\r\n,FLAG_DISPUTE_BAL_RTL\r\n,CRDACCT_DISPUTE_BAL_RTL\r\n,FLAG_CTD_DISPUTE_BAL_RTL\r\n,CRDACCT_CTD_DISPUTE_BAL_RTL\r\n,FLAG_STMT_INT_RTL\r\n,CRDACCT_STMT_INT_RTL\r\n,FLAG_LST_STMT_UNPDINT_RTL\r\n,CRDACCT_LST_STMT_UNPDINT_RTL\r\n,FLAG_LST_STMT_UNPDSVC_RTL\r\n,CRDACCT_LST_STMT_UNPDSVC_RTL\r\n,FLAG_LST_STMT_UNPDMSF_RTL\r\n,CRDACCT_LST_STMT_UNPDMSF_RTL\r\n,FLAG_LST_STMT_UNPDINS_RTL\r\n,CRDACCT_LST_STMT_UNPDINS_RTL\r\n,FLAG_LST_STMT_MEMBJOIN_RTL\r\n,CRDACCT_LST_STMT_MEMBJOIN_RTL\r\n,FLAG_CTD_ACCR_INT_RTL\r\n,CRDACCT_CTD_ACCR_INT_RTL\r\n,FLAG_STMT_ACCR_INT_RTL\r\n,CRDACCT_STMT_ACCR_INT_RTL\r\n,FLAG_DLY_CTD_ACCR_INT_RTL\r\n,CRDACCT_DLY_CTD_ACCR_INT_RTL\r\n,FLAG_DLY_STM_ACCR_INT_RTL\r\n,CRDACCT_DLY_STM_ACCR_INT_RTL\r\n,FLAG_DAILY_ACCR_INT_RTL\r\n,CRDACCT_DAILY_ACCR_INT_RTL\r\n,FLAG_ACCUM_STMT_RTL_BAL\r\n,CRDACCT_ACCUM_STMT_RTL_BAL\r\n,CRDACCT_ACCUM_STMT_RTL_DAYS\r\n,FLAG_ACCUM_CTD_RTL_BAL\r\n,CRDACCT_ACCUM_CTD_RTL_BAL\r\n,CRDACCT_ACCUM_CTD_RTL_DAYS\r\n,FLAG_STMT_BAL_CASH\r\n,CRDACCT_STMT_BAL_CASH\r\n,FLAG_CURR_BAL_CASH\r\n,CRDACCT_CURR_BAL_CASH\r\n,FLAG_AMT_DB_ADV_CASH\r\n,CRDACCT_AMT_DB_ADV_CASH\r\n,CRDACCT_NBR_DB_ADV_CASH\r\n,FLAG_AMT_CR_ADV_CASH\r\n,CRDACCT_AMT_CR_ADV_CASH\r\n,CRDACCT_NBR_CR_ADV_CASH\r\n,FLAG_AMT_DB_CASH\r\n,CRDACCT_AMT_DB_CASH\r\n,CRDACCT_NBR_DB_CASH\r\n,FLAG_AMT_CR_CASH\r\n,CRDACCT_AMT_CR_CASH\r\n,CRDACCT_NBR_CR_CASH\r\n,FLAG_CTD_PYMT_CASH\r\n,CRDACCT_CTD_PYMT_CASH\r\n,FLAG_CTD_PYMT_REV_CASH\r\n,CRDACCT_CTD_PYMT_REV_CASH\r\n,FLAG_CTD_BILLED_CR_CASH\r\n,CRDACCT_CTD_BILLED_CR_CASH\r\n,FLAG_UNPAID_BILL_CASH_ADV\r\n,CRDACCT_UNPAID_BILL_CASH_ADV\r\n,FLAG_UNPAID_BILL_INT_CASH\r\n,CRDACCT_UNPAID_BILL_INT_CASH\r\n,FLAG_UNPAID_BILL_SVC_CASH\r\n,CRDACCT_UNPAID_BILL_SVC_CASH\r\n,FLAG_CTD_BAL_CASH\r\n,CRDACCT_CTD_BAL_CASH\r\n,FLAG_CTD_INT_CASH\r\n,CRDACCT_CTD_INT_CASH\r\n,FLAG_CTD_SVC_CASH\r\n,CRDACCT_CTD_SVC_CASH\r\n,FLAG_DISPUTE_BAL_CASH\r\n,CRDACCT_DISPUTE_BAL_CASH\r\n,FLAG_CTD_DISPUTE_BAL_CASH\r\n,CRDACCT_CTD_DISPUTE_BAL_CASH\r\n,FLAG_STMT_INT_CASH\r\n,CRDACCT_STMT_INT_CASH\r\n,FLAG_LST_STMT_UNPDINT_CASH\r\n,CRDACCT_LST_STMT_UNPDINT_CASH\r\n,FLAG_LST_STMT_UNPDSVC_CASH\r\n,CRDACCT_LST_STMT_UNPDSVC_CASH\r\n,FLAG_CTD_ACCR_INT_CASH\r\n,CRDACCT_CTD_ACCR_INT_CASH\r\n,FLAG_STMT_ACCR_INT_CASH\r\n,CRDACCT_STMT_ACCR_INT_CASH\r\n,FLAG_DLY_CTD_ACCR_INT_CASH\r\n,CRDACCT_DLY_CTD_ACCR_INT_CASH\r\n,FLAG_DLY_STM_ACCR_INT_CASH\r\n,CRDACCT_DLY_STM_ACCR_INT_CASH\r\n,FLAG_DAILY_ACCR_INT_CASH\r\n,CRDACCT_DAILY_ACCR_INT_CASH\r\n,FLAG_ACCUM_STMT_CASH_BAL\r\n,CRDACCT_ACCUM_STMT_CASH_BAL\r\n,CRDACCT_ACCUM_STMT_CASH_DAYS\r\n,FLAG_ACCUM_CTD_CASH_BAL\r\n,CRDACCT_ACCUM_CTD_CASH_BAL\r\n,CRDACCT_ACCUM_CTD_CASH_DAYS\r\n,FLAG_OUTSTD_BAL\r\n,CRDACCT_OUTSTD_BAL\r\n,FLAG_TOTAL_DAILY_ACCR_INT\r\n,CRDACCT_TOTAL_DAILY_ACCR_INT\r\n,FLAG_DAILY_OVERLIMIT_AMT\r\n,CRDACCT_DAILY_OVERLIMIT_AMT\r\n,FLAG_ACCR_OVERLIMIT\r\n,CRDACCT_ACCR_OVERLIMIT\r\n,FLAG_DAILY_OLMT_PER_DIEM\r\n,CRDACCT_DAILY_OLMT_PER_DIEM\r\n,FLAG_AGGR_OLMT_AMT\r\n,CRDACCT_AGGR_OLMT_AMT\r\n,FLAG_TOTAL_AMT_DISPUTE\r\n,CRDACCT_TOTAL_AMT_DISPUTE\r\n,CRDACCT_TOTAL_NBR_DISPUTE\r\n,FLAG_AMT_CHGOFF_RTL\r\n,CRDACCT_AMT_CHGOFF_RTL\r\n,FLAG_AMT_CHGOFF_CASH\r\n,CRDACCT_AMT_CHGOFF_CASH\r\n,FLAG_LST_PYMT_AMT\r\n,CRDACCT_LST_PYMT_AMT\r\n,FLAG_CONV_BAL\r\n,CRDACCT_CONV_BAL\r\n,FLAG_LST_DEBIT_AMT\r\n,CRDACCT_LST_DEBIT_AMT\r\n,FLAG_LST_PURCHASE_AMT\r\n,CRDACCT_LST_PURCHASE_AMT\r\n,FLAG_LAST_ADVANCE_AMT\r\n,CRDACCT_LAST_ADVANCE_AMT\r\n,FLAG_OUTSTD_AUTH_BAL\r\n,CRDACCT_OUTSTD_AUTH_BAL\r\n,CRDACCT_OUTSTD_AUTH_NBR\r\n,FLAG_CASH_PYMT_TDY\r\n,CRDACCT_CASH_PYMT_TDY\r\n,FLAG_OTHER_PYMT_TDY\r\n,CRDACCT_OTHER_PYMT_TDY\r\n,FLAG_AVAIL_CREDIT\r\n,CRDACCT_AVAIL_CREDIT\r\n,FLAG_CASH_OUTSTD_AUTH_BAL\r\n,CRDACCT_CASH_OUTSTD_AUTH_BAL\r\n,CRDACCT_CASH_OUTSTD_AUTH_NBR\r\n,FLAG_CASH_AUTH_AMT_TDY\r\n,CRDACCT_CASH_AUTH_AMT_TDY\r\n,FLAG_AVAIL_CASH\r\n,CRDACCT_AVAIL_CASH\r\n,CRDACCT_GRACE_DAYS\r\n,FLAG_OL_AMT_BILLED\r\n,CRDACCT_OL_AMT_BILLED\r\n,FLAG_OVERPAY_AMT\r\n,CRDACCT_OVERPAY_AMT\r\n,CRDACCT_CARD_RNWAL_MESG\r\n,FLAG_ODD_DOLLAR\r\n,CRDACCT_ODD_DOLLAR\r\n,FLAG_DLY_CREDIT_INT_ACCR\r\n,CRDACCT_DLY_CREDIT_INT_ACCR\r\n,FLAG_CREDIT_INT_ACCR\r\n,CRDACCT_CREDIT_INT_ACCR\r\n,FLAG_CREDIT_AGGR_BAL\r\n,CRDACCT_CREDIT_AGGR_BAL\r\n,CRDACCT_CREDIT_AGGR_DAYS\r\n,CRDACCT_BPS_JOIN_DATE\r\n,CRDACCT_BPS_END_DATE\r\n,FLAG_PRIOR_YR_BP\r\n,CRDACCT_PRIOR_YR_BP\r\n,FLAG_YTD_BP_STMT\r\n,CRDACCT_YTD_BP_STMT\r\n,FLAG_CTD_BP_ADD\r\n,CRDACCT_CTD_BP_ADD\r\n,FLAG_CTD_BP_DED\r\n,CRDACCT_CTD_BP_DED\r\n,FLAG_MTD_BP_ADD\r\n,CRDACCT_MTD_BP_ADD\r\n,FLAG_MTD_BP_DED\r\n,CRDACCT_MTD_BP_DED\r\n,FLAG_MTD_BP_MDB\r\n,CRDACCT_MTD_BP_MDB\r\n,CRDACCT_CURR_COLL\r\n,CRDACCT_PERM_COLL\r\n,CRDACCT_DTE_INTO_COLL\r\n,CRDACCT_COLL_RSN_CODE\r\n,CRDACCT_COLL_CLASS\r\n,CRDACCT_COLL_HST_CODE\r\n,CRDACCT_COLL_BLK_CODE\r\n,FLAG_COLL_BALANCE\r\n,CRDACCT_COLL_BALANCE\r\n,FLAG_COLL_TOT_AMT_DUE\r\n,CRDACCT_COLL_TOT_AMT_DUE\r\n,FLAG_COLL_OL_AMT\r\n,CRDACCT_COLL_OL_AMT\r\n,FLAG_COLL_OL_PERCENT\r\n,CRDACCT_COLL_OL_PERCENT\r\n,FLAG_COLL_RST_BAL\r\n,CRDACCT_COLL_RST_BAL\r\n,CRDACCT_DD_AMT_IND\r\n,CRDACCT_MGM_GEN_DATE\r\n,CRDACCT_MGM_PRV_COUNT\r\n,CRDACCT_MGM_CUR_COUNT\r\n,CRDACCT_UTL_GEN_DATE\r\n,CRDACCT_UTLT_PRV_COUNT\r\n,CRDACCT_UTLT_CUR_COUNT\r\n,FLAG_UTLS_PRV_SPEND\r\n,CRDACCT_UTLS_PRV_SPEND\r\n,FLAG_UTLS_CUR_SPEND\r\n,CRDACCT_UTLS_CUR_SPEND\r\n,CRDACCT_BP_EXP_DTE\r\n,FLAG_CTD_BP_CUR_DED\r\n,CRDACCT_CTD_BP_CUR_DED\r\n,FLAG_MTD_BP_CUR_DED\r\n,CRDACCT_MTD_BP_CUR_DED\r\n,FLAG_MTD_BP_CUR_MDB\r\n,CRDACCT_MTD_BP_CUR_MDB\r\n,CRDACCT_LAST_BP_EXP_DTE\r\n,FLAG_INSTL_LMT\r\n,CRDACCT_INSTL_LMT\r\n,FLAG_AVAIL_INSTL\r\n,CRDACCT_AVAIL_INSTL\r\n,FLAG_INSTL_BAL\r\n,CRDACCT_INSTL_BAL\r\n,FLAG_OUTSTD_INSTL\r\n,CRDACCT_OUTSTD_INSTL\r\n,FLAG_CTD_AMT_INSTL\r\n,CRDACCT_CTD_AMT_INSTL\r\n,FLAG_UNPAID_BILL_INSTL_RTL\r\n,CRDACCT_UNPAID_BILL_INSTL_RTL\r\n,FLAG_UNPD_BIL_STD_INS_RTL\r\n,CRDACCT_UNPD_BIL_STD_INS_RTL\r\n,FLAG_STDALN_INST\r\n,CRDACCT_STDALN_INST\r\n,FLAG_AVL_STDALN_INSR\r\n,CRDACCT_AVL_STDALN_INSR\r\n,FLAG_OUTSTD_STDALN\r\n,CRDACCT_OUTSTD_STDALN\r\n,FLAG_CTD_AMT_STDALN\r\n,CRDACCT_CTD_AMT_STDALN\r\n,CRDACCT_ACP\r\n,CRDACCT_DELAY_LATE_PYMT_GEN\r\n,CRDACCT_DELAY_LATE_PYMT_DTE\r\n,FLAG_YTD_SPEND\r\n,CRDACCT_YTD_SPEND\r\n,FLAG_PRV_YTD_SPEND\r\n,CRDACCT_PRV_YTD_SPEND\r\n,CRDACCT_NODE_ID\r\n,CRDACCT_PAYM_SKIP_FLAG\r\n,CRDACCT_PAYM_SKIP_EXP\r\n,CRDACCT_APPL_SRC_CODE\r\n,CRDACCT_CR_SAFE_ENROL\r\n,CRDACCT_RISK_RATING\r\n,CRDACCT_CBC_ACCT_NBR\r\n,CRDACCT_SOA_IND\r\n,CRDACCT_NOTIFY_IND\r\n,CRDACCT_CBC_BUFFER\r\n,CRDACCT_DELTA_DATE\r\n,CRDACCT_ARCHIVED_IND\r\n,CRDACCT_DTE_ARCHIVED\r\n,CRDACCT_PAYMENT_COUNTER\r\n,FLAG_STMT_MIN_AMT_DUE\r\n,CRDACCT_STMT_MIN_AMT_DUE\r\n,CRDACCT_SYS_BLK\r\n,CRDACCT_DTE_PP_TAGGING\r\n,CRDACCT_HOLD_ACCOUNT\r\n,FLAG_HOLD_AMOUNT\r\n,CRDACCT_HOLD_AMOUNT\r\n,CRDACCT_AGENT_CODE\r\n,CRDACCT_REF_NAME\r\n,CRDACCT_BILLED_LPC_DTE\r\n,FLAG_BILLED_LPC_AMT\r\n,CRDACCT_BILLED_LPC_AMT\r\n,CRDACCT_DATE_MAINT\r\n,CRDACCT_USER_MAINT\r\n,CRDACCT_TIME_MAINT\r\n,CRDACCT_FILE_DATE\r\n,LAST6_CRDACCT_NBR\r\n,isActive\r\n,isLatest\r\n,BNK_CODE\r\n,SOURCE_CODE\r\n,FILE_NAME\r\n,insert_dttm\r\nFROM BUSC.CCD_CBCEXCACFP_WITH_DUP_20240304;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAC_COUNT RECORD ISLATEST",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CAC_CHECK FOR DUPS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.CCD_CBCEXCACFP\nWHERE ISLATEST = 1;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAC_COUNT DUPS ISLATEST",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CAC_COUNT RECORD ISLATEST",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT FROM BUSC.CCD_CBCEXCACFP_WITH_DUP_20240304\nWHERE ISLATEST = 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAC_CHECK FOR DUPS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CAC_INSERT RANKED",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT CRDACCT_CUST_NBR, CRDACCT_NBR, count(1) CNT FROM BUSC.CCD_CBCEXCACFP \nWHERE islatest = 1\nGROUP BY CRDACCT_CUST_NBR, CRDACCT_NBR\nHAVING count(1) > 1 "
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CAC_TRUNCATE",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CAC_UPDATE ISLATEST",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "TRUNCATE TABLE BUSC.CCD_CBCEXCACFP"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-03-04T11:29:14Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,125 @@
+{
+	"name": "StgTo_EDS_RIB_REQUESTDETAILS",
+	"properties": {
+		"activities": [
+			{
+				"name": "RIB_REQUESTDETAILS_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": {
+							"value": "@concat('SELECT COUNT(1) CNT FROM D360.STG_EDS_',pipeline().parameters.tables,' WHERE H = ''D''')",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": {
+								"value": "@concat('STG_EDS_',pipeline().parameters.tables)",
+								"type": "Expression"
+							}
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "RIB_REQUESTDETAILS_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('RIB_REQUESTDETAILS_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "EDS_RIB_REQUESTDETAILS",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "TestSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"parameters": [
+											{
+												"name": "DatetoProcessed",
+												"type": "Datetime",
+												"value": {
+													"value": "@pipeline().parameters.DatetoProcessed",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											}
+										],
+										"type": "NonQuery",
+										"text": "DELETE FROM EDS.RIB_REQUESTDETAILS WHERE AS_OF_DATE = CAST(@DatetoProcessed AS DATE);\r\n\r\nINSERT INTO EDS.RIB_REQUESTDETAILS\r\n(\r\n\tAS_OF_DATE\r\n,\tACC_ID\r\n,\tACCOUNT_BANK_ID\r\n,\tBACKEND_REF_ID\r\n,\tBANK_ID\r\n,\tBRANCH_ID\r\n,\tCORP_ID\r\n,\tCORP_USER\r\n,\tCUST_ID\r\n,\tDB_TS\r\n,\tDEL_FLG\r\n,\tFORM_REQ_ID\r\n,\tFORM_REQ_STATE\r\n,\tFTXN_ID\r\n,\tMODULE_ID\r\n,\tNO_RM_DAEMON_TRIES\r\n,\tORG_EXT_INFO\r\n,\tORG_MOD_NAME\r\n,\tPRODUCT_ID\r\n,\tR_CRE_ID\r\n,\tR_CRE_TIME\r\n,\tR_MOD_ID\r\n,\tR_MOD_TIME\r\n,\tREQ_ENTITY_EXTN1\r\n,\tREQ_ENTITY_ID\r\n,\tREQ_ENTITY_TYPE\r\n,\tREQUEST_MODE\r\n,\tRESP_CODE\r\n,\tRQST_ID\r\n,\tLAST6_ACCT_NUM\r\n,\tisActive\r\n,\tisLatest\r\n,\tBNK_CODE\r\n,\tSOURCE_CODE\r\n,\tFILE_NAME\r\n,\tinsert_dttm\r\n)\r\n\r\nSELECT \r\n@DatetoProcessed AS AS_OF_DATE\r\n,\tACC_ID\r\n,\tACCOUNT_BANK_ID\r\n,\tBACKEND_REF_ID\r\n,\tBANK_ID\r\n,\tBRANCH_ID\r\n,\tCORP_ID\r\n,\tCORP_USER\r\n,\tCUST_ID\r\n,\tDB_TS\r\n,\tDEL_FLG\r\n,\tFORM_REQ_ID\r\n,\tFORM_REQ_STATE\r\n,\tFTXN_ID\r\n,\tMODULE_ID\r\n,\tNO_RM_DAEMON_TRIES\r\n,\tORG_EXT_INFO\r\n,\tORG_MOD_NAME\r\n,\tPRODUCT_ID\r\n,\tR_CRE_ID\r\n,\tR_CRE_TIME\r\n,\tR_MOD_ID\r\n,\tR_MOD_TIME\r\n,\tREQ_ENTITY_EXTN1\r\n,\tREQ_ENTITY_ID\r\n,\tREQ_ENTITY_TYPE\r\n,\tREQUEST_MODE\r\n,\tRESP_CODE\r\n,\tRQST_ID\r\n,\tLAST6_ACCT_NUM\r\n,\t1 as isActive\r\n,\t1 as isLatest\r\n,\tBANK_ID as BNK_CODE\r\n,\t'RIB' as SOURCE_CODE\r\n,\tFILE_NAME\r\n,\tCAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATETIME) as insert_dttm\r\nFROM D360.STG_EDS_RIB_REQUESTDETAILS\r\nWHERE H = 'D'\r\n\r\n"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"tables": {
+				"type": "string"
+			},
+			"DatetoProcessed": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-07-10T03:36:26Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

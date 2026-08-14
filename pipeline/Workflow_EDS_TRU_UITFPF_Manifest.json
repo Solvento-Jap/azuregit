@@ -1,0 +1,1080 @@
+{
+	"name": "Workflow_EDS_TRU_UITFPF_Manifest",
+	"properties": {
+		"activities": [
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(variables('V_endDate')),ticks(variables('V_startDate'))),864000000000),1))\n",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append Process Date",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Iterate Execution of Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "OM_SRC_CHECK",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Condition Success Count",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@replace(substring(item(),0,10),'-','')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Manifest_file",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Workflow_Manifest",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"MaxPipelineCalls": 5,
+									"RetryInterval": 120,
+									"DatetoProcessed": {
+										"value": "@substring(item(),0,10)",
+										"type": "Expression"
+									},
+									"tables": {
+										"value": "@concat('''',pipeline().parameters.tables,'''')",
+										"type": "Expression"
+									},
+									"EndTime": "07:00",
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "Get Success Count",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_STG_EDS_',pipeline().parameters.tables,''',''EDS_STG'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Manifest_file",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "END_TASK_STG_EDS_SUCCESSFUL",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_TRU_UITFPF",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												},
+												"tablename": {
+													"value": {
+														"value": "@concat('D360.STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_STG_EDS_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_TRU_UITFPF",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												},
+												"tablename": {
+													"value": {
+														"value": "@concat('D360.STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "START_TASK_STG_EDS",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "Onprem",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_STG_EDS",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "OnPremToADLS_EDS_v2",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"DatetoProcessed": {
+													"value": "@replace(substring(item(),0,10),'-','')",
+													"type": "Expression"
+												},
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												},
+												"src_sys": {
+													"value": "@pipeline().parameters.src_sys",
+													"type": "Expression"
+												},
+												"Bank_ID": {
+													"value": "@pipeline().parameters.Bank_id",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "PGP Decrypt",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "Onprem",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "PGPDecrypt_EDS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												},
+												"src_sys": {
+													"value": "@pipeline().parameters.src_sys",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "DecToStg_TRU_UITFPF",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "Truncate Staging",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "DecToStg_EDS_TRU_UITFPF",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"DateToProcess": {
+													"value": "@replace(substring(item(),0,10),'-','')",
+													"type": "Expression"
+												},
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												},
+												"Bank_id": {
+													"value": "@pipeline().parameters.Bank_id",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "MovToArchive",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_TRU_UITFPF",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "MovToArchive_EDS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												},
+												"src_sys": {
+													"value": "@pipeline().parameters.src_sys",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "Truncate Staging",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "PGP Decrypt",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 3,
+											"retryIntervalInSeconds": 60,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"type": "NonQuery",
+													"text": {
+														"value": "@concat('TRUNCATE TABLE d360.STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													}
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									},
+									{
+										"name": "Hashlog_TRU_UITFPF",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_TRU_UITFPF",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "TestSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"parameters": [
+														{
+															"name": "HashLog_SQL",
+															"type": "String",
+															"value": {
+																"value": "@pipeline().parameters.HashLog_SQL",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														}
+													],
+													"type": "Query",
+													"text": "EXEC sp_executesql @HashLog_SQL;"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "Get Success Count EDS",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "OM_SRC_CHECK",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_EDS_',pipeline().parameters.tables,''',''EDS'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count EDS",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count EDS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count EDS').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "START_TASK_EDS",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_SUCCESSFUL",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_TRU_UITFPF",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_TRU_UITFPF",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "EDS_TRU_UITFPF",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_EDS",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "TestSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"parameters": [
+														{
+															"name": "EDS_SQL",
+															"type": "String",
+															"value": {
+																"value": "@pipeline().parameters.EDS_SQL",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														}
+													],
+													"type": "Query",
+													"text": "EXEC sp_executesql @EDS_SQL;"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('select fulldate\nfrom \n    eds.eds_ctl ect\ninner join \n    eds.date_dim dd\n    on \n    ect.',pipeline().parameters.src_sys,'_DATE=dd.previous_business_day\n    and dd.business_day_flag=''Y''')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"tables": {
+				"type": "string",
+				"defaultValue": "TRU_UITFPF"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "TRU"
+			},
+			"Bank_id": {
+				"type": "string",
+				"defaultValue": "CBC01"
+			},
+			"HashLog_SQL": {
+				"type": "string",
+				"defaultValue": "WITH CTE1 AS ( \tSELECT TRY_CAST(COUNT(*) AS NUMERIC(25, 5)) COUNT_tgt \t\t,isnull(sum(FACE_VALUE),0)FACE_VALUE_tgt \t\t,isnull(sum(FUND_PREC),0)FUND_PREC_tgt \t\t,isnull(sum(NAV_PREC),0)NAV_PREC_tgt \t\t,isnull(sum(AMOUNT_PRECISION),0)AMOUNT_PRECISION_tgt \t\t,isnull(sum(INST_DT_ARR),0)INST_DT_ARR_tgt \t\t,isnull(sum(SCHEME_SUBGL),0)SCHEME_SUBGL_tgt \t\t,isnull(sum(PLAN_SUBGL),0)PLAN_SUBGL_tgt \t\t,isnull(sum(SEED_CAPITAL),0)SEED_CAPITAL_tgt \t\t,isnull(sum(SEED_CAPITAL_MAX),0)SEED_CAPITAL_MAX_tgt \t\t,isnull(sum(SEED_CAPITAL_LOCK_PERIOD),0)SEED_CAPITAL_LOCK_PERIOD_tgt \t\t,isnull(sum(DIV_PREC),0)DIV_PREC_tgt \t\t,isnull(sum(COMPULSORY_REINVEST_AMOUNT),0)COMPULSORY_REINVEST_AMOUNT_tgt \t\t,FILE_NAME \t\t,INSERT_DTTM \tFROM d360.STG_EDS_TRU_UITFPF \tWHERE H = 'D' \tGROUP BY FILE_NAME \t\t,INSERT_DTTM \t) \t,CTE2 AS ( \tSELECT TRY_CAST(REPLACE(H, 'F-', '') AS NUMERIC(25, 5)) COUNT_src \t\t,TRY_CAST(FACE_VALUE AS NUMERIC(25,5))FACE_VALUE_src \t\t,TRY_CAST(FUND_PREC AS NUMERIC(25,5))FUND_PREC_src \t\t,TRY_CAST(NAV_PREC AS NUMERIC(25,5))NAV_PREC_src \t\t,TRY_CAST(AMOUNT_PRECISION AS NUMERIC(25,5))AMOUNT_PRECISION_src \t\t,TRY_CAST(INST_DT_ARR AS NUMERIC(25,5))INST_DT_ARR_src \t\t,TRY_CAST(SCHEME_SUBGL AS NUMERIC(25,5))SCHEME_SUBGL_src \t\t,TRY_CAST(PLAN_SUBGL AS NUMERIC(25,5))PLAN_SUBGL_src \t\t,TRY_CAST(SEED_CAPITAL AS NUMERIC(25,5))SEED_CAPITAL_src \t\t,TRY_CAST(SEED_CAPITAL_MAX AS NUMERIC(25,5))SEED_CAPITAL_MAX_src \t\t,TRY_CAST(SEED_CAPITAL_LOCK_PERIOD AS NUMERIC(25,5))SEED_CAPITAL_LOCK_PERIOD_src \t\t,TRY_CAST(DIV_PREC AS NUMERIC(25,5))DIV_PREC_src \t\t,TRY_CAST(COMPULSORY_REINVEST_AMOUNT AS NUMERIC(25,5))COMPULSORY_REINVEST_AMOUNT_src \t\t,FILE_NAME \t\t,INSERT_DTTM \tFROM d360.STG_EDS_TRU_UITFPF \tWHERE H <> 'D' \t)  \t,CTE12 AS ( \tSELECT COUNT_SRC \t\t,COUNT_TGT \t\t,FACE_VALUE_tgt \t\t,FUND_PREC_tgt \t\t,NAV_PREC_tgt \t\t,AMOUNT_PRECISION_tgt \t\t,INST_DT_ARR_tgt \t\t,SCHEME_SUBGL_tgt \t\t,PLAN_SUBGL_tgt \t\t,SEED_CAPITAL_tgt \t\t,SEED_CAPITAL_MAX_tgt \t\t,SEED_CAPITAL_LOCK_PERIOD_tgt \t\t,DIV_PREC_tgt \t\t,COMPULSORY_REINVEST_AMOUNT_tgt \t\t,FACE_VALUE_src \t\t,FUND_PREC_src \t\t,NAV_PREC_src \t\t,AMOUNT_PRECISION_src \t\t,INST_DT_ARR_src \t\t,SCHEME_SUBGL_src \t\t,PLAN_SUBGL_src \t\t,SEED_CAPITAL_src \t\t,SEED_CAPITAL_MAX_src \t\t,SEED_CAPITAL_LOCK_PERIOD_src \t\t,DIV_PREC_src \t\t,COMPULSORY_REINVEST_AMOUNT_src \t\t,A.FILE_NAME \t\t,A.INSERT_DTTM \t\t,TRY_CAST((left(right(A.FILE_NAME, 12), 8)) AS DATE) DATE \tFROM CTE1 A \tJOIN CTE2 B ON A.FILE_NAME = B.FILE_NAME \t\tAND A.INSERT_DTTM = B.INSERT_DTTM \t) INSERT INTO [EDS].[EDS_HASH_LOG_TBL] SELECT FILE_NAME \t,DATE \t,insert_dttm \t,REPLACE(METRICS, '_SRC', '') METRICS \t,SRC \t,TGT FROM ( \tSELECT TRY_CAST(COUNT_SRC AS NUMERIC(25, 5)) COUNT_SRC \t\t,TRY_CAST(COUNT_TGT AS NUMERIC(25, 5)) COUNT_TGT \t\t,TRY_CAST(FACE_VALUE_tgt AS NUMERIC(25,5))FACE_VALUE_tgt \t\t,TRY_CAST(FUND_PREC_tgt AS NUMERIC(25,5))FUND_PREC_tgt \t\t,TRY_CAST(NAV_PREC_tgt AS NUMERIC(25,5))NAV_PREC_tgt \t\t,TRY_CAST(AMOUNT_PRECISION_tgt AS NUMERIC(25,5))AMOUNT_PRECISION_tgt \t\t,TRY_CAST(INST_DT_ARR_tgt AS NUMERIC(25,5))INST_DT_ARR_tgt \t\t,TRY_CAST(SCHEME_SUBGL_tgt AS NUMERIC(25,5))SCHEME_SUBGL_tgt \t\t,TRY_CAST(PLAN_SUBGL_tgt AS NUMERIC(25,5))PLAN_SUBGL_tgt \t\t,TRY_CAST(SEED_CAPITAL_tgt AS NUMERIC(25,5))SEED_CAPITAL_tgt \t\t,TRY_CAST(SEED_CAPITAL_MAX_tgt AS NUMERIC(25,5))SEED_CAPITAL_MAX_tgt \t\t,TRY_CAST(SEED_CAPITAL_LOCK_PERIOD_tgt AS NUMERIC(25,5))SEED_CAPITAL_LOCK_PERIOD_tgt \t\t,TRY_CAST(DIV_PREC_tgt AS NUMERIC(25,5))DIV_PREC_tgt \t\t,TRY_CAST(COMPULSORY_REINVEST_AMOUNT_tgt AS NUMERIC(25,5))COMPULSORY_REINVEST_AMOUNT_tgt \t\t,TRY_CAST(FACE_VALUE_src AS NUMERIC(25,5))FACE_VALUE_src \t\t,TRY_CAST(FUND_PREC_src AS NUMERIC(25,5))FUND_PREC_src \t\t,TRY_CAST(NAV_PREC_src AS NUMERIC(25,5))NAV_PREC_src \t\t,TRY_CAST(AMOUNT_PRECISION_src AS NUMERIC(25,5))AMOUNT_PRECISION_src \t\t,TRY_CAST(INST_DT_ARR_src AS NUMERIC(25,5))INST_DT_ARR_src \t\t,TRY_CAST(SCHEME_SUBGL_src AS NUMERIC(25,5))SCHEME_SUBGL_src \t\t,TRY_CAST(PLAN_SUBGL_src AS NUMERIC(25,5))PLAN_SUBGL_src \t\t,TRY_CAST(SEED_CAPITAL_src AS NUMERIC(25,5))SEED_CAPITAL_src \t\t,TRY_CAST(SEED_CAPITAL_MAX_src AS NUMERIC(25,5))SEED_CAPITAL_MAX_src \t\t,TRY_CAST(SEED_CAPITAL_LOCK_PERIOD_src AS NUMERIC(25,5))SEED_CAPITAL_LOCK_PERIOD_src \t\t,TRY_CAST(DIV_PREC_src AS NUMERIC(25,5))DIV_PREC_src \t\t,TRY_CAST(COMPULSORY_REINVEST_AMOUNT_src AS NUMERIC(25,5))COMPULSORY_REINVEST_AMOUNT_src \t\t,FILE_NAME \t\t,INSERT_DTTM \t\t,[DATE] \tFROM CTE12 \t) pvt UNPIVOT(SRC FOR METRICS IN ( \t\tCOUNT_SRC \t\t,FACE_VALUE_src \t\t,FUND_PREC_src \t\t,NAV_PREC_src \t\t,AMOUNT_PRECISION_src \t\t,INST_DT_ARR_src \t\t,SCHEME_SUBGL_src \t\t,PLAN_SUBGL_src \t\t,SEED_CAPITAL_src \t\t,SEED_CAPITAL_MAX_src \t\t,SEED_CAPITAL_LOCK_PERIOD_src \t\t,DIV_PREC_src \t\t,COMPULSORY_REINVEST_AMOUNT_src \t\t\t)) pvt1 UNPIVOT(TGT FOR METRICS2 IN ( \t\tCOUNT_TGT \t\t,FACE_VALUE_tgt \t\t,FUND_PREC_tgt \t\t,NAV_PREC_tgt \t\t,AMOUNT_PRECISION_tgt \t\t,INST_DT_ARR_tgt \t\t,SCHEME_SUBGL_tgt \t\t,PLAN_SUBGL_tgt \t\t,SEED_CAPITAL_tgt \t\t,SEED_CAPITAL_MAX_tgt \t\t,SEED_CAPITAL_LOCK_PERIOD_tgt \t\t,DIV_PREC_tgt \t\t,COMPULSORY_REINVEST_AMOUNT_tgt \t\t\t)) pvt2 WHERE REPLACE(METRICS, '_SRC', '') = REPLACE(METRICS2, '_TGT', '');"
+			},
+			"EDS_SQL": {
+				"type": "string",
+				"defaultValue": "BEGIN TRY UPDATE EDS.TRU_UITFPF SET [ISLATEST] = 0 ,[SCD_END_DATE] = ( SELECT PREVIOUS_BUSINESS_DAY FROM EDS.DATE_DIM INNER JOIN ( SELECT TOP 1 CAST(LEFT(RIGHT(FILE_NAME, 12), 8) AS INTEGER) MX_DT FROM D360.STG_EDS_TRU_UITFPF ) MX_DT_TBL ON DATESK = MX_DT ) FROM EDS.TRU_UITFPF tgt LEFT JOIN D360.STG_EDS_TRU_UITFPF src ON src.[FUND_CD] = tgt.[FUND_CD] AND src.[H] = 'D' WHERE tgt.[ISLATEST] = 1 AND HASHBYTES('SHA2_256', CONCAT_WS(N'|', src.[AMC_CD], src.[SCHEME], src.[SCHEME_DESC], src.[PLAN], src.[PLAN_DESC], src.[FUND_NM], src.[ISIN_CD], src.[FUND_CURR_CD], src.[FUND_SHORT_NM], src.[ALT_SCHEME], src.[ALT_FUND_CD], src.[ALT_PLAN_CD], src.[OPT], src.[SCHEME_TYPE], src.[MIS_SCHEME_TYPE], src.[ALLOCATION_TYPE], src.[FUND_TRAD_FLG], src.[FUND_TRAD_TYP], src.[TXN_PERIOD_FLG], format(src.[FUND_LAUNCH_DT], 'yyyy-MM-dd HH:mm:ss'), format(src.[NFO_CLOSE_DATE], 'yyyy-MM-dd HH:mm:ss'), format(src.[NFO_ALLOT_DT], 'yyyy-MM-dd HH:mm:ss'), format(src.[MATURITY_DT], 'yyyy-MM-dd HH:mm:ss'), src.[OMNIBUS_ACC_FLAG], src.[DEMAT_REMAT_FLAG], src.[TAX_TYP], src.[STMT_FLAG], src.[FUND_RISK], src.[ADD1], src.[ADD2], src.[ADD3], src.[CITY], src.[STATE], src.[PIN_CODE], src.[COUNTRY], src.[TELEPHONE], src.[FAX], src.[EMAIL], src.[CONTACT_1], src.[CONTACT_2], src.[SEBI_REGN_NO], src.[INCORPORATION_CITY], src.[INCORPORATION_COUNTRY], src.[DOC_TYPE], src.[DOC_EXP_DT], src.[FUND_DOMICILE], src.[FACE_VALUE], src.[AUTH_CAPITAL_UNITS], src. [AUTH_CAPITAL_AMT_MIN], src.[AUTH_CAPITAL_AMT_MAX], src.[MAX_SPONSOR_AMT], src.[MIN_IND_SPONSOR_AMT], src.[MAX_IND_SPONSOR_AMT], src.[FUND_PREC], src.[NAV_PREC], src.[NAV_VARIANCE], src.[AMOUNT_PRECISION], src.[ROUNDING_LOGIC], src.[VAR_LOAD_FLG], src.[LOAD_TEXT], src.[SWITCH_FEE_FLAG], src.[LOAD_TYPE], src.[PARCEL_METHOD], src.[MGMT_FEE_PERC], src.[AGE_LOAD_FLG], src.[ENTRY_LOAD_BASIS], src.[CIR_SWITCH_FLG], src.[INDEX_PRICE_FLAG], src.[PE_FLG], src.[PE_ALLOCATION_BASIS], src.[PUR_CUT_OFF_TIME], src.[RED_CUT_OFF_TIME], src.[INST_DT_ARR], format(src.[ALLOCATION_DATE], 'yyyy-MM-dd HH:mm:ss'), src.[FUND_REAL_FLG], src.[FUND_HOLIDAY], src.[FUND_ACCOUNTING_FLG], src.[DEFAULT_BANK_AC], src.[SCHEME_ACTIVITY], src.[FUND_MANAGER], src.[ID_NO], src.[CR_AGENCY], src.[MEMO], src.[BILL_PREF_LANG], src.[REP_PREF_LANG], src.[NAV_FREQ], src.[NAV_IF_HOLIDAY], format(src.[FIRST_NAV_DATE], 'yyyy-MM-dd HH:mm:ss'), format(src.[FIRST_EY_DATE], 'yyyy-MM-dd HH:mm:ss'), src.[NAV_ROUND_OPT], src.[SCHEME_CATEGORY], src.[SCHEME_SUBGL], src. [PLAN_SUBGL], format(src.[LAST_PF_CLOSURE_DT], 'yyyy-MM-dd HH:mm:ss'), format(src.[LAST_EOY], 'yyyy-MM-dd HH:mm:ss'), src.[UNDER_LIQUIDATED], src.[FUND_LIQUIDATED], format(src.[PRV_NAV_DATE], 'yyyy-MM-dd HH:mm:ss'), format(src.[NEXT_NAV_DATE], 'yyyy-MM-dd HH:mm:ss'), src.[POS_DT], src.[AUTH_TIME_STAMP], src.[EPF_FLG], src.[CORR_FUND_CD], src.[PRS_CORE_FUND], src.[PRS_PLAN_B_LOCKING_PERIOD], src.[PRS_PLAN_A_PERCENTAGE], src.[PRS_PLAN_B_PERCENTAGE], src.[ZAKAT_APPLICABILITY], src.[SEED_CAPITAL], src.[SEED_CAPITAL_MAX], src.[SEED_CAPITAL_BREACH_FLAG], format(src.[SEED_CAPITAL_BREACH_DATE], 'yyyy-MM-dd HH:mm:ss'), src.[SEED_CAPITAL_LOCK_PERIOD], src.[DIVIDEND_ALLOWED], src.[DIV_COMP_LVL], src.[DIV_PREC], src.[COMPULSORY_REINVEST_AMOUNT], src.[INTEREST_RATE], src.[NO_OF_COUPONS], src.[DEFAULT_PLAN], src.[DEFAULT_OPT], src.[DOGH_FLAG], src.[FACE_VALUE_CHANGE_DATE], src.[FM_SETTLEMENT_BASIS], src.[FX_REQD_FLG], src.[NAV_FACTOR], src.[REC_BRK_UPD_FLG], src.[SWITCH_BUF], src.[MKR_ID], format(src.[MKR_DT], 'yyyy-MM-dd HH:mm:ss'), src.[AUTH_ID], format(src.[AUTH_DT], 'yyyy-MM-dd HH:mm:ss'), src.[STATUS], src.[REMARKS], src.[OPERATION], src.[ACTED_BY], format(src.[ACTED_ON], 'yyyy-MM-dd HH:mm:ss'), src.[REF_NO], src.[TRUST_FEE_PERC])) <> HASHBYTES('SHA2_256', CONCAT_WS(N'|', tgt.[AMC_CD], tgt.[SCHEME], tgt.[SCHEME_DESC], tgt.[PLAN], tgt.[PLAN_DESC], tgt.[FUND_NM], tgt.[ISIN_CD], tgt.[FUND_CURR_CD], tgt.[FUND_SHORT_NM], tgt.[ALT_SCHEME], tgt.[ALT_FUND_CD], tgt.[ALT_PLAN_CD], tgt.[OPT], tgt.[SCHEME_TYPE], tgt.[MIS_SCHEME_TYPE], tgt.[ALLOCATION_TYPE], tgt.[FUND_TRAD_FLG], tgt.[FUND_TRAD_TYP], tgt.[TXN_PERIOD_FLG], format(tgt.[FUND_LAUNCH_DT], 'yyyy-MM-dd HH:mm:ss'), format(tgt.[NFO_CLOSE_DATE], 'yyyy-MM-dd HH:mm:ss'), format(tgt.[NFO_ALLOT_DT], 'yyyy-MM-dd HH:mm:ss'), format(tgt.[MATURITY_DT], 'yyyy-MM-dd HH:mm:ss'), tgt.[OMNIBUS_ACC_FLAG], tgt.[DEMAT_REMAT_FLAG], tgt.[TAX_TYP], tgt.[STMT_FLAG], tgt.[FUND_RISK], tgt.[ADD1], tgt.[ADD2], tgt.[ADD3], tgt.[CITY], tgt.[STATE], tgt.[PIN_CODE], tgt.[COUNTRY], tgt.[TELEPHONE], tgt. [FAX], tgt.[EMAIL], tgt.[CONTACT_1], tgt.[CONTACT_2], tgt.[SEBI_REGN_NO], tgt.[INCORPORATION_CITY], tgt.[INCORPORATION_COUNTRY], tgt.[DOC_TYPE], tgt.[DOC_EXP_DT], tgt.[FUND_DOMICILE], tgt.[FACE_VALUE], tgt.[AUTH_CAPITAL_UNITS], tgt.[AUTH_CAPITAL_AMT_MIN], tgt.[AUTH_CAPITAL_AMT_MAX], tgt.[MAX_SPONSOR_AMT], tgt.[MIN_IND_SPONSOR_AMT], tgt.[MAX_IND_SPONSOR_AMT], tgt.[FUND_PREC], tgt.[NAV_PREC], tgt.[NAV_VARIANCE], tgt.[AMOUNT_PRECISION], tgt.[ROUNDING_LOGIC], tgt.[VAR_LOAD_FLG], tgt.[LOAD_TEXT], tgt.[SWITCH_FEE_FLAG], tgt.[LOAD_TYPE], tgt.[PARCEL_METHOD], tgt.[MGMT_FEE_PERC], tgt.[AGE_LOAD_FLG], tgt.[ENTRY_LOAD_BASIS], tgt.[CIR_SWITCH_FLG], tgt.[INDEX_PRICE_FLAG], tgt.[PE_FLG], tgt.[PE_ALLOCATION_BASIS], tgt.[PUR_CUT_OFF_TIME], tgt.[RED_CUT_OFF_TIME], tgt.[INST_DT_ARR], format(tgt.[ALLOCATION_DATE], 'yyyy-MM-dd HH:mm:ss'), tgt.[FUND_REAL_FLG], tgt.[FUND_HOLIDAY], tgt.[FUND_ACCOUNTING_FLG], tgt.[DEFAULT_BANK_AC], tgt.[SCHEME_ACTIVITY], tgt.[FUND_MANAGER], tgt.[ID_NO], tgt.[CR_AGENCY], tgt.[MEMO], tgt.[BILL_PREF_LANG], tgt .[REP_PREF_LANG], tgt.[NAV_FREQ], tgt.[NAV_IF_HOLIDAY], format(tgt.[FIRST_NAV_DATE], 'yyyy-MM-dd HH:mm:ss'), format(tgt.[FIRST_EY_DATE], 'yyyy-MM-dd HH:mm:ss'), tgt.[NAV_ROUND_OPT], tgt.[SCHEME_CATEGORY], tgt.[SCHEME_SUBGL], tgt.[PLAN_SUBGL], format(tgt.[LAST_PF_CLOSURE_DT], 'yyyy-MM-dd HH:mm:ss'), format(tgt.[LAST_EOY], 'yyyy-MM-dd HH:mm:ss'), tgt.[UNDER_LIQUIDATED], tgt.[FUND_LIQUIDATED], format(tgt.[PRV_NAV_DATE], 'yyyy-MM-dd HH:mm:ss'), format(tgt.[NEXT_NAV_DATE], 'yyyy-MM-dd HH:mm:ss'), tgt.[POS_DT], tgt.[AUTH_TIME_STAMP], tgt.[EPF_FLG], tgt.[CORR_FUND_CD], tgt.[PRS_CORE_FUND], tgt.[PRS_PLAN_B_LOCKING_PERIOD], tgt.[PRS_PLAN_A_PERCENTAGE], tgt.[PRS_PLAN_B_PERCENTAGE], tgt.[ZAKAT_APPLICABILITY], tgt.[SEED_CAPITAL], tgt.[SEED_CAPITAL_MAX], tgt.[SEED_CAPITAL_BREACH_FLAG], format(tgt.[SEED_CAPITAL_BREACH_DATE], 'yyyy-MM-dd HH:mm:ss'), tgt.[SEED_CAPITAL_LOCK_PERIOD], tgt.[DIVIDEND_ALLOWED], tgt.[DIV_COMP_LVL], tgt.[DIV_PREC], tgt.[COMPULSORY_REINVEST_AMOUNT], tgt.[INTEREST_RATE], tgt.[NO_OF_COUPONS], tgt. [DEFAULT_PLAN], tgt.[DEFAULT_OPT], tgt.[DOGH_FLAG], tgt.[FACE_VALUE_CHANGE_DATE], tgt.[FM_SETTLEMENT_BASIS], tgt.[FX_REQD_FLG], tgt.[NAV_FACTOR], tgt.[REC_BRK_UPD_FLG], tgt.[SWITCH_BUF], tgt.[MKR_ID], format(tgt.[MKR_DT], 'yyyy-MM-dd HH:mm:ss'), tgt.[AUTH_ID], format(tgt.[AUTH_DT], 'yyyy-MM-dd HH:mm:ss'), tgt.[STATUS], tgt.[REMARKS], tgt.[OPERATION], tgt.[ACTED_BY], format(tgt.[ACTED_ON], 'yyyy-MM-dd HH:mm:ss'), tgt.[REF_NO], tgt.[TRUST_FEE_PERC])); INSERT INTO EDS.TRU_UITFPF ( [AMC_CD] ,[SCHEME] ,[SCHEME_DESC] ,[PLAN] ,[PLAN_DESC] ,[FUND_CD] ,[FUND_NM] ,[ISIN_CD] ,[FUND_CURR_CD] ,[FUND_SHORT_NM] ,[ALT_SCHEME] ,[ALT_FUND_CD] ,[ALT_PLAN_CD] ,[OPT] ,[SCHEME_TYPE] ,[MIS_SCHEME_TYPE] ,[ALLOCATION_TYPE] ,[FUND_TRAD_FLG] ,[FUND_TRAD_TYP] ,[TXN_PERIOD_FLG] ,[FUND_LAUNCH_DT] ,[NFO_CLOSE_DATE] ,[NFO_ALLOT_DT] ,[MATURITY_DT] ,[OMNIBUS_ACC_FLAG] ,[DEMAT_REMAT_FLAG] ,[TAX_TYP] ,[STMT_FLAG] ,[FUND_RISK] ,[ADD1] ,[ADD2] ,[ADD3] ,[CITY] ,[STATE] ,[PIN_CODE] ,[COUNTRY] ,[TELEPHONE] ,[FAX] ,[EMAIL] ,[CONTACT_1] ,[CONTACT_2] ,[SEBI_REGN_NO] ,[INCORPORATION_CITY] ,[INCORPORATION_COUNTRY] ,[DOC_TYPE] ,[DOC_EXP_DT] ,[FUND_DOMICILE] ,[FACE_VALUE] ,[AUTH_CAPITAL_UNITS] ,[AUTH_CAPITAL_AMT_MIN] ,[AUTH_CAPITAL_AMT_MAX] ,[MAX_SPONSOR_AMT] ,[MIN_IND_SPONSOR_AMT] ,[MAX_IND_SPONSOR_AMT] ,[FUND_PREC] ,[NAV_PREC] ,[NAV_VARIANCE] ,[AMOUNT_PRECISION] ,[ROUNDING_LOGIC] ,[VAR_LOAD_FLG] ,[LOAD_TEXT] ,[SWITCH_FEE_FLAG] ,[LOAD_TYPE] ,[PARCEL_METHOD] ,[MGMT_FEE_PERC] ,[AGE_LOAD_FLG] ,[ENTRY_LOAD_BASIS] ,[CIR_SWITCH_FLG] ,[INDEX_PRICE_FLAG] ,[PE_FLG] ,[PE_ALLOCATION_BASIS] ,[PUR_CUT_OFF_TIME] ,[RED_CUT_OFF_TIME] ,[INST_DT_ARR] ,[ALLOCATION_DATE] ,[FUND_REAL_FLG] ,[FUND_HOLIDAY] ,[FUND_ACCOUNTING_FLG] ,[DEFAULT_BANK_AC] ,[SCHEME_ACTIVITY] ,[FUND_MANAGER] ,[ID_NO] ,[CR_AGENCY] ,[MEMO] ,[BILL_PREF_LANG] ,[REP_PREF_LANG] ,[NAV_FREQ] ,[NAV_IF_HOLIDAY] ,[FIRST_NAV_DATE] ,[FIRST_EY_DATE] ,[NAV_ROUND_OPT] ,[SCHEME_CATEGORY] ,[SCHEME_SUBGL] ,[PLAN_SUBGL] ,[LAST_PF_CLOSURE_DT] ,[LAST_EOY] ,[UNDER_LIQUIDATED] ,[FUND_LIQUIDATED] ,[PRV_NAV_DATE] ,[NEXT_NAV_DATE] ,[POS_DT] ,[AUTH_TIME_STAMP] ,[EPF_FLG] ,[CORR_FUND_CD] ,[PRS_CORE_FUND] ,[PRS_PLAN_B_LOCKING_PERIOD] ,[PRS_PLAN_A_PERCENTAGE] ,[PRS_PLAN_B_PERCENTAGE] ,[ZAKAT_APPLICABILITY] ,[SEED_CAPITAL] ,[SEED_CAPITAL_MAX] ,[SEED_CAPITAL_BREACH_FLAG] ,[SEED_CAPITAL_BREACH_DATE] ,[SEED_CAPITAL_LOCK_PERIOD] ,[DIVIDEND_ALLOWED] ,[DIV_COMP_LVL] ,[DIV_PREC] ,[COMPULSORY_REINVEST_AMOUNT] ,[INTEREST_RATE] ,[NO_OF_COUPONS] ,[DEFAULT_PLAN] ,[DEFAULT_OPT] ,[DOGH_FLAG] ,[FACE_VALUE_CHANGE_DATE] ,[FM_SETTLEMENT_BASIS] ,[FX_REQD_FLG] ,[NAV_FACTOR] ,[REC_BRK_UPD_FLG] ,[SWITCH_BUF] ,[MKR_ID] ,[MKR_DT] ,[AUTH_ID] ,[AUTH_DT] ,[STATUS] ,[REMARKS] ,[OPERATION] ,[ACTED_BY] ,[ACTED_ON] ,[REF_NO] ,[TRUST_FEE_PERC] ,[SCD_START_DATE] ,[SCD_END_DATE] ,[ISACTIVE] ,[ISLATEST] ,[BNK_CODE] ,[SOURCE_CODE] ,[FILE_NAME] ,[INSERT_DTTM] ,[FUND_CLASSIFICATION] ) SELECT DISTINCT [AMC_CD] ,[SCHEME] ,[SCHEME_DESC] ,[PLAN] ,[PLAN_DESC] ,[FUND_CD] ,[FUND_NM] ,[ISIN_CD] ,[FUND_CURR_CD] ,[FUND_SHORT_NM] ,[ALT_SCHEME] ,[ALT_FUND_CD] ,[ALT_PLAN_CD] ,[OPT] ,[SCHEME_TYPE] ,[MIS_SCHEME_TYPE] ,[ALLOCATION_TYPE] ,[FUND_TRAD_FLG] ,[FUND_TRAD_TYP] ,[TXN_PERIOD_FLG] ,[FUND_LAUNCH_DT] ,[NFO_CLOSE_DATE] ,[NFO_ALLOT_DT] ,[MATURITY_DT] ,[OMNIBUS_ACC_FLAG] ,[DEMAT_REMAT_FLAG] ,[TAX_TYP] ,[STMT_FLAG] ,[FUND_RISK] ,[ADD1] ,[ADD2] ,[ADD3] ,[CITY] ,[STATE] ,[PIN_CODE] ,[COUNTRY] ,[TELEPHONE] ,[FAX] ,[EMAIL] ,[CONTACT_1] ,[CONTACT_2] ,[SEBI_REGN_NO] ,[INCORPORATION_CITY] ,[INCORPORATION_COUNTRY] ,[DOC_TYPE] ,[DOC_EXP_DT] ,[FUND_DOMICILE] ,[FACE_VALUE] ,[AUTH_CAPITAL_UNITS] ,[AUTH_CAPITAL_AMT_MIN] ,[AUTH_CAPITAL_AMT_MAX] ,[MAX_SPONSOR_AMT] ,[MIN_IND_SPONSOR_AMT] ,[MAX_IND_SPONSOR_AMT] ,[FUND_PREC] ,[NAV_PREC] ,[NAV_VARIANCE] ,[AMOUNT_PRECISION] ,[ROUNDING_LOGIC] ,[VAR_LOAD_FLG] ,[LOAD_TEXT] ,[SWITCH_FEE_FLAG] ,[LOAD_TYPE] ,[PARCEL_METHOD] ,[MGMT_FEE_PERC] ,[AGE_LOAD_FLG] ,[ENTRY_LOAD_BASIS] ,[CIR_SWITCH_FLG] ,[INDEX_PRICE_FLAG] ,[PE_FLG] ,[PE_ALLOCATION_BASIS] ,[PUR_CUT_OFF_TIME] ,[RED_CUT_OFF_TIME] ,[INST_DT_ARR] ,[ALLOCATION_DATE] ,[FUND_REAL_FLG] ,[FUND_HOLIDAY] ,[FUND_ACCOUNTING_FLG] ,[DEFAULT_BANK_AC] ,[SCHEME_ACTIVITY] ,[FUND_MANAGER] ,[ID_NO] ,[CR_AGENCY] ,[MEMO] ,[BILL_PREF_LANG] ,[REP_PREF_LANG] ,[NAV_FREQ] ,[NAV_IF_HOLIDAY] ,[FIRST_NAV_DATE] ,[FIRST_EY_DATE] ,[NAV_ROUND_OPT] ,[SCHEME_CATEGORY] ,[SCHEME_SUBGL] ,[PLAN_SUBGL] ,[LAST_PF_CLOSURE_DT] ,[LAST_EOY] ,[UNDER_LIQUIDATED] ,[FUND_LIQUIDATED] ,[PRV_NAV_DATE] ,[NEXT_NAV_DATE] ,[POS_DT] ,[AUTH_TIME_STAMP] ,[EPF_FLG] ,[CORR_FUND_CD] ,[PRS_CORE_FUND] ,[PRS_PLAN_B_LOCKING_PERIOD] ,[PRS_PLAN_A_PERCENTAGE] ,[PRS_PLAN_B_PERCENTAGE] ,[ZAKAT_APPLICABILITY] ,[SEED_CAPITAL] ,[SEED_CAPITAL_MAX] ,[SEED_CAPITAL_BREACH_FLAG] ,[SEED_CAPITAL_BREACH_DATE] ,[SEED_CAPITAL_LOCK_PERIOD] ,[DIVIDEND_ALLOWED] ,[DIV_COMP_LVL] ,[DIV_PREC] ,[COMPULSORY_REINVEST_AMOUNT] ,[INTEREST_RATE] ,[NO_OF_COUPONS] ,[DEFAULT_PLAN] ,[DEFAULT_OPT] ,[DOGH_FLAG] ,[FACE_VALUE_CHANGE_DATE] ,[FM_SETTLEMENT_BASIS] ,[FX_REQD_FLG] ,[NAV_FACTOR] ,[REC_BRK_UPD_FLG] ,[SWITCH_BUF] ,[MKR_ID] ,[MKR_DT] ,[AUTH_ID] ,[AUTH_DT] ,[STATUS] ,[REMARKS] ,[OPERATION] ,[ACTED_BY] ,[ACTED_ON] ,[REF_NO] ,[TRUST_FEE_PERC] ,CAST(LEFT(RIGHT(FILE_NAME, 12), 8) AS DATE) AS [SCD_START_DATE] ,CAST('9999-12-31' AS DATE) AS [SCD_END_DATE] ,1 AS [ISACTIVE] ,1 AS [ISLATEST] ,LEFT(FILE_NAME, 5) AS [BNK_CODE] ,'TRU' AS [SOURCE_CODE] ,[FILE_NAME] ,CURRENT_TIMESTAMP ,CASE WHEN FUND_CD IN ( '101GR' ,'102GR' ,'105GR' ,'108GR' ) THEN 'Money Market' WHEN FUND_CD IN ( '104GR' ,'107GR' ,'109GR' ) THEN 'Fixed Income' WHEN FUND_CD IN ( '103GR' ,'110GR' ,'111GR' ) THEN 'Equity' WHEN FUND_CD IN ('106GR') THEN 'Multi Asset' WHEN FUND_CD IN ('228DI') THEN 'Feeder Fund' END AS [FUND_CLASSIFICATION] FROM D360.STG_EDS_TRU_UITFPF src WHERE src.[H] = 'D' AND NOT EXISTS ( SELECT 1 FROM EDS.TRU_UITFPF tgt WHERE src.[FUND_CD] = tgt.[FUND_CD] AND HASHBYTES('SHA2_256', CONCAT_WS(N'|', src.[AMC_CD], src.[SCHEME], src.[SCHEME_DESC], src.[PLAN], src.[PLAN_DESC], src.[FUND_NM], src.[ISIN_CD], src.[FUND_CURR_CD], src.[FUND_SHORT_NM], src.[ALT_SCHEME], src.[ALT_FUND_CD], src.[ALT_PLAN_CD], src.[OPT], src.[SCHEME_TYPE], src.[MIS_SCHEME_TYPE], src.[ALLOCATION_TYPE], src.[FUND_TRAD_FLG], src.[FUND_TRAD_TYP], src.[TXN_PERIOD_FLG], format(src.[FUND_LAUNCH_DT], 'yyyy-MM-dd HH:mm:ss'), format(src.[NFO_CLOSE_DATE], 'yyyy-MM-dd HH:mm:ss'), format(src.[NFO_ALLOT_DT], 'yyyy-MM-dd HH:mm:ss'), format(src.[MATURITY_DT], 'yyyy-MM-dd HH:mm:ss'), src.[OMNIBUS_ACC_FLAG], src.[DEMAT_REMAT_FLAG], src.[TAX_TYP], src.[STMT_FLAG], src.[FUND_RISK], src.[ADD1], src.[ADD2], src.[ADD3], src.[CITY], src.[STATE], src.[PIN_CODE], src.[COUNTRY], src.[TELEPHONE], src.[FAX], src.[EMAIL], src.[CONTACT_1], src.[CONTACT_2], src.[SEBI_REGN_NO], src.[INCORPORATION_CITY], src.[INCORPORATION_COUNTRY], src.[DOC_TYPE], src.[DOC_EXP_DT], src.[FUND_DOMICILE], src.[FACE_VALUE], src.[AUTH_CAPITAL_UNITS], src. [AUTH_CAPITAL_AMT_MIN], src.[AUTH_CAPITAL_AMT_MAX], src.[MAX_SPONSOR_AMT], src.[MIN_IND_SPONSOR_AMT], src.[MAX_IND_SPONSOR_AMT], src.[FUND_PREC], src.[NAV_PREC], src.[NAV_VARIANCE], src.[AMOUNT_PRECISION], src.[ROUNDING_LOGIC], src.[VAR_LOAD_FLG], src.[LOAD_TEXT], src.[SWITCH_FEE_FLAG], src.[LOAD_TYPE], src.[PARCEL_METHOD], src.[MGMT_FEE_PERC], src.[AGE_LOAD_FLG], src.[ENTRY_LOAD_BASIS], src.[CIR_SWITCH_FLG], src.[INDEX_PRICE_FLAG], src.[PE_FLG], src.[PE_ALLOCATION_BASIS], src.[PUR_CUT_OFF_TIME], src.[RED_CUT_OFF_TIME], src.[INST_DT_ARR], format(src.[ALLOCATION_DATE], 'yyyy-MM-dd HH:mm:ss'), src.[FUND_REAL_FLG], src.[FUND_HOLIDAY], src.[FUND_ACCOUNTING_FLG], src.[DEFAULT_BANK_AC], src.[SCHEME_ACTIVITY], src.[FUND_MANAGER], src.[ID_NO], src.[CR_AGENCY], src.[MEMO], src.[BILL_PREF_LANG], src.[REP_PREF_LANG], src.[NAV_FREQ], src.[NAV_IF_HOLIDAY], format(src.[FIRST_NAV_DATE], 'yyyy-MM-dd HH:mm:ss'), format(src.[FIRST_EY_DATE], 'yyyy-MM-dd HH:mm:ss'), src.[NAV_ROUND_OPT], src.[SCHEME_CATEGORY], src. [SCHEME_SUBGL], src.[PLAN_SUBGL], format(src.[LAST_PF_CLOSURE_DT], 'yyyy-MM-dd HH:mm:ss'), format(src.[LAST_EOY], 'yyyy-MM-dd HH:mm:ss'), src.[UNDER_LIQUIDATED], src.[FUND_LIQUIDATED], format(src.[PRV_NAV_DATE], 'yyyy-MM-dd HH:mm:ss'), format(src.[NEXT_NAV_DATE], 'yyyy-MM-dd HH:mm:ss'), src.[POS_DT], src.[AUTH_TIME_STAMP], src.[EPF_FLG], src.[CORR_FUND_CD], src.[PRS_CORE_FUND], src.[PRS_PLAN_B_LOCKING_PERIOD], src.[PRS_PLAN_A_PERCENTAGE], src.[PRS_PLAN_B_PERCENTAGE], src.[ZAKAT_APPLICABILITY], src.[SEED_CAPITAL], src.[SEED_CAPITAL_MAX], src.[SEED_CAPITAL_BREACH_FLAG], format(src.[SEED_CAPITAL_BREACH_DATE], 'yyyy-MM-dd HH:mm:ss'), src.[SEED_CAPITAL_LOCK_PERIOD], src.[DIVIDEND_ALLOWED], src.[DIV_COMP_LVL], src.[DIV_PREC], src.[COMPULSORY_REINVEST_AMOUNT], src.[INTEREST_RATE], src.[NO_OF_COUPONS], src.[DEFAULT_PLAN], src.[DEFAULT_OPT], src.[DOGH_FLAG], src.[FACE_VALUE_CHANGE_DATE], src.[FM_SETTLEMENT_BASIS], src.[FX_REQD_FLG], src.[NAV_FACTOR], src.[REC_BRK_UPD_FLG], src.[SWITCH_BUF], src.[MKR_ID], format( src.[MKR_DT], 'yyyy-MM-dd HH:mm:ss'), src.[AUTH_ID], format(src.[AUTH_DT], 'yyyy-MM-dd HH:mm:ss'), src.[STATUS], src.[REMARKS], src.[OPERATION], src.[ACTED_BY], format(src.[ACTED_ON], 'yyyy-MM-dd HH:mm:ss'), src.[REF_NO], src.[TRUST_FEE_PERC])) = HASHBYTES('SHA2_256', CONCAT_WS(N'|', tgt.[AMC_CD], tgt.[SCHEME], tgt.[SCHEME_DESC], tgt.[PLAN], tgt.[PLAN_DESC], tgt.[FUND_NM], tgt.[ISIN_CD], tgt.[FUND_CURR_CD], tgt.[FUND_SHORT_NM], tgt.[ALT_SCHEME], tgt.[ALT_FUND_CD], tgt.[ALT_PLAN_CD], tgt.[OPT], tgt.[SCHEME_TYPE], tgt.[MIS_SCHEME_TYPE], tgt.[ALLOCATION_TYPE], tgt.[FUND_TRAD_FLG], tgt.[FUND_TRAD_TYP], tgt.[TXN_PERIOD_FLG], format(tgt.[FUND_LAUNCH_DT], 'yyyy-MM-dd HH:mm:ss'), format(tgt.[NFO_CLOSE_DATE], 'yyyy-MM-dd HH:mm:ss'), format(tgt.[NFO_ALLOT_DT], 'yyyy-MM-dd HH:mm:ss'), format(tgt.[MATURITY_DT], 'yyyy-MM-dd HH:mm:ss'), tgt.[OMNIBUS_ACC_FLAG], tgt.[DEMAT_REMAT_FLAG], tgt.[TAX_TYP], tgt.[STMT_FLAG], tgt.[FUND_RISK], tgt.[ADD1], tgt.[ADD2], tgt.[ADD3], tgt.[CITY], tgt.[STATE], tgt.[PIN_CODE], tgt.[COUNTRY], tgt.[TELEPHONE], tgt.[FAX], tgt.[EMAIL], tgt.[CONTACT_1], tgt.[CONTACT_2], tgt.[SEBI_REGN_NO], tgt.[INCORPORATION_CITY], tgt.[INCORPORATION_COUNTRY], tgt.[DOC_TYPE], tgt.[DOC_EXP_DT], tgt.[FUND_DOMICILE], tgt.[FACE_VALUE], tgt.[AUTH_CAPITAL_UNITS], tgt.[AUTH_CAPITAL_AMT_MIN], tgt.[AUTH_CAPITAL_AMT_MAX], tgt.[MAX_SPONSOR_AMT], tgt.[MIN_IND_SPONSOR_AMT], tgt.[MAX_IND_SPONSOR_AMT], tgt.[FUND_PREC], tgt.[NAV_PREC], tgt.[NAV_VARIANCE], tgt.[AMOUNT_PRECISION], tgt.[ROUNDING_LOGIC], tgt.[VAR_LOAD_FLG], tgt.[LOAD_TEXT], tgt.[SWITCH_FEE_FLAG], tgt.[LOAD_TYPE], tgt.[PARCEL_METHOD], tgt.[MGMT_FEE_PERC], tgt.[AGE_LOAD_FLG], tgt.[ENTRY_LOAD_BASIS], tgt.[CIR_SWITCH_FLG], tgt.[INDEX_PRICE_FLAG], tgt.[PE_FLG], tgt.[PE_ALLOCATION_BASIS], tgt.[PUR_CUT_OFF_TIME], tgt.[RED_CUT_OFF_TIME], tgt.[INST_DT_ARR], format(tgt.[ALLOCATION_DATE], 'yyyy-MM-dd HH:mm:ss'), tgt.[FUND_REAL_FLG], tgt.[FUND_HOLIDAY], tgt.[FUND_ACCOUNTING_FLG], tgt.[DEFAULT_BANK_AC], tgt.[SCHEME_ACTIVITY], tgt.[FUND_MANAGER], tgt.[ID_NO], tgt.[CR_AGENCY], tgt. [MEMO], tgt.[BILL_PREF_LANG], tgt.[REP_PREF_LANG], tgt.[NAV_FREQ], tgt.[NAV_IF_HOLIDAY], format(tgt.[FIRST_NAV_DATE], 'yyyy-MM-dd HH:mm:ss'), format(tgt.[FIRST_EY_DATE], 'yyyy-MM-dd HH:mm:ss'), tgt.[NAV_ROUND_OPT], tgt.[SCHEME_CATEGORY], tgt.[SCHEME_SUBGL], tgt.[PLAN_SUBGL], format(tgt.[LAST_PF_CLOSURE_DT], 'yyyy-MM-dd HH:mm:ss'), format(tgt.[LAST_EOY], 'yyyy-MM-dd HH:mm:ss'), tgt.[UNDER_LIQUIDATED], tgt.[FUND_LIQUIDATED], format(tgt.[PRV_NAV_DATE], 'yyyy-MM-dd HH:mm:ss'), format(tgt.[NEXT_NAV_DATE], 'yyyy-MM-dd HH:mm:ss'), tgt.[POS_DT], tgt.[AUTH_TIME_STAMP], tgt.[EPF_FLG], tgt.[CORR_FUND_CD], tgt.[PRS_CORE_FUND], tgt.[PRS_PLAN_B_LOCKING_PERIOD], tgt.[PRS_PLAN_A_PERCENTAGE], tgt.[PRS_PLAN_B_PERCENTAGE], tgt.[ZAKAT_APPLICABILITY], tgt.[SEED_CAPITAL], tgt.[SEED_CAPITAL_MAX], tgt.[SEED_CAPITAL_BREACH_FLAG], format(tgt.[SEED_CAPITAL_BREACH_DATE], 'yyyy-MM-dd HH:mm:ss'), tgt.[SEED_CAPITAL_LOCK_PERIOD], tgt.[DIVIDEND_ALLOWED], tgt.[DIV_COMP_LVL], tgt.[DIV_PREC], tgt.[COMPULSORY_REINVEST_AMOUNT], tgt. [INTEREST_RATE], tgt.[NO_OF_COUPONS], tgt.[DEFAULT_PLAN], tgt.[DEFAULT_OPT], tgt.[DOGH_FLAG], tgt.[FACE_VALUE_CHANGE_DATE], tgt.[FM_SETTLEMENT_BASIS], tgt.[FX_REQD_FLG], tgt.[NAV_FACTOR], tgt.[REC_BRK_UPD_FLG], tgt.[SWITCH_BUF], tgt.[MKR_ID], format(tgt.[MKR_DT], 'yyyy-MM-dd HH:mm:ss'), tgt.[AUTH_ID], format(tgt.[AUTH_DT], 'yyyy-MM-dd HH:mm:ss'), tgt.[STATUS], tgt.[REMARKS], tgt.[OPERATION], tgt.[ACTED_BY], format(tgt.[ACTED_ON], 'yyyy-MM-dd HH:mm:ss'), tgt.[REF_NO], tgt.[TRUST_FEE_PERC])) AND tgt.[ISLATEST] = 1 ); END TRY BEGIN CATCH DECLARE @msg NVARCHAR(2048) = ERROR_MESSAGE(); THROW 51000 ,@msg ,1; END CATCH "
+			}
+		},
+		"variables": {
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"CheckFEstatus": {
+				"type": "String",
+				"defaultValue": "True"
+			},
+			"Source": {
+				"type": "String",
+				"defaultValue": "TRU"
+			},
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-08-07T07:49:15Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

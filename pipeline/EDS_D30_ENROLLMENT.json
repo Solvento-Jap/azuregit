@@ -1,0 +1,116 @@
+{
+	"name": "EDS_D30_ENROLLMENT",
+	"properties": {
+		"activities": [
+			{
+				"name": "D30_ENROLLMENT_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT COUNT(1) CNT FROM D360.STG_EDS_D30_ENROLLMENT WHERE H = 'D'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_EDS_D30_ENROLLMENT"
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "D30_ENROLLMENT_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('D30_ENROLLMENT_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "D30_ENROLLMENT",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"parameters": [
+											{
+												"name": "DATETOPROCESS",
+												"type": "Datetime",
+												"value": {
+													"value": "@pipeline().parameters.DATETOPROCESS",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											}
+										],
+										"type": "NonQuery",
+										"text": "\nINSERT INTO EDS.D30_ENROLLMENT\n(\n\t\t\t\t USERNAME\n\t\t\t\t,ACCOUNT_NAME\n\t\t\t\t,CHANNEL_ID\n\t\t\t\t,TRANSACTION_DATE\n\t\t\t\t,TRANSACTION_TIME\n\t\t\t\t,ORIGINATOR_ACCOUNT\n\t\t\t\t,DEVICE_MODEL\n\t\t\t\t,STATUS\n\t\t\t\t,CIF_ID\n)\n\n\nSELECT \n\t\t\t\tUSERNAME\n\t\t\t\t,ACCOUNT_NAME\n\t\t\t\t,CHANNEL_ID\n\t\t\t\t,TRANSACTION_ID\n\t\t\t\t,TRANSACTION_TIME\n\t\t\t\t,ORIGINATOR_ACCOUNT\n\t\t\t\t,DEVICE_MODEL\n\t\t\t\t,STATUS\n\t\t\t\t,CIF_ID\n\t\t\tFROM [d360].[STG_EDS_D30_ENROLLMENT]\n            WHERE H = 'D';"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"DATETOPROCESS": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-04-06T06:42:00Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

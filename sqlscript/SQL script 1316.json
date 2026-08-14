@@ -1,0 +1,17 @@
+{
+	"name": "SQL script 1316",
+	"properties": {
+		"content": {
+			"query": "WITH BASE AS (\n    SELECT DISTINCT\n        ROW_NUMBER() OVER(\n            PARTITION BY FXD_CRNCY_CODE, VAR_CRNCY_CODE, RATECODE, RTLIST_DATE\n            ORDER BY RTLIST_NUM DESC\n        ) AS RN,\n        RTLIST_DATE,\n        RTLIST_NUM,\n        FXD_CRNCY_CODE,\n        VAR_CRNCY_CODE,\n        RATECODE,\n        FXD_CRNCY_UNITS,\n        VAR_CRNCY_UNITS\n    FROM BUSC.GLD_RATELIST_HIST_TABLE\n),\n \nEXISTING AS (\n    SELECT\n        BASE.FXD_CRNCY_CODE AS lkupFromCurrency,\n        BASE.VAR_CRNCY_CODE AS lkuptoCurrency,\n        'BSP' AS lkupFXSource,\n        CASE\n            WHEN FXD_CRNCY_CODE IS NOT NULL AND VAR_CRNCY_CODE = 'USD' AND RATECODE = 'BSP'\n                THEN FORMAT(BASE.VAR_CRNCY_UNITS, '0.000000')\n            WHEN FXD_CRNCY_CODE IS NOT NULL AND VAR_CRNCY_CODE = 'PHP' AND RATECODE = 'BSP'\n                THEN FORMAT(BASE.VAR_CRNCY_UNITS, '0.0000')\n            WHEN FXD_CRNCY_CODE = 'USD' AND VAR_CRNCY_CODE = 'PHP' AND RATECODE = 'REV'\n                THEN FORMAT(BASE.VAR_CRNCY_UNITS, '0.0000')\n            WHEN FXD_CRNCY_CODE = 'PHP' AND VAR_CRNCY_CODE = 'USD' AND RATECODE = 'REV'\n                THEN FORMAT(1 / BASE.VAR_CRNCY_UNITS, '0.000000')\n        END AS rate,\n        BASE.RTLIST_DATE AS fxRateDate\n    FROM BASE\n    WHERE RN = 1\n      AND (\n            (FXD_CRNCY_CODE IS NOT NULL AND VAR_CRNCY_CODE = 'USD' AND RATECODE = 'BSP')\n         OR (FXD_CRNCY_CODE IS NOT NULL AND VAR_CRNCY_CODE = 'PHP' AND RATECODE = 'BSP')\n         OR (FXD_CRNCY_CODE = 'USD' AND VAR_CRNCY_CODE = 'PHP' AND RATECODE = 'REV')\n         OR (FXD_CRNCY_CODE = 'PHP' AND VAR_CRNCY_CODE = 'USD' AND RATECODE = 'REV')\n      )\n      AND NOT (FXD_CRNCY_CODE = 'USD' AND VAR_CRNCY_CODE = 'PHP' AND RATECODE = 'BSP')\n      AND NOT (FXD_CRNCY_CODE = 'PHP' AND VAR_CRNCY_CODE = 'USD' AND RATECODE = 'BSP')\n),\n \nDATES AS (\n    SELECT DISTINCT RTLIST_DATE\n    FROM BASE\n),\n \nUSD_PHP AS (\n    SELECT\n        RTLIST_DATE,\n        VAR_CRNCY_UNITS AS usd_to_php\n    FROM BASE\n    WHERE FXD_CRNCY_CODE = 'USD'\n      AND VAR_CRNCY_CODE = 'PHP'\n      AND RATECODE = 'REV'\n      AND RN = 1\n),\n\nBASE2 AS (\nSELECT * FROM EXISTING\n \nUNION ALL\nSELECT\n    'PHP' AS lkupFromCurrency,\n    'PHP' AS lkuptoCurrency,\n    'BSP' AS lkupFXSource,\n    '1.0000' AS rate,\n    d.RTLIST_DATE AS fxRateDate\nFROM DATES d\n \nUNION ALL\n \nSELECT\n    'PHP' AS lkupFromCurrency,\n    'USD' AS lkuptoCurrency,\n    'BSP' AS lkupFXSource,\n    FORMAT(1 / u.usd_to_php, '0.000000') AS rate,\n    d.RTLIST_DATE AS fxRateDate\nFROM DATES d\nJOIN USD_PHP u\n    ON d.RTLIST_DATE = u.RTLIST_DATE\n)\n\nSELECT\n    *,\n    CASE \n        WHEN lkupFromCurrency IN ('USD', 'JPY', 'GBP', 'HKD', 'CHF', 'CAD', 'SGD', 'AUD', 'BHD', 'KWD', 'SAR', 'BND', 'IDR', 'THB', 'AED', 'EUR', 'KRW', 'CNY') THEN 'yes'\n        WHEN lkupFromCurrency IN ('ARS', 'BRL', 'DKK', 'INR', 'MYR', 'MXN', 'NZD', 'NOK', 'PKR', 'ZAR', 'SEK', 'SYP', 'TWD', 'VES', 'VEB') THEN 'no'\n        ELSE 'na'\n    END AS lkupIsConvertibleCurrency,\n    NULL AS custom1,\n    NULL AS custom2,\n    NULL AS custom3\nFROM BASE2\nORDER BY fxRateDate, lkuptoCurrency, lkupFromCurrency;",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": -1
+		},
+		"type": "SqlQuery"
+	}
+}

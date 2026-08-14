@@ -1,0 +1,20 @@
+{
+	"name": "SP_CustomerAccountBalance_TRY_AppendOnly",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nALTER PROC [BNKM].[SP_CustomerAccountBalance_TRY] AS\nBEGIN\n\nWITH TEMP_BNKM_CustomerAccountBalance\nAS(\nSELECT\nBTT.CounterParty_ID AS CustomerAccountId\n,CASE\n    WHEN BTT.product_type LIKE 'Bond%' AND BTT.book = 'Client' AND BTT.bundle_type <> 'ASSET SWAP' AND BTT.tradestatus = 'VERIFIED' \n    AND BTT.maturity_date > GETDATE() THEN 'Fixed Income Product Outstanding' \n    WHEN BTT.PRODUCT_TYPE = 'StructuredFlows' AND BTT.BOOK in ('F_Intl_MM_Team1',  'F_Intl_MM_Team2',  'R_Dom_MM_Team1', 'R_Dom_MM_Team2', 'R_Dom_MM_Borrowing') \n    AND btt.bundle_type <> 'PYA' AND BTT.TRADESTATUS = 'VERIFIED' THEN 'Money Market Product Outstanding'\n    WHEN BTT.PRODUCT_TYPE  = 'StructuredFlows' AND BTT.BUNDLE_TYPE = 'PYA' \n    AND BTT.TRADESTATUS = 'VERIFIED' THEN 'Structured Product PYA Outstanding' \n    WHEN BTT.PRODUCT_TYPE  = 'StructuredFlows' AND BTT.EXTERNAL_REFERENCE LIKE 'PYA%' AND BTT.TRADESTATUS = 'VERIFIED' THEN 'Structured Product PYA Outstanding'\n    WHEN BTT.PRODUCT_TYPE LIKE 'BOND%' AND BTT.BUNDLE_TYPE = 'ASSET SWAP' AND BTT.TRADESTATUS = 'VERIFIED' AND BTT.MATURITY_DATE > GETDATE() THEN 'Structured Product Asset Swap'\n    END AS BalanceTypeId\n,DATEADD(DAY,-1,BTT.INSERT_DTTM) AS [TIMESTAMP]\n,CASE\n    WHEN BTT.product_type LIKE 'Bond%' AND BTT.book = 'Client' AND BTT.bundle_type <> 'ASSET SWAP' AND BTT.tradestatus = 'VERIFIED' \n    AND BTT.maturity_date > GETDATE() THEN BTT.NOMINAL \n    WHEN BTT.PRODUCT_TYPE = 'StructuredFlows' AND BTT.BOOK in ('F_Intl_MM_Team1',  'F_Intl_MM_Team2',  'R_Dom_MM_Team1', 'R_Dom_MM_Team2', 'R_Dom_MM_Borrowing') \n    AND btt.bundle_type <> 'PYA' AND BTT.TRADESTATUS = 'VERIFIED' THEN BTT.PRINCIPAL_AMOUNT\n    WHEN BTT.PRODUCT_TYPE  = 'StructuredFlows' AND BTT.BUNDLE_TYPE = 'PYA' \n    AND BTT.TRADESTATUS = 'VERIFIED' THEN BTT.PRINCIPAL_AMOUNT \n    WHEN BTT.PRODUCT_TYPE  = 'StructuredFlows' AND BTT.EXTERNAL_REFERENCE LIKE 'PYA%' AND BTT.TRADESTATUS = 'VERIFIED' THEN BTT.PRINCIPAL_AMOUNT\n    WHEN BTT.PRODUCT_TYPE LIKE 'BOND%' AND BTT.BUNDLE_TYPE = 'ASSET SWAP' AND BTT.TRADESTATUS = 'VERIFIED' AND BTT.MATURITY_DATE > GETDATE() THEN BTT.NOMINAL END AS BalanceAmount \n,BTT.TRADE_CURRENCY AS IsoCurrencyCode\n,'TRY' AS SourceSystemCode\n,BTT.Insert_Dttm AS INSERTDTTM\n,BTT.BNK_CODE AS FinancialInstitutionId\nfrom busc.TRY_TRADES BTT\nWHERE BTT.CounterParty_ID IS NOT NULL and BTT.ISLATEST = '1'\n)\n\nSELECT * INTO #TEMP_BNKM_CustomerAccountBalance FROM TEMP_BNKM_CustomerAccountBalance\nWHERE BalanceTypeId IS NOT NULL;\n\n\n--INSERT TO BNKM\nINSERT INTO BNKM.CustomerAccountBalance(\n[CustomerAccountId]\n,[BalanceTypeId]\n,[Timestamp]\n,[BalanceAmount]\n,[IsoCurrencyCode]\n,[SourceSystemCode]\n,[WorkFlowId]\n,[TaskRunId]\n,[InsertDttm]\n,[FinancialInstitutionId]\n)\nSELECT\nDISTINCT\nSRC.[CustomerAccountId]\n,SRC.[BalanceTypeId]\n,SRC.[Timestamp]\n,SUM(SRC.[BalanceAmount]) AS BalanceAmount\n,SRC.[IsoCurrencyCode]\n,'TRY' AS [SourceSystemCode]\n,0 AS [WorkFlowId]\n,0 AS [TaskRunId]\n,SRC.[InsertDttm]\n,SRC.[FinancialInstitutionId]\nFROM #TEMP_BNKM_CustomerAccountBalance SRC\nWHERE NOT EXISTS (SELECT * FROM BNKM.CustomerAccountBalance TGT WHERE \n    SRC.CustomerAccountId = TGT.CustomerAccountId\n    AND SRC.BalanceTypeId = TGT.BalanceTypeId\n    AND SRC.Timestamp = TGT.Timestamp\n    AND SRC.IsoCurrencyCode = TGT.IsoCurrencyCode\n    AND SRC.SourceSystemCode = TGT.SourceSystemCode\n    AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\n    )\nGROUP BY SRC.[CustomerAccountId]\n,SRC.[BalanceTypeId]\n,SRC.[Timestamp]\n,SRC.[InsertDttm]\n,SRC.[FinancialInstitutionId]\n,SRC.IsoCurrencyCode\n\nDROP TABLE #TEMP_BNKM_CustomerAccountBalance;\n\nEND\n\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

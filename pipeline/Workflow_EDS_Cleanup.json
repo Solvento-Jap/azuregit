@@ -1,0 +1,134 @@
+{
+	"name": "Workflow_EDS_Cleanup",
+	"properties": {
+		"activities": [
+			{
+				"name": "EDS AND OM TABLE BACKUP AND CLEANUP",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "tableName",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.tableName",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "ticketNumber",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.ticketNumber",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "stgtableName",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.stgtableName",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "omtableName",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.omtableName",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "PROCESS_DATE",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.PROCESS_DATE",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "DATA_LAYER",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.DATA_LAYER",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "DATE_COLUMN",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.DATE_COLUMN",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "--==================#1 BACKUP EDS TABLE===================\r\nDECLARE @sql NVARCHAR(MAX);\r\nDECLARE @TGT_CNT [NUMERIC](15,0);\r\nDECLARE @BKUP_CNT [NUMERIC](15,0);\r\nDECLARE @PREV_PROCESS_DATE DATE;\r\nDECLARE @backupName NVARCHAR(128);\r\nDECLARE @SCD_FLAG [NUMERIC](15,0);\r\nDECLARE @outputstring NVARCHAR(4000);\r\nDECLARE @SUFFIX INT = 0;\r\nDECLARE @BU_DATE CHAR(8);\r\n\r\n\r\n----===========CHECK IF SCD TYPE 2==================================\r\nSET @SCD_FLAG = (SELECT COUNT(*) FROM OM.OM_TASKS WHERE TABLE_NAME=@tableName AND DATA_LAYER=@DATA_LAYER AND TABLE_TYPE='SCD TYPE 2')\r\nIF(@SCD_FLAG<1)\r\nBEGIN\r\n   DECLARE @errmsg NVARCHAR(2048) = 'Table is not SCD TYPE 2. Execution Terminated';\r\n   THROW 50002, @errmsg, 1;  \r\nEND \r\n \r\nSET @PREV_PROCESS_DATE = (SELECT PREVIOUS_BUSINESS_DAY FROM EDS.DATE_DIM WHERE FULLDATE=@PROCESS_DATE)\r\nSET @BU_DATE = CONVERT(CHAR(8), CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATE), 112);\r\nSET @backupName = @tableName+ '_' + @ticketNumber + '_BU_' + @BU_DATE;\r\n \r\nIF EXISTS (\r\n    SELECT 1\r\n    FROM INFORMATION_SCHEMA.TABLES\r\n    WHERE TABLE_NAME = @backupName AND TABLE_SCHEMA = 'D360'\r\n)\r\nBEGIN\r\n    -- Find the highest suffix number\r\n    SELECT TOP 1\r\n        @SUFFIX = TRY_CAST(RIGHT(TABLE_NAME, CHARINDEX('_', REVERSE(TABLE_NAME)) - 1) AS INT)\r\n    FROM INFORMATION_SCHEMA.TABLES\r\n    WHERE\r\n        TABLE_NAME LIKE @backupName + '_%'\r\n        AND TABLE_SCHEMA = 'D360'\r\n        AND ISNUMERIC(RIGHT(TABLE_NAME, CHARINDEX('_', REVERSE(TABLE_NAME)) - 1)) = 1\r\n    ORDER BY CAST(RIGHT(TABLE_NAME, CHARINDEX('_', REVERSE(TABLE_NAME)) - 1) AS NUMERIC(15,0)) DESC;\r\n \r\n    -- If no _1 exists, make _1. Otherwise, increment.\r\n    SET @SUFFIX = ISNULL(@SUFFIX, 0) + 1;\r\n    SET @backupName = @backupName + '_' + CAST(@SUFFIX AS VARCHAR);\r\nEND\r\n \r\nSET @sql = '\r\nCREATE TABLE D360.' + QUOTENAME(@backupName) + '\r\nWITH\r\n(\r\n    DISTRIBUTION= ROUND_ROBIN, HEAP\r\n)\r\nAS\r\nSELECT *\r\nFROM EDS.' + @tableName + ';';\r\n \r\nEXEC sp_executesql @sql;\r\n\r\n\r\n---================#2 VALIDATION==================================---\r\n\r\nDECLARE @SQLString NVARCHAR(MAX);  \r\nDECLARE @ParmDefinition NVARCHAR(500);  \r\nDECLARE @count_tgt NVARCHAR(500);\r\nDECLARE @count_bkp NVARCHAR(500);\r\n\r\nSET @SQLString = 'SELECT @count_tgt = count(1)   FROM EDS.'+@tableName ;  \r\nSET @ParmDefinition = '@count_tgt [NUMERIC](15,0) OUTPUT';  \r\nEXECUTE sp_executesql @SQLString, @ParmDefinition,  @count_tgt=@count_tgt OUTPUT;  \r\n\r\nset @outputstring = 'INSERT INTO OM.OM_CLEANUP_DTL SELECT '''+ @tablename +''',''Target table ' + @tablename + ' Record count: '+ @count_tgt + ''','''+ @DATA_LAYER + ''','''+ cast(@PROCESS_DATE as NVARCHAR(10)) + ''',CAST(SYSDATETIMEOFFSET() AT TIME ZONE ''Singapore Standard Time'' AS datetime)';\r\n\r\nSET @SQLString = 'SELECT @count_bkp = count(1)   FROM D360.'+QUOTENAME(@backupName) ;  \r\nSET @ParmDefinition = '@count_bkp [NUMERIC](15,0) OUTPUT';  \r\nEXECUTE sp_executesql @SQLString, @ParmDefinition,  @count_bkp=@count_bkp OUTPUT;  \r\n\r\nset @outputstring = @outputstring + ' UNION ALL SELECT '''+ @tablename +''',''Backup table ' + QUOTENAME(@backupName) + ' Record count: ' + @count_bkp + ''','''+ @DATA_LAYER + ''','''+ cast(@PROCESS_DATE as NVARCHAR(10)) + ''',CAST(SYSDATETIMEOFFSET() AT TIME ZONE ''Singapore Standard Time'' AS datetime)';\r\n--set @count_bkp=100\r\nIF(@count_tgt<>@count_bkp)\r\nBEGIN\r\n\r\n   DECLARE @errmsg1 NVARCHAR(2048) = 'Record count between target table and backup table does not match';\r\n   \r\n   THROW 50001, @errmsg1, 1;  \r\nEND \r\n\r\n\r\n--===============#3 DELETE =====================================-\r\n\r\nSET @SQLString = 'SELECT @count_tgt = count(1) FROM EDS.'+ @tableName +' WHERE REPLACE(' + @DATE_COLUMN + ',''-'','''') >= '+ REPLACE(@PROCESS_DATE,'-',''); \r\nSET @ParmDefinition = '@count_tgt [NUMERIC](15,0) OUTPUT'; \r\nEXECUTE sp_executesql @SQLString, @ParmDefinition,  @count_tgt=@count_tgt OUTPUT;  \r\n \r\nSET @SQLString = 'Delete FROM EDS.'+ @tableName +' WHERE REPLACE(' + @DATE_COLUMN + ',''-'','''') >= '+ REPLACE(@PROCESS_DATE,'-',''); \r\nEXECUTE sp_executesql @SQLString;  \r\n\r\nset @outputstring = @outputstring + ' UNION ALL SELECT '''+ @tablename +''','''+ @tableName +' Deleted record count: '+ @count_tgt + ''','''+ @DATA_LAYER + ''','''+ cast(@PROCESS_DATE as NVARCHAR(10)) + ''',CAST(SYSDATETIMEOFFSET() AT TIME ZONE ''Singapore Standard Time'' AS datetime)';\r\n\r\n\r\n--=============#5 UPDATE=============\r\nSET @SQLString = 'SELECT @count_tgt = count(1) FROM EDS.'+ @tableName +' WHERE CONVERT(varchar(12), SCD_END_DATE, 112) >='+ REPLACE(@PREV_PROCESS_DATE,'-',''); \r\nSET @ParmDefinition = '@count_tgt [NUMERIC](15,0) OUTPUT'; \r\nEXECUTE sp_executesql @SQLString, @ParmDefinition,  @count_tgt=@count_tgt OUTPUT;  \r\n \r\nSET @SQLString = 'Update EDS.'+ @tableName +' SET SCD_END_DATE = ''9999-12-31'', ISLATEST =  1 WHERE CONVERT(varchar(12), SCD_END_DATE, 112) >='+ REPLACE(@PREV_PROCESS_DATE,'-',''); \r\nEXECUTE sp_executesql @SQLString;  \r\n\r\nset @outputstring = @outputstring + ' UNION ALL SELECT '''+ @tablename +''','''+ @tableName +' Updated record count: '+ @count_tgt+ ''','''+ @DATA_LAYER + ''','''+ cast(@PROCESS_DATE as NVARCHAR(10)) + ''',CAST(SYSDATETIMEOFFSET() AT TIME ZONE ''Singapore Standard Time'' AS datetime)';\r\n\r\n\r\n\r\n\r\n\r\n--==================#7 BACKUP OM TASK RUN TABLE===================\r\n\r\nSET @BU_DATE = CONVERT(CHAR(8), CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATE), 112);\r\nSET @backupName = @omtableName+ '_' + @ticketNumber + '_BU_' + @BU_DATE;\r\n \r\nIF EXISTS (\r\n    SELECT 1\r\n    FROM INFORMATION_SCHEMA.TABLES\r\n    WHERE TABLE_NAME = @backupName AND TABLE_SCHEMA = 'D360'\r\n)\r\nBEGIN\r\n    -- Find the highest suffix number\r\n    SELECT TOP 1\r\n        @SUFFIX = TRY_CAST(RIGHT(TABLE_NAME, CHARINDEX('_', REVERSE(TABLE_NAME)) - 1) AS INT)\r\n    FROM INFORMATION_SCHEMA.TABLES\r\n    WHERE\r\n        TABLE_NAME LIKE @backupName + '_%'\r\n        AND TABLE_SCHEMA = 'D360'\r\n        AND ISNUMERIC(RIGHT(TABLE_NAME, CHARINDEX('_', REVERSE(TABLE_NAME)) - 1)) = 1\r\n    ORDER BY CAST(RIGHT(TABLE_NAME, CHARINDEX('_', REVERSE(TABLE_NAME)) - 1) AS NUMERIC(15,0)) DESC;\r\n \r\n    -- If no _1 exists, make _1. Otherwise, increment.\r\n    SET @SUFFIX = ISNULL(@SUFFIX, 0) + 1;\r\n    SET @backupName = @backupName + '_' + CAST(@SUFFIX AS VARCHAR);\r\nEND\r\n \r\nSET @sql = '\r\nCREATE TABLE D360.' + QUOTENAME(@backupName) + '\r\nWITH\r\n(\r\n    DISTRIBUTION= ROUND_ROBIN, HEAP\r\n)\r\nAS\r\nSELECT *\r\nFROM OM.' + @omtableName + ';';\r\n \r\nEXEC sp_executesql @sql;\r\n\r\n\r\n\r\n---================#8 VALIDATION==================================---\r\n\r\nSET @SQLString = 'SELECT @count_tgt = count(1)   FROM OM.'+@omtableName ;  \r\nSET @ParmDefinition = '@count_tgt [NUMERIC](15,0) OUTPUT';  \r\nEXECUTE sp_executesql @SQLString, @ParmDefinition,  @count_tgt=@count_tgt OUTPUT;  \r\n\r\nset @outputstring = @outputstring + ' UNION ALL SELECT '''+ @tablename +''',''Target table ' + @omtableName + ' Record count: '+ @count_tgt+ ''','''+ @DATA_LAYER + ''','''+ cast(@PROCESS_DATE as NVARCHAR(10)) + ''',CAST(SYSDATETIMEOFFSET() AT TIME ZONE ''Singapore Standard Time'' AS datetime)';\r\n\r\nSET @SQLString = 'SELECT @count_bkp = count(1)   FROM D360.'+QUOTENAME(@backupName) ;  \r\nSET @ParmDefinition = '@count_bkp [NUMERIC](15,0) OUTPUT';  \r\nEXECUTE sp_executesql @SQLString, @ParmDefinition,  @count_bkp=@count_bkp OUTPUT;  \r\n\r\nset @outputstring = @outputstring + ' UNION ALL SELECT '''+ @tablename +''','' Backup table ' + QUOTENAME(@backupName) + ' Record count: ' + @count_bkp+ ''','''+ @DATA_LAYER + ''','''+ cast(@PROCESS_DATE as NVARCHAR(10)) + ''',CAST(SYSDATETIMEOFFSET() AT TIME ZONE ''Singapore Standard Time'' AS datetime)';\r\nIF(@count_tgt<>@count_bkp)\r\nBEGIN\r\n\r\n   SET @errmsg1 = 'Record count between target table and backup table does not match';\r\n   \r\n   THROW 50001, @errmsg1, 1;  \r\nEND \r\n\r\n\r\n--===============#9 UPDATE =====================================-\r\nSET @SQLString = 'SELECT @count_tgt = count(1) FROM OM.'+ @omtableName +' WHERE (TASK_NAME LIKE ''%_'+ @tableName +'%'' OR TASK_NAME LIKE ''%_'+ @stgtableName +'%'') AND CONVERT(varchar(12), PROCESS_DATE, 112) >='+ REPLACE(@PROCESS_DATE,'-','') + '  AND DATA_LAYER LIKE ''%'+ @DATA_LAYER +'%''';\r\nSET @ParmDefinition = '@count_tgt [NUMERIC](15,0) OUTPUT'; \r\nEXECUTE sp_executesql @SQLString, @ParmDefinition,  @count_tgt=@count_tgt OUTPUT;  \r\n\r\n \r\nSET @SQLString = 'UPDATE OM.'+ @omtableName +' SET STATUS_ID = (SELECT STATUS_ID FROM OM.OM_STATUS WHERE STATUS=''FOR RE-EXECUTION'') WHERE (TASK_NAME LIKE ''%_'+ @tableName +'%'' OR TASK_NAME LIKE ''%_'+ @stgtableName +'%'') AND CONVERT(varchar(12), PROCESS_DATE, 112) >='+ REPLACE(@PROCESS_DATE,'-','') + '  AND DATA_LAYER LIKE ''%'+ @DATA_LAYER +'%''';\r\n\r\nEXECUTE sp_executesql @SQLString;  \r\n\r\nset @outputstring = @outputstring + ' UNION ALL SELECT '''+ @tablename +''',''' + @omtableName +' Updated record count: '+ @count_tgt+ ''','''+ @DATA_LAYER + ''','''+ cast(@PROCESS_DATE as NVARCHAR(10)) + ''',CAST(SYSDATETIMEOFFSET() AT TIME ZONE ''Singapore Standard Time'' AS datetime)';\r\n\r\n\r\nEXECUTE sp_executesql @outputstring;\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"parameters": {
+			"tableName": {
+				"type": "string",
+				"defaultValue": "LNS_LAACCTMAST"
+			},
+			"ticketNumber": {
+				"type": "string",
+				"defaultValue": "CLEANUP"
+			},
+			"stgtableName": {
+				"type": "string",
+				"defaultValue": "LNS_LAACCTMAST"
+			},
+			"omtableName": {
+				"type": "string",
+				"defaultValue": "OM_TASK_RUN"
+			},
+			"PROCESS_DATE": {
+				"type": "string",
+				"defaultValue": "2025-07-14"
+			},
+			"DATA_LAYER": {
+				"type": "string",
+				"defaultValue": "EDS"
+			},
+			"DATE_COLUMN": {
+				"type": "string",
+				"defaultValue": "LEFT(RIGHT(FILE_NAME,12),8)"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-07-03T03:18:48Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

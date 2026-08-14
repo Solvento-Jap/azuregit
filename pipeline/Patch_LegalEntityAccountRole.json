@@ -1,0 +1,217 @@
+{
+	"name": "Patch_LegalEntityAccountRole",
+	"properties": {
+		"activities": [
+			{
+				"name": "ALTER SP_LegalEntityAccountRole_TRY",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SET ANSI_NULLS ON\r\nGO\r\nSET QUOTED_IDENTIFIER ON\r\nGO\r\n\r\nALTER PROC [BNKM].[SP_LegalEntityAccountRole_TRY] AS\r\nBEGIN\r\n\r\n\r\n--GET DELTA FROM BUSC\r\nWITH TEMP_BNKM_LegalEntityAccountRole \r\nAS\r\n(\r\nSELECT\r\nBTL.ID AS CustomerAccountId\r\n,BTL.INSERT_DTTM AS PeriodStartTimestamp\r\n,VALUE AS LegalEntityAccountRoleId\r\n,NULL AS LegalEntityAccountRoleNote\r\n,'TRY' AS SOURCESYSTEMCODE\r\n,BTL.BNK_CODE AS FINANCIALINSTITUTIONID\r\n,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS INSERTDTTM\r\nFROM BUSC.TRY_LegalEntity BTL\r\nCROSS APPLY STRING_SPLIT(BTL.ROLES, ',')\r\nwhere BTL.STATUS != 'Disabled'\r\nAND BTL.ISLATEST = 1\r\nAND (BTL.ROLES LIKE '%Client%' OR BTL.ROLES LIKE '%CounterParty%')\r\nAND (BTL.FULL_NAME not like 'GROUP-%' OR BTL.FULL_NAME not like 'SETTLEMENT BANK%')\r\n\r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_LegalEntityAccountRole FROM TEMP_BNKM_LegalEntityAccountRole ;\r\n\r\n--CHECK IF THERE IS DELTA\r\n\r\nWITH TEMP_BNKM_LegalEntityAccountRole_SRC\r\nAS(\r\nSELECT\r\nHASHBYTES('MD5', CONCAT(\r\nCONVERT(VARCHAR,CustomerAccountId)\r\n,CONVERT(DATE,PeriodStartTimestamp)\r\n,CONVERT(VARCHAR,LegalEntityAccountRoleId)\r\n)) HASHROW, CustomerAccountId, FinancialInstitutionId, SOURCESYSTEMCODE\r\nFROM #TEMP_BNKM_LegalEntityAccountRole \r\n),\r\n\r\nTEMP_BNKM_LegalEntityAccountRole_TGT\r\nAS\r\n(\r\nSELECT\r\nHASHBYTES('MD5', CONCAT(\r\nCONVERT(VARCHAR,CustomerAccountId)\r\n,CONVERT(DATE,PeriodStartTimestamp)\r\n,CONVERT(VARCHAR,LegalEntityAccountRoleId)\r\n)) HASHROW, CustomerAccountId, FinancialInstitutionId, SOURCESYSTEMCODE\r\nFROM BNKM.LegalEntityAccountRole \r\nWHERE PeriodEndTimestamp = '9999-12-31'\r\n),\r\n\r\n\r\nTEMP_BNKM_LegalEntityAccountRole_DELTA\r\nAS\r\n(\r\nSELECT\r\nSRC.HASHROW AS SRC_HR\r\n,TGT.HASHROW AS TGT_HR\r\n,ISNULL(SRC.CustomerAccountId,TGT.CustomerAccountId) AS CustomerAccountId\r\n,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\r\n,ISNULL(SRC.SOURCESYSTEMCODE,TGT.SOURCESYSTEMCODE) AS SOURCESYSTEMCODE\r\n,CASE\r\n\tWHEN TGT.HASHROW IS NULL THEN 'INSERT'\r\n    WHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n    ELSE NULL END AS RECORD_STATUS\r\n\r\nFROM TEMP_BNKM_LegalEntityAccountRole_SRC SRC\r\nLEFT JOIN TEMP_BNKM_LegalEntityAccountRole_TGT TGT\r\nON SRC.CustomerAccountId = TGT.CustomerAccountId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SOURCESYSTEMCODE = TGT.SOURCESYSTEMCODE\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL \r\n)\r\n\r\nSELECT * INTO #TEMP_BNKM_LegalEntityAccountRole_DELTA FROM TEMP_BNKM_LegalEntityAccountRole_DELTA;\r\n\r\n--UPDATE RECORDS TO BNKM\r\nUPDATE TGT\r\nSET\r\nPeriodEndTimestamp = DATEADD(DAY,-1,CONVERT(DATE,CONVERT(VARCHAR,SRC.PeriodStartTimestamp)))\r\nFROM BNKM.LegalEntityAccountRole TGT\r\nJOIN #TEMP_BNKM_LegalEntityAccountRole_DELTA DELTA \r\nON DELTA.CustomerAccountId = TGT.CustomerAccountId \r\nAND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId \r\nAND DELTA.SOURCESYSTEMCODE = TGT.SOURCESYSTEMCODE \r\nAND DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN #TEMP_BNKM_LegalEntityAccountROle SRC \r\nON SRC.CustomerAccountId = TGT.CustomerAccountId\r\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\r\nAND SRC.SOURCESYSTEMCODE = TGT.SOURCESYSTEMCODE\r\nWHERE TGT.PeriodEndTimestamp = '9999-12-31'\r\n\r\n\r\n--INSERT RECORDS TO BNKM\r\nINSERT INTO BNKM.LegalEntityAccountRole(\r\nCustomerAccountId\r\n,PeriodStartTimestamp\r\n,PeriodEndTimestamp\r\n,LegalEntityAccountRoleId\r\n,LegalEntityAccountRoleNote\r\n,SOURCESYSTEMCODE\r\n,FINANCIALINSTITUTIONID\r\n,WORKFLOWID\r\n,TASKRUNID\r\n,INSERTDTTM\r\n)\r\n\r\nSELECT\r\nSRC.CustomerAccountId AS CustomerAccountId\r\n,SRC.PeriodStartTimestamp AS PeriodStartTimestamp\r\n,'9999-12-31' AS PeriodEndTimestamp\r\n,SRC.LegalEntityAccountRoleId AS LegalEntityAccountRoleId\r\n,NULL AS LegalEntityAccountRoleNote\r\n,'TRY' AS SOURCESYSTEMCODE\r\n,SRC.FINANCIALINSTITUTIONID AS FINANCIALINSTITUTIONID \r\n,0 AS WORKFLOWID\r\n,0 AS TASKRUNID\r\n,SRC.INSERTDTTM AS INSERTDTTM\r\nFROM #TEMP_BNKM_LegalEntityAccountRole SRC\r\nJOIN #TEMP_BNKM_LegalEntityAccountRole_DELTA DELTA\r\n ON DELTA.CustomerAccountId = SRC.CustomerAccountId \r\n AND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId \r\n AND DELTA.SourceSystemCode = SRC.SourceSystemCode \r\nWHERE DELTA.RECORD_STATUS in ('UPDATE','INSERT');\r\n\r\nDROP TABLE #TEMP_BNKM_LegalEntityAccountRole;\r\nDROP TABLE #TEMP_BNKM_LegalEntityAccountRole_DELTA;\r\nEND\r\nGO"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "BACKUP LegalEntityAccountRole",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "DECLARE @TB_NAME AS VARCHAR(50);\nDECLARE @BUTB_NAME AS VARCHAR(50);\nDECLARE @BUDATE AS VARCHAR(10);\n\nSET @TB_NAME = 'BNKM.LegalEntityAccountRole';\nSET @BUDATE = CONVERT(VARCHAR(8),GETDATE(),112);\nSET @BUTB_NAME = CONCAT(@TB_NAME, '_BU_',@BUDATE);\n\nEXEC('SELECT * INTO ' + @BUTB_NAME + 'FROM '+ @TB_NAME);"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Count For_Update",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "BACKUP LegalEntityAccountRole",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT PeriodEndTimestamp, COUNT(1) FOR_UPDATE FROM BNKM.LegalEntityAccountRole\nWHERE PeriodEndTimestamp IS NULL \n    OR PeriodEndTimestamp LIKE '1900%' \n    OR PeriodEndTimestamp LIKE '2099%' \n    OR PeriodEndTimestamp = '9999-01-01'\nGROUP BY PeriodEndTimestamp;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Update",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Count For_Update",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "UPDATE BNKM.LegalEntityAccountRole\r\nSET PeriodEndTimestamp = '9999-12-31'\r\nWHERE PeriodEndTimestamp IS NULL \r\n    OR PeriodEndTimestamp LIKE '1900%' \r\n    OR PeriodEndTimestamp LIKE '2099%' \r\n    OR PeriodEndTimestamp = '9999-01-01';"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Validate For_Update",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Update",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT PeriodEndTimestamp, COUNT(1) FOR_UPDATE FROM BNKM.LegalEntityAccountRole\nWHERE PeriodEndTimestamp IS NULL \n    OR PeriodEndTimestamp LIKE '1900%' \n    OR PeriodEndTimestamp LIKE '2099%' \n    OR PeriodEndTimestamp = '9999-01-01'\nGROUP BY PeriodEndTimestamp;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Count Updated",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Validate For_Update",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT PeriodEndTimestamp, COUNT(1) UPDATED FROM BNKM.LegalEntityAccountRole\r\nWHERE PeriodEndTimestamp = '9999-12-31'\r\nGROUP BY PeriodEndTimestamp;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"variables": {
+			"TB_NAME": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-02-07T05:51:25Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

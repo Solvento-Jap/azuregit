@@ -1,0 +1,20 @@
+{
+	"name": "bnkm_TelephoneNumberType_crm",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "CREATE PROCEDURE BNKM.SP_TelephoneNumberType_CRM\nAS\nBEGIN\n--------------GET DELTA FROM BUSC\nWITH TEMP_BNKM_TelephoneNumberType\nAS(\n    SELECT\n     BCC.[VALUE] AS TelephoneNumberTypeId\n    ,BCC.DESCRIPTION  AS TelephoneNumberTypeName\n    ,BCC.BANK_ID AS FinancialInstitutionId\n    ,BCC.CATEGORYID AS CategoryId\n    ,'CRM' AS SourceSystemCode\n    ,BCCD.RECORD_STATUS\n    ,BCC.INSERT_DTTM AS InsertDttm\nFROM BUSC.CRM_CATEGORIES_DELTA BCCD\nLEFT JOIN BUSC.CRM_CATEGORIES BCC ON BCCD.CATEGORYID = BCC.CATEGORYID AND BCCD.BANK_ID = BCC.BANK_ID AND BCC.ISLATEST = 1 AND  BCC.CATEGORYTYPE = 'PHONE_TYPE'\nWHERE BCC.CATEGORYID IS NOT NULL\n)\n\nSELECT * INTO #TEMP_BNKM_TelephoneNumberType FROM TEMP_BNKM_TelephoneNumberType;\n\n-------------CHECK IF THERE IS DELTA \nWITH\nTEMP_BNKM_TelephoneNumberType_SRC\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nTelephoneNumberTypeId \n,TelephoneNumberTypeName \n,FinancialInstitutionId \n,CategoryId \n)) HASHROW, TelephoneNumberTypeId,FinancialInstitutionId, RECORD_STATUS ,CATEGORYID\nFROM #TEMP_BNKM_TelephoneNumberType WHERE RECORD_STATUS = 'UPDATE'\n)\n,\nTEMP_BNKM_TelephoneNumberType_TGT\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nTelephoneNumberTypeId \n,TelephoneNumberTypeName \n,FinancialInstitutionId \n,CategoryId \n)) HASHROW, TelephoneNumberTypeId, FinancialInstitutionId ,CATEGORYID\nFROM BNKM.TelephoneNumberType --WHERE SOURCE_CODE = 'CRM'\t\n)\n,\nTEMP_BNKM_TelephoneNumberType_DELTA\nAS\n(\nSELECT\t\n\tSRC.HASHROW AS SRC_HR\n\t,TGT.HASHROW AS TGT_HR\n\t,ISNULL(SRC.TelephoneNumberTypeId,TGT.TelephoneNumberTypeId) AS TelephoneNumberTypeId\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\n    ,ISNULL(SRC.CATEGORYID,TGT.CATEGORYID) AS CATEGORYID\n\t,CASE\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n\tELSE NULL END AS RECORD_STATUS\n\t\nFROM TEMP_BNKM_TelephoneNumberType_SRC\tSRC\nFULL OUTER JOIN TEMP_BNKM_TelephoneNumberType_TGT\tTGT\nON\tSRC.TelephoneNumberTypeId = TGT.TelephoneNumberTypeId\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\nAND SRC.CATEGORYID = TGT.CATEGORYID\nWHERE SRC.HASHROW <> TGT.HASHROW \n)\n\nSELECT * INTO #TEMP_BNKM_TelephoneNumberType_DELTA FROM TEMP_BNKM_TelephoneNumberType_DELTA;\n\nUPDATE TGT \nSET\n TelephoneNumberTypeId  = SRC.TelephoneNumberTypeId \n,TelephoneNumberTypeName  = SRC.TelephoneNumberTypeName \n,CategoryId  = SRC.CategoryId \nFROM BNKM.TelephoneNumberType TGT\nJOIN #TEMP_BNKM_TelephoneNumberType_DELTA DELTA ON DELTA.TelephoneNumberTypeId = TGT.TelephoneNumberTypeId AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId AND DELTA.CATEGORYID = TGT.CATEGORYID AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_TelephoneNumberType SRC ON SRC.TelephoneNumberTypeId = TGT.TelephoneNumberTypeId AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId AND SRC.CATEGORYID = TGT.CATEGORYID ;\n \n\n----INSERT TO BNKM\nINSERT INTO BNKM.TelephoneNumberType\n([TelephoneNumberTypeId]\n,[TelephoneNumberTypeName]\n,[TelephoneNumberTypeDescription]\n,[FinancialInstitutionId]\n,[CategoryId]\n,[SourceSystemCode]\n,[WorkFlowId]\n,[TaskRunId]\n,[InsertDttm] )\n\nSELECT\n     TelephoneNumberTypeId AS TelephoneNumberTypeId\n    ,TelephoneNumberTypeName AS TelephoneNumberTypeName\n    ,NULL AS TelephoneNumberTypeDescription\n    ,FinancialInstitutionId AS FinancialInstitutionId\n    ,CategoryId AS CategoryId\n    ,SourceSystemCode AS SourceSystemCode\n    ,0 AS WorkFlowId\n    ,0 AS TaskRunId\n    ,InsertDttm AS InsertDttm\nFROM #TEMP_BNKM_TelephoneNumberType\nWHERE RECORD_STATUS = 'INSERT'\n\nDROP TABLE #TEMP_BNKM_TelephoneNumberType;\nDROP TABLE #TEMP_BNKM_TelephoneNumberType_DELTA;\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

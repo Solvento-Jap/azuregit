@@ -1,0 +1,17 @@
+{
+	"name": "CI_CARD_TRANSACTION",
+	"properties": {
+		"content": {
+			"query": "/*\n    Inclusion of CUST_CIF_NBR (CIF) -> This will be used to JOIN in CI_DEMOGRAPHIC\n*/\nSELECT\n    TXN.*\n    ,ROW_NUMBER() OVER (ORDER BY TXN.TXN_CODE) SK --- Additional\n    ,CCD.CUST_CIF_NBR AS FCBSCIF\n/*\n    Remove the duplicates using ROW_NUMBER() window function\n*/\nFROM (\nSELECT\n    *\n    ,ROW_NUMBER() OVER(PARTITION BY TXN_ACCT_NBR, TXN_CARD_NBR, TXN_CODE, TXN_POSTING_DTE, TXN_AUTH_CODE, TXN_ACQ_REF, TXN_BATCH_SEQ\n        ORDER BY LEFT(RIGHT(FILE_NAME,12),8) DESC) RN\n    FROM eds.CCD_CBCEXCTDBP_CI_20240618 TXN\n    ---WHERE CAST(CAST(TXN_DTE AS char(8)) AS date) >= '2024-04-01'\n) TXN\n/*\n    Link all customers associated to the account of the transaction using AAS\n    Fetch the ORGKEY in CUSTOMER_DIM\n*/\nINNER JOIN\n    (SELECT AS_OF_DATE, CUST_CIF_NBR, CRDACCT_NBR, CARD_NBR FROM eds.CCD_CREDIT_CARDS_FACT_CI_20240618 GROUP BY AS_OF_DATE, CUST_CIF_NBR, CRDACCT_NBR, CARD_NBR) CCD\n    ON TXN.TXN_ACCT_NBR = CCD.CRDACCT_NBR\n    AND TXN.TXN_CARD_NBR = CCD.CARD_NBR\n    AND CAST(CAST(TXN_DTE AS char(8)) AS date) = CAST(CCD.AS_OF_DATE AS DATE)\nWHERE RN = 1 AND CCD.CUST_CIF_NBR IS NOT NULL\n\n\n\nselect AS_OF_DATE,CRDACCT_NBR,CARD_NBR,* from eds.CCD_CREDIT_CARDS_FACT_CI_20240618\n\nselect CAST(CAST(TXN_DTE AS char(8)) AS date),TXN_ACCT_NBR,TXN_CARD_NBR,* from  eds.CCD_CBCEXCTDBP_CI_20240618\n\n7960f73896dccab84af5ca28a2379af1\ndcee98b3fbbbb0f94663c571483daeb7\n\nupdate eds.CCD_CREDIT_CARDS_FACT_CI_20240618 set CUST_CIF_NBR = 'test' --, CARD_NBR = 'dcee98b3fbbbb0f94663c571483daeb7'",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

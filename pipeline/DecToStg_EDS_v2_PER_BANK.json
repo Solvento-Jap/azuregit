@@ -1,0 +1,1068 @@
+{
+	"name": "DecToStg_EDS_v2_PER_BANK",
+	"properties": {
+		"activities": [
+			{
+				"name": "getfile",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat(pipeline().parameters.BankId,'*',pipeline().parameters.TableName,'*',pipeline().parameters.DatetoProcess,'*')",
+								"type": "Expression"
+							},
+							"SourceCode": {
+								"value": "@concat('dev/decrypted/',pipeline().parameters.SourceSystem)",
+								"type": "Expression"
+							}
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "If Condition5",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "getfile",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@empty(activity('getfile').output.childItems)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "LoadDatatoSTG",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": {
+											"value": "@concat('dev/decrypted/',pipeline().parameters.SourceSystem)",
+											"type": "Expression"
+										},
+										"wildcardFileName": {
+											"value": "@concat(pipeline().parameters.BankId,'*',pipeline().parameters.TableName,'*',pipeline().parameters.DatetoProcess,'*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": {
+										"value": "@concat('DELETE FROM D360.STG_EDS_',pipeline().parameters.BankId,'_',pipeline().parameters.TableName,' WHERE left(file_name,5)=''',pipeline().parameters.BankId,'''')",
+										"type": "Expression"
+									},
+									"allowCopyCommand": true,
+									"tableOption": "autoCreate",
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									},
+									"path": "data360/dev/stg_synapse",
+									"enableCompression": true
+								},
+								"enableSkipIncompatibleRow": true,
+								"logSettings": {
+									"enableCopyActivityLog": true,
+									"copyActivityLogSettings": {
+										"logLevel": "Warning",
+										"enableReliableLogging": true
+									},
+									"logLocationSettings": {
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+											"type": "LinkedServiceReference"
+										},
+										"path": {
+											"value": "@concat('data360/dev/Logging/',pipeline().parameters.SourceSystem,'/',pipeline().parameters.TableName,'/',substring(replace(replace(replace(addHours(utcnow(),+8),'-',''),'T','_'),':',''),0,15))",
+											"type": "Expression"
+										}
+									}
+								},
+								"translator": {
+									"value": "@pipeline().parameters.columnSchema",
+									"type": "Expression"
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": " "
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": {
+											"value": "@concat('STG_EDS_',pipeline().parameters.BankId,'_',pipeline().parameters.TableName)",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "SP_LOG_COPY_ACTIVITY_DTL",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "LoadDatatoSTG",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_LOG_COPY_ACTIVITY_DTL]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_STG_EDS_',pipeline().parameters.BankId,'_',pipeline().parameters.TableName)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS_STG",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DatetoProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"dataread": {
+										"value": {
+											"value": "@activity('LoadDatatoSTG').output.dataRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"datawritten": {
+										"value": {
+											"value": "@activity('LoadDatatoSTG').output.dataWritten",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"filesread": {
+										"value": {
+											"value": "@activity('LoadDatatoSTG').output.filesRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"sourcepeakconnections": {
+										"value": {
+											"value": "@activity('LoadDatatoSTG').output.sourcePeakConnections",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsread": {
+										"value": {
+											"value": "@activity('LoadDatatoSTG').output.rowsRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowscopied": {
+										"value": {
+											"value": "@activity('LoadDatatoSTG').output.rowsCopied",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsskipped": {
+										"value": {
+											"value": "@activity('LoadDatatoSTG').output.rowsSkipped",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"copyduration": {
+										"value": {
+											"value": "@activity('LoadDatatoSTG').output.copyDuration",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"throughput": {
+										"value": {
+											"value": "@activity('LoadDatatoSTG').output.throughput",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"redirectrowpath": {
+										"value": {
+											"value": "@activity('LoadDatatoSTG').output.redirectRowPath",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"logfilepath": {
+										"value": {
+											"value": "@activity('LoadDatatoSTG').output.logFilePath",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Set v_error_desc_get",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "LoadDatatoSTG",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "@activity('LoadDatatoSTG').Error.message",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Fail5",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "Set v_error_desc_get_nofile",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": {
+									"value": "@concat('File not found: ',pipeline().parameters.TableName)",
+									"type": "Expression"
+								},
+								"errorCode": {
+									"value": "404",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "Set v_error_desc_get_nofile",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "@concat('File not found: ',pipeline().parameters.TableName)",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_GET",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "If Condition5",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_STG_EDS_',pipeline().parameters.TableName)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_STG",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@pipeline().parameters.DatetoProcess",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_DectoStg",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "SP_LOG_TASK_ERROR_DTL_GET",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": {
+						"value": "@variables('v_error_desc')",
+						"type": "Expression"
+					},
+					"errorCode": "500"
+				}
+			}
+		],
+		"parameters": {
+			"DatetoProcess": {
+				"type": "string",
+				"defaultValue": "20240910"
+			},
+			"TableName": {
+				"type": "string",
+				"defaultValue": "DEP_CASAMASTER"
+			},
+			"SourceSystem": {
+				"type": "string",
+				"defaultValue": "DEP"
+			},
+			"BankId": {
+				"type": "string",
+				"defaultValue": "CBC01"
+			},
+			"ColumnSchema": {
+				"type": "object",
+				"defaultValue": [
+					{
+						"source": {
+							"name": "H",
+							"type": "String"
+						},
+						"sink": {
+							"name": "H",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "ACID",
+							"type": "String"
+						},
+						"sink": {
+							"name": "ACID",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "ACCT_STATUS",
+							"type": "String"
+						},
+						"sink": {
+							"name": "ACCT_STATUS",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "LF_CHRG_PEND_LINES",
+							"type": "String"
+						},
+						"sink": {
+							"name": "LF_CHRG_PEND_LINES",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "SBCA_ACCT_TYPE",
+							"type": "String"
+						},
+						"sink": {
+							"name": "SBCA_ACCT_TYPE",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "ACCT_INSTNT_CR_FACIL_FLG",
+							"type": "String"
+						},
+						"sink": {
+							"name": "ACCT_INSTNT_CR_FACIL_FLG",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "LAST_LF_CALC_DATE",
+							"type": "Date",
+							"format": "yyyyMMdd"
+						},
+						"sink": {
+							"name": "LAST_LF_CALC_DATE",
+							"type": "DateTime"
+						}
+					},
+					{
+						"source": {
+							"name": "RCRE_USER_ID",
+							"type": "String"
+						},
+						"sink": {
+							"name": "RCRE_USER_ID",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "RCRE_TIME",
+							"type": "String"
+						},
+						"sink": {
+							"name": "RCRE_TIME",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "LCHG_USER_ID",
+							"type": "String"
+						},
+						"sink": {
+							"name": "LCHG_USER_ID",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "LCHG_TIME",
+							"type": "String"
+						},
+						"sink": {
+							"name": "LCHG_TIME",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "ACCT_STATUS_DATE",
+							"type": "Date",
+							"format": "yyyyMMdd"
+						},
+						"sink": {
+							"name": "ACCT_STATUS_DATE",
+							"type": "DateTime"
+						}
+					},
+					{
+						"source": {
+							"name": "MAX_ALWD_ADVN_LIM",
+							"type": "String"
+						},
+						"sink": {
+							"name": "MAX_ALWD_ADVN_LIM",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "ACCT_CRFILE_REF_ID",
+							"type": "String"
+						},
+						"sink": {
+							"name": "ACCT_CRFILE_REF_ID",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "LAST_AOD_AOS_DATE",
+							"type": "Date",
+							"format": "yyyyMMdd"
+						},
+						"sink": {
+							"name": "LAST_AOD_AOS_DATE",
+							"type": "DateTime"
+						}
+					},
+					{
+						"source": {
+							"name": "HEALTH_CODE",
+							"type": "String"
+						},
+						"sink": {
+							"name": "HEALTH_CODE",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "TS_CNT",
+							"type": "String"
+						},
+						"sink": {
+							"name": "TS_CNT",
+							"type": "Int32"
+						}
+					},
+					{
+						"source": {
+							"name": "BANK_ID",
+							"type": "String"
+						},
+						"sink": {
+							"name": "BANK_ID",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "NEXT_INACT_CHRG_CALC_DATE",
+							"type": "Date",
+							"format": "yyyyMMdd"
+						},
+						"sink": {
+							"name": "NEXT_INACT_CHRG_CALC_DATE",
+							"type": "DateTime"
+						}
+					},
+					{
+						"source": {
+							"name": "NEXT_DORM_CHRG_CALC_DATE",
+							"type": "Date",
+							"format": "yyyyMMdd"
+						},
+						"sink": {
+							"name": "NEXT_DORM_CHRG_CALC_DATE",
+							"type": "DateTime"
+						}
+					},
+					{
+						"source": {
+							"name": "ACCT_CLS_REASON_CODE",
+							"type": "String"
+						},
+						"sink": {
+							"name": "ACCT_CLS_REASON_CODE",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "ACCT_MIN_BALANCE",
+							"type": "String"
+						},
+						"sink": {
+							"name": "ACCT_MIN_BALANCE",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "ACCT_MIN_BAL_IND",
+							"type": "String"
+						},
+						"sink": {
+							"name": "ACCT_MIN_BAL_IND",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "PRODUCT_TYPE",
+							"type": "String"
+						},
+						"sink": {
+							"name": "PRODUCT_TYPE",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "MATURITY_PERD_MTHS",
+							"type": "String"
+						},
+						"sink": {
+							"name": "MATURITY_PERD_MTHS",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "MATURITY_PERD_DAYS",
+							"type": "String"
+						},
+						"sink": {
+							"name": "MATURITY_PERD_DAYS",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "NS_PERD_WD_MTHS",
+							"type": "String"
+						},
+						"sink": {
+							"name": "NS_PERD_WD_MTHS",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "NS_PERD_WD_DAYS",
+							"type": "String"
+						},
+						"sink": {
+							"name": "NS_PERD_WD_DAYS",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "LAST_NON_FIN_TRAN_DATE",
+							"type": "Date",
+							"format": "yyyyMMdd"
+						},
+						"sink": {
+							"name": "LAST_NON_FIN_TRAN_DATE",
+							"type": "DateTime"
+						}
+					},
+					{
+						"source": {
+							"name": "MATURITY_DATE",
+							"type": "Date",
+							"format": "yyyyMMdd"
+						},
+						"sink": {
+							"name": "MATURITY_DATE",
+							"type": "DateTime"
+						}
+					},
+					{
+						"source": {
+							"name": "DR_FREQ_START_DATE",
+							"type": "Date",
+							"format": "yyyyMMdd"
+						},
+						"sink": {
+							"name": "DR_FREQ_START_DATE",
+							"type": "DateTime"
+						}
+					},
+					{
+						"source": {
+							"name": "CR_FREQ_START_DATE",
+							"type": "Date",
+							"format": "yyyyMMdd"
+						},
+						"sink": {
+							"name": "CR_FREQ_START_DATE",
+							"type": "DateTime"
+						}
+					},
+					{
+						"source": {
+							"name": "LAST_OD_PROT_FEE_CALC_DATE",
+							"type": "Date",
+							"format": "yyyyMMdd"
+						},
+						"sink": {
+							"name": "LAST_OD_PROT_FEE_CALC_DATE",
+							"type": "DateTime"
+						}
+					},
+					{
+						"source": {
+							"name": "NS_PERD_CLS_MTHS",
+							"type": "String"
+						},
+						"sink": {
+							"name": "NS_PERD_CLS_MTHS",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "NS_PERD_CLS_DAYS",
+							"type": "String"
+						},
+						"sink": {
+							"name": "NS_PERD_CLS_DAYS",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "CHRG_FREQ_TYPE",
+							"type": "String"
+						},
+						"sink": {
+							"name": "CHRG_FREQ_TYPE",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "CHRG_FREQ_START_DD",
+							"type": "String"
+						},
+						"sink": {
+							"name": "CHRG_FREQ_START_DD",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "CAP_FREQ_TYPE",
+							"type": "String"
+						},
+						"sink": {
+							"name": "CAP_FREQ_TYPE",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "CAP_FREQ_START_DD",
+							"type": "String"
+						},
+						"sink": {
+							"name": "CAP_FREQ_START_DD",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "PRENOTIFICATION_PERD",
+							"type": "String"
+						},
+						"sink": {
+							"name": "PRENOTIFICATION_PERD",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "CHRG_CAP_FLG",
+							"type": "String"
+						},
+						"sink": {
+							"name": "CHRG_CAP_FLG",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "BASE_DATE",
+							"type": "Date",
+							"format": "yyyyMMdd"
+						},
+						"sink": {
+							"name": "BASE_DATE",
+							"type": "DateTime"
+						}
+					},
+					{
+						"source": {
+							"name": "ENTITY_CAP_AMT",
+							"type": "String"
+						},
+						"sink": {
+							"name": "ENTITY_CAP_AMT",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "CHRG_GROUP_ID1",
+							"type": "String"
+						},
+						"sink": {
+							"name": "CHRG_GROUP_ID1",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "CHRG_GROUP_ID2",
+							"type": "String"
+						},
+						"sink": {
+							"name": "CHRG_GROUP_ID2",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "CHRG_GROUP_ID3",
+							"type": "String"
+						},
+						"sink": {
+							"name": "CHRG_GROUP_ID3",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "NS_PERD_XFER_OUT_MTHS",
+							"type": "String"
+						},
+						"sink": {
+							"name": "NS_PERD_XFER_OUT_MTHS",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "NS_PERD_XFER_OUT_DAYS",
+							"type": "String"
+						},
+						"sink": {
+							"name": "NS_PERD_XFER_OUT_DAYS",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "NS_PERD_XFER_OUT_CLS_MTHS",
+							"type": "String"
+						},
+						"sink": {
+							"name": "NS_PERD_XFER_OUT_CLS_MTHS",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "NS_PERD_XFER_OUT_CLS_DAYS",
+							"type": "String"
+						},
+						"sink": {
+							"name": "NS_PERD_XFER_OUT_CLS_DAYS",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "NS_PERD_GRACE_MTHS",
+							"type": "String"
+						},
+						"sink": {
+							"name": "NS_PERD_GRACE_MTHS",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "NS_PERD_GRACE_DAYS",
+							"type": "String"
+						},
+						"sink": {
+							"name": "NS_PERD_GRACE_DAYS",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "LM_STRUCT_ID",
+							"type": "String"
+						},
+						"sink": {
+							"name": "LM_STRUCT_ID",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "ACTIVE_DAYLIGHT_LIMIT",
+							"type": "String"
+						},
+						"sink": {
+							"name": "ACTIVE_DAYLIGHT_LIMIT",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "UTILIZED_DAYLIGHT_LIMIT",
+							"type": "String"
+						},
+						"sink": {
+							"name": "UTILIZED_DAYLIGHT_LIMIT",
+							"type": "Decimal"
+						}
+					},
+					{
+						"source": {
+							"name": "FILE_NAME",
+							"type": "String"
+						},
+						"sink": {
+							"name": "FILE_NAME",
+							"type": "String"
+						}
+					},
+					{
+						"source": {
+							"name": "insert_dttm",
+							"type": "String"
+						},
+						"sink": {
+							"name": "insert_dttm",
+							"type": "DateTime"
+						}
+					}
+				]
+			}
+		},
+		"variables": {
+			"v_error_desc": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-11-04T05:58:46Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

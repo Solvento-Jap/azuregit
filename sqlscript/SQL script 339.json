@@ -1,0 +1,20 @@
+{
+	"name": "SQL script 339",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nALTER PROC [DW].[SP_DW_DIMPRODUCT] AS\nBEGIN\n\nWITH PRODUCT_SK\nAS(\nSELECT ISNULL(MAX(ProductSK),0) RN FROM DW.Dimproduct\n)\n,TEMP_DW_DIMPRODUCT AS (\nSELECT\n     ROW_NUMBER() OVER(ORDER BY (SELECT NULL)) + (SELECT RN FROM Product_SK) AS ProductSK\n    ,BFP.FinancialProductId AS ProductID\n    ,BFP.FinancialProductName AS ProductName\n    ,BFPG.ProductGrouping AS ProductGroup\n    ,NULL AS ProductDescription\n    ,BFPA.FcbsApplicationId AS FcbsApplication\n    ,DB.BankSk AS BankSK\n    ,Null AS BranchSK\n    ,1 AS CurrentIndicator\n    ,GETDATE() AS ValidStartDate\n    ,'9999-12-31' AS ValidEndDate\n    ,BFP.SourceSystemCode AS SourceSystemCode \n    ,0 AS WorkFlowId\n    ,0 AS TaskRunId\n    ,GETDATE() AS InsertDttm\n    \nFROM BNKM.FinancialProduct BFP\nLEFT JOIN BNKM.FINANCIALPRODUCTGROUPING BFPG ON BFP.FINANCIALPRODUCTID = BFPG.FINANCIALPRODUCTID AND BFP.FinancialInstitutionId = BFPG.FinancialInstitutionId\nLEFT JOIN BNKM.FINANCIALPRODUCTAPPLICATION BFPA ON BFP.FINANCIALPRODUCTID = BFPA.FINANCIALPRODUCTID AND BFP.FinancialInstitutionId = BFPA.FinancialInstitutionId --AND BFPA.[TIMESTAMP] = (SELECT * FROM BNKM.FINANCIALPRODUCTAPPLICATION) \nLEFT JOIN DW.DIMBANK DB ON BFP.FinancialInstitutionId = DB.BANKID\n--WHERE BFPA.[TIMESTAMP] = (SELECT MAX([TIMESTAMP]) FROM BNKM.FINANCIALPRODUCTAPPLICATION)\n\n)\n\nSELECT * INTO #TEMP_DW_DIMPRODUCT FROM TEMP_DW_DIMPRODUCT;\n\nWITH\nTEMP_DW_DIMPRODUCT_SRC\nAS(\n    SELECT HASHBYTES('MD5',CONCAT(\n     ProductID\n    ,ProductName\n    ,ProductGroup\n    ,ProductDescription\n    ,FcbsApplication\n    ,BankSK\n    ,BranchSK\n    )) HASHROW, ProductID,BankSK \n    FROM #TEMP_DW_DIMPRODUCT\n)\n,\nTEMP_DW_DIMPRODUCT_TGT\nAS(\n    SELECT HASHBYTES('MD5',CONCAT(\n     ProductID\n    ,ProductName\n    ,ProductGroup\n    ,ProductDescription\n    ,FcbsApplication\n    ,BankSK\n    ,BranchSK\n    )) HASHROW, ProductID,BankSK \n    FROM DW.Dimproduct WHERE CurrentIndicator = 1\n)\n,\nTEMP_DW_DIMPRODUCT_DELTA\nAS\n(\n    SELECT\t\n\tSRC.HASHROW AS SRC_HR\n\t,TGT.HASHROW AS TGT_HR\n    ,ISNULL(SRC.ProductID,TGT.ProductID) AS ProductID\n\t,ISNULL(SRC.BankSK,TGT.BankSK) AS BankSK\n\t,CASE\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n\t    WHEN TGT.BankSK IS NULL AND TGT.ProductID IS NULL THEN 'INSERT'\n        ELSE NULL END AS RECORD_STATUS\n\t\nFROM TEMP_DW_DIMPRODUCT_SRC SRC\nFULL OUTER JOIN TEMP_DW_DIMPRODUCT_TGT\tTGT\nON\tSRC.ProductID = TGT.ProductID\nAND SRC.BankSK = TGT.BankSK\nWHERE SRC.HASHROW <> TGT.HASHROW OR (TGT.ProductID IS NULL AND TGT.BANKSK IS NULL)\n)\n\nSELECT * INTO #TEMP_DW_DIMPRODUCT_DELTA FROM TEMP_DW_DIMPRODUCT_DELTA;\n\n\n--UPDATE\nUPDATE TGT \nSET\n ValidEndDate = GETDATE()\n,CurrentIndicator = 0\nFROM DW.Dimproduct TGT\nJOIN #TEMP_DW_DIMPRODUCT_DELTA DELTA ON DELTA.ProductID = TGT.ProductID  AND DELTA.BankSK = TGT.BankSK AND  DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_DW_DIMPRODUCT SRC ON SRC.ProductID = TGT.ProductID AND SRC.BankSK = TGT.BankSK\nWHERE TGT.CurrentIndicator = 1;\n\n\n\nINSERT INTO DW.Dimproduct(\nProductSK\n,ProductID\n,ProductName\n,ProductGroup\n,ProductDescription\n,FcbsApplication\n,BankSK\n,BranchSK\n,CurrentIndicator\n,ValidStartDate\n,ValidEndDate\n,SourceSystemCode \n,WorkFlowId\n,TaskRunId\n,InsertDttm\n)\nSELECT\nProductSK\n,SRC.ProductID\n,ProductName\n,ProductGroup\n,ProductDescription\n,FcbsApplication\n,SRC.BankSK\n,BranchSK\n,CurrentIndicator\n,ValidStartDate\n,ValidEndDate\n,SourceSystemCode \n,WorkFlowId\n,TaskRunId\n,InsertDttm\nFROM #TEMP_DW_DIMPRODUCT SRC\nJOIN #TEMP_DW_DIMPRODUCT_DELTA DELTA ON DELTA.ProductID = SRC.ProductID  AND DELTA.BankSK = SRC.BankSK AND  DELTA.RECORD_STATUS IN ('UPDATE','INSERT');\n\nEND\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

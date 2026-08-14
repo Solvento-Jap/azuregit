@@ -1,0 +1,327 @@
+{
+	"name": "MBK_RIB_ATM_CCD_20240807",
+	"properties": {
+		"activities": [
+			{
+				"name": "BU_MBK_CUSTENROLLMENT",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ATM_CLIENT_Migration",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "CREATE TABLE D360.MBK_RTBKCUSTENROLLMENTMTB_BU_20240807\r\nWITH\r\n(\r\n\tDISTRIBUTION = ROUND_ROBIN,\r\n\tHEAP\r\n)\r\nAS\r\n\r\nSELECT * FROM EDS.MBK_RTBKCUSTENROLLMENTMTB"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DELETE_MBK_CUSTENROLL_20240729_ONWARDS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "BU_MBK_CUSTENROLLMENT",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "DELETE FROM EDS.MBK_RTBKCUSTENROLLMENTMTB\r\nWHERE SCD_START_DATE >= CAST('20240729' AS DATE);"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "UPDATE_MBK_CUSTENROLL_20240726_ONWARDS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DELETE_MBK_CUSTENROLL_20240729_ONWARDS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "--UPDATE RECORDS 20240726\r\nUPDATE EDS.MBK_RTBKCUSTENROLLMENTMTB\r\nSET SCD_END_DATE = CAST('99991231' AS DATE),\r\nISLATEST = 1, ISACTIVE = 1\r\nWHERE SCD_END_DATE >= CAST('20240728' AS DATE) AND SCD_END_DATE <> CAST('99991231' AS DATE);"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "RIB_CUSTOMERLOCATION Migration",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CCD_CBCEXTXLGP_View",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "\n\nCREATE TABLE EDS.RIB_CUSTOMERLOCATION\nWITH\n(\n\tHEAP, DISTRIBUTION=HASH(CUST_ID)\n)\nAS\nSELECT BANK_ID\n\t, BAY_USER_ID\n\t, BRANCH_ID\n\t, CORP_USER\n\t, CUST_BANK_ID\n\t, CUST_ID\n\t, CUSTOMER_TYPE\n\t, DB_TS\n\t, DEL_FLG\n\t, GRP_ID\n\t, R_CRE_ID\n\t, R_CRE_TIME\n\t, R_MOD_ID\n\t, R_MOD_TIME\n\t, Cast(START_DATE AS DATE) AS SCD_START_DATE\n\t, COALESCE(DATE_DIM.Previous_Business_Day, CAST('99991231' AS DATE)) AS SCD_END_DATE\n\t, ISACTIVE\n\t, CASE WHEN DATE_DIM.Previous_Business_Day is null then 1 else 0 end as ISLATEST\n\t, BNK_CODE\n\t, SOURCE_CODE\n\t, FILE_NAME\n\t, insert_dttm\nFROM \n(\n\tSELECT BANK_ID\n\t\t, BAY_USER_ID\n\t\t, BRANCH_ID\n\t\t, CORP_USER\n\t\t, CUST_BANK_ID\n\t\t, CUST_ID\n\t\t, CUSTOMER_TYPE\n\t\t, DB_TS\n\t\t, DEL_FLG\n\t\t, GRP_ID\n\t\t, R_CRE_ID\n\t\t, R_CRE_TIME\n\t\t, R_MOD_ID\n\t\t, R_MOD_TIME\n\t\t, isActive\n--\t\t, isLatest\n\t\t, BNK_CODE\n\t\t, SOURCE_CODE\n\t\t, FILE_NAME\n\t\t, insert_dttm\n\t\t, Row_Number() Over (PARTITION BY BANK_ID, BRANCH_ID, CORP_USER, CUST_ID \n\t\t\tORDER BY Left(Right(FILE_NAME, 12), 8)) SEQ_NUMBER\n\t\t, Left(Right(FILE_NAME, 12), 8) START_DATE     \n\t\t, Max(Left(Right(FILE_NAME, 12), 8)) Over (PARTITION BY BANK_ID, BRANCH_ID, CORP_USER, CUST_ID \n\t\t\tORDER BY Left(Right(FILE_NAME, 12), 8) ROWS BETWEEN 1 Following AND 1 Following) END_DATE                  \n\tFROM BUSC.RIB_CUSTOMERLOCATION\n) AS SCDT2\nLEFT JOIN EDS.DATE_DIM\nON CAST(END_DATE AS INTEGER) = DATE_DIM.DATESK;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ATM_CLIENT_DE_DUP",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "RIB_CUSTOMERLOCATION Migration",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "\n\n\nCREATE TABLE EDS.ATM_CLIENT_DE_DUP\nWITH\n(\n\tHEAP, DISTRIBUTION=HASH(CLT_CIF_NUMBER)\n)\nAS\nSELECT * \nFROM \n(\n\tSELECT CLT_ID\n\t\t, CLT_UUID\n\t\t, CLT_INS_ID\n\t\t, CLT_BRN_ID\n\t\t, CLT_CIF_NUMBER\n\t\t, CLT_PARENT_CLT_ID\n\t\t, CLT_TITLE\n\t\t, CLT_FIRST_NAME\n\t\t, CLT_LAST_NAME\n\t\t, CLT_GENDER\n\t\t, CLT_DOB\n\t\t, CLT_EMBOSSING_NAME\n\t\t, CLT_MOBILE_NUMBER\n\t\t, CLT_OTHER_NUMBER\n\t\t, CLT_EMAIL_ADDRESS\n\t\t, CLT_MARITAL_STATUS\n\t\t, CLT_MOTHER_MAIDEN_NAME\n\t\t, CLT_DOC_ID\n\t\t, CLT_ID_PROOF\n\t\t, CLT_STS_ID\n\t\t, CLT_CREATED_BY\n\t\t, CLT_CREATED_TS\n\t\t, CLT_UPDATED_BY\n\t\t, CLT_UPDATED_TS\n\t\t, CLT_AUDIT_LOG\n\t\t, CLT_CCL_ID\n\t\t, CLT_NATIONALITY\n\t\t, CLT_ID_PROOF_DOC\n\t\t, CLT_MIDDLE_NAME\n\t\t, CLT_WORK_PHONE_NO\n\t\t, CLT_KEY_ROTATION_NO\n\t\t, CLT_CAF_UPDATE\n\t\t, isActive\n\t\t, isLatest\n\t\t, BNK_CODE\n\t\t, SOURCE_CODE\n\t\t, FILE_NAME\n\t\t, insert_dttm\n\t\t, row_number() \n\t\t\tover( partition by CLT_ID\n\t\t\t\t\t, CLT_UUID\n\t\t\t\t\t, CLT_INS_ID\n\t\t\t\t\t, CLT_BRN_ID\n\t\t\t\t\t, CLT_CIF_NUMBER\n\t\t\t\t\t, CLT_PARENT_CLT_ID\n\t\t\t\t\t, CLT_TITLE\n\t\t\t\t\t, CLT_FIRST_NAME\n\t\t\t\t\t, CLT_LAST_NAME\n\t\t\t\t\t, CLT_GENDER\n\t\t\t\t\t, CLT_DOB\n\t\t\t\t\t, CLT_EMBOSSING_NAME\n\t\t\t\t\t, CLT_MOBILE_NUMBER\n\t\t\t\t\t, CLT_OTHER_NUMBER\n\t\t\t\t\t, CLT_EMAIL_ADDRESS\n\t\t\t\t\t, CLT_MARITAL_STATUS\n\t\t\t\t\t, CLT_MOTHER_MAIDEN_NAME\n\t\t\t\t\t, CLT_DOC_ID\n\t\t\t\t\t, CLT_ID_PROOF\n\t\t\t\t\t, CLT_STS_ID\n\t\t\t\t\t, CLT_CREATED_BY\n\t\t\t\t\t, CLT_CREATED_TS\n\t\t\t\t\t, CLT_UPDATED_BY\n\t\t\t\t\t, CLT_UPDATED_TS\n\t\t\t\t\t, CLT_AUDIT_LOG\n\t\t\t\t\t, CLT_CCL_ID\n\t\t\t\t\t, CLT_NATIONALITY\n\t\t\t\t\t, CLT_ID_PROOF_DOC\n\t\t\t\t\t, CLT_MIDDLE_NAME\n\t\t\t\t\t, CLT_WORK_PHONE_NO\n\t\t\t\t\t, CLT_KEY_ROTATION_NO\n\t\t\t\t\t, CLT_CAF_UPDATE\n\t\t\t\t--\t, isActive\n\t\t\t\t--\t, isLatest\n\t\t\t\t\t, BNK_CODE\n\t\t\t\t\t, SOURCE_CODE\n\t\t\t\t\t, FILE_NAME \n\t\t\t\torder by insert_dttm DESC) AS SEQ_NO\n\tFROM BUSC.ATM_CLIENT\n) AS TMP\nWHERE SEQ_NO = 1;\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ATM_CLIENT_Migration",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ATM_CLIENT_DE_DUP",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "\n\nCREATE TABLE EDS.ATM_CLIENT\nWITH\n(\n\tHEAP, DISTRIBUTION=HASH(CLT_CIF_NUMBER)\n)\nAS\nSELECT CLT_ID\n\t, CLT_UUID\n\t, CLT_INS_ID\n\t, CLT_BRN_ID\n\t, CLT_CIF_NUMBER\n\t, CLT_PARENT_CLT_ID\n\t, CLT_TITLE\n\t, CLT_FIRST_NAME\n\t, CLT_LAST_NAME\n\t, CLT_GENDER\n\t, CLT_DOB\n\t, CLT_EMBOSSING_NAME\n\t, CLT_MOBILE_NUMBER\n\t, CLT_OTHER_NUMBER\n\t, CLT_EMAIL_ADDRESS\n\t, CLT_MARITAL_STATUS\n\t, CLT_MOTHER_MAIDEN_NAME\n\t, CLT_DOC_ID\n\t, CLT_ID_PROOF\n\t, CLT_STS_ID\n\t, CLT_CREATED_BY\n\t, CLT_CREATED_TS\n\t, CLT_UPDATED_BY\n\t, CLT_UPDATED_TS\n\t, CLT_AUDIT_LOG\n\t, CLT_CCL_ID\n\t, CLT_NATIONALITY\n\t, CLT_ID_PROOF_DOC\n\t, CLT_MIDDLE_NAME\n\t, CLT_WORK_PHONE_NO\n\t, CLT_KEY_ROTATION_NO\n\t, CLT_CAF_UPDATE\n\t, Cast(START_DATE AS DATE) AS SCD_START_DATE\n\t, COALESCE(DATE_DIM.Previous_Business_Day, CAST('99991231' AS DATE)) AS SCD_END_DATE\t\n\t, ISACTIVE\n\t, CASE WHEN DATE_DIM.Previous_Business_Day is null then 1 else 0 end as ISLATEST\n\t, BNK_CODE\n\t, SOURCE_CODE\n\t, FILE_NAME\n\t, insert_dttm\nFROM \n(\n\tSELECT CLT_ID\n\t\t, CLT_UUID\n\t\t, CLT_INS_ID\n\t\t, CLT_BRN_ID\n\t\t, CLT_CIF_NUMBER\n\t\t, CLT_PARENT_CLT_ID\n\t\t, CLT_TITLE\n\t\t, CLT_FIRST_NAME\n\t\t, CLT_LAST_NAME\n\t\t, CLT_GENDER\n\t\t, CLT_DOB\n\t\t, CLT_EMBOSSING_NAME\n\t\t, CLT_MOBILE_NUMBER\n\t\t, CLT_OTHER_NUMBER\n\t\t, CLT_EMAIL_ADDRESS\n\t\t, CLT_MARITAL_STATUS\n\t\t, CLT_MOTHER_MAIDEN_NAME\n\t\t, CLT_DOC_ID\n\t\t, CLT_ID_PROOF\n\t\t, CLT_STS_ID\n\t\t, CLT_CREATED_BY\n\t\t, CLT_CREATED_TS\n\t\t, CLT_UPDATED_BY\n\t\t, CLT_UPDATED_TS\n\t\t, CLT_AUDIT_LOG\n\t\t, CLT_CCL_ID\n\t\t, CLT_NATIONALITY\n\t\t, CLT_ID_PROOF_DOC\n\t\t, CLT_MIDDLE_NAME\n\t\t, CLT_WORK_PHONE_NO\n\t\t, CLT_KEY_ROTATION_NO\n\t\t, CLT_CAF_UPDATE\n\t\t, isActive\n\t\t, isLatest\n\t\t, BNK_CODE\n\t\t, SOURCE_CODE\n\t\t, FILE_NAME\n\t\t, insert_dttm\n\t\t, Row_Number() Over (PARTITION BY CLT_CIF_NUMBER, BNK_CODE ORDER BY Left(Right(FILE_NAME, 12), 8)) SEQ_NUMBER\n\t\t, Left(Right(FILE_NAME, 12), 8) START_DATE     \n\t\t, Max(Left(Right(FILE_NAME, 12), 8)) Over (PARTITION BY CLT_CIF_NUMBER, BNK_CODE ORDER BY Left(Right(FILE_NAME, 12), 8) ROWS BETWEEN 1 Following AND 1 Following) END_DATE                  \n\tFROM EDS.ATM_CLIENT_DE_DUP\n) AS SCDT2\nLEFT JOIN EDS.DATE_DIM\nON CAST(END_DATE AS INTEGER) = DATE_DIM.DATESK;\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CCD_CBCEXCTDBP View",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DROP VIEW",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "\n\nCREATE VIEW [EDS].[CCD_CBCEXCTDBP] AS\nSELECT\nTXN_BANK_NBR\n,TXN_PDT_NBR\n,TXN_ACCT_NBR\n,TXN_CARD_NBR\n, CASE WHEN ISDATE(TXN_DTE) = 0 THEN CAST('19000101' AS DATE)\nELSE CONVERT(DATE, CONVERT(VARCHAR,TXN_DTE)) END AS TXN_DTE\n,TXN_CODE\n,FLAG_TXN_AMT\n,TXN_AMT\n, CASE WHEN ISDATE(TXN_POSTING_DTE) = 0 THEN CAST('19000101' AS DATE)\nELSE CONVERT(DATE, CONVERT(VARCHAR,TXN_POSTING_DTE)) END AS TXN_POSTING_DTE\n,TXN_CURR_CODE\n,TXN_SOURCE\n,TXN_AUTH_CODE\n,TXN_JUL_DTE\n,TXN_BATCH_NBR\n,TXN_BATCH_SEQ\n,TXN_DESC\n,TXN_ZIP_CODE\n,TXN_STATE\n,TXN_MCC_CODE\n,TXN_ACQ_REF\n,TXN_PRE_CURR_CODE\n,FLAG_TXN_PRE_ORG_AMT\n,TXN_PRE_ORG_AMT\n,TXN_ORG_CURR_CODE\n,FLAG_TXN_ORG_AMT\n,TXN_ORG_AMT\n,TXN_SETL_CURR_CODE\n,FLAG_TXN_SETL_AMT\n,TXN_SETL_AMT\n,TXN_SETL_FLAG\n,TXN_REIM_ATTR\n,TXN_IFI_IND\n,TXN_PSI_IND\n,TXN_MAIL_TEL_IND\n,TXN_OTH_PROC_IND\n,TXN_POS_ENTRY_MODE\n,TXN_DMS_CASE_NBR\n,TXN_MECH_BANK_NBR\n,TXN_MECH_NBR\n,TXN_NODE_ID\n,TXN_ROOT_NODE_ID\n,TXN_ADDN_REF\n,TXN_FILE_BUFFER\n,MARKUP_FEE\n,LAST6_TXN_ACCT_NBR\n,BNK_CODE\n,SOURCE_CODE\n,FILE_NAME\n,INSERT_DTTM\n,BUSINESSDATE\nFROM [BUSC].[CCD_CBCEXCTDBP];\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CCD_CBCEXTXLGP_View",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CCD_CBCEXCTDBP View",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "\n\nCREATE VIEW [EDS].[CCD_CBCEXTXLGP] AS\nSELECT\nTRXN_TYPE\n,RETR_KEY\n,MESSAGE_TYPE\n, CASE WHEN ISDATE(TRAN_DATE) = 0 THEN CAST('19000101' AS DATE)\nELSE CONVERT(DATE, CONVERT(VARCHAR,TRAN_DATE)) END AS TRAN_DATE\n,TRAN_TIME\n,TRAN_END_TIME\n,TPF_KEY\n,TPF_PRINT_DESC\n,REVERSAL_CODE\n,INTERNAL_RESP_CODE\n,NETW_RESP_CODE\n,RESP_CODE_DESC\n,AUTH_NBR\n,TRAN_AUTH_SYSTEM\n,TRAN_CURR_CODE\n,FLAG_TRAN_AMT\n,TRAN_AMT\n,BILLING_CURR_CODE\n,FLAG_BILLING_AMT\n,BILLING_AMT\n,ACCT_BILLING_CURR_CODE\n,FLAG_ACCT_BILLING_AMT\n,ACCT_BILLING_AMT\n,PRIMARY_ACCT_CURR_CODE\n,CUST_CURR_CODE\n,FLAG_CUST_AMT\n,CUST_AMT\n,CORP_CUST_CURR_CODE\n,FLAG_CORP_CUST_AMT\n,CORP_CUST_AMT\n,CONV_RATE\n,CARD_NBR\n,EXPIRY_DATE\n,CARD_BANK_NBR\n,CARD_PRODUCT_CODE\n,CARD_ACCT_NBR\n,BILLING_ACCT_NBR\n,CTRY_CODE\n,USER_ID\n,FORCE_USER_ID\n,AUTH_TERM_ID\n,ISO_TERMINAL_ID\n,FORCE_AUTH_IND\n,MER_BANK_NBR\n,MER_NBR\n,MER_CATEGORY_CODE\n,RETR_REF\n,ACQ_ID\n,POS_ENTRY_MODE\n,POS_ENTRY_CAPABILITY\n,POS_COND_CODE\n,SERVICE_CODE\n,FORWARDER_ID\n,VISA_TRACE_ID\n,TXLF_ON_US_FLAG\n,CARD_TYPE\n,ATM_REF_NBR\n,ORIG_ATM_REF_NBR\n,MERCHANT_NAME\n,FLAG_LOCAL_TRAN_AMT\n,LOCAL_TRAN_AMT\n,LOCAL_CURR_CODE\n,CH_SETL_FEE\n,CH_SETL_PROC_FEE\n,GMT_DATE_TIME\n,LOCAL_TXN_TIME\n,CASE WHEN LOCAL_TXN_DATE = 0 THEN CAST('19000101' AS DATE)\nELSE CONVERT(DATE, CONVERT(VARCHAR,LOCAL_TXN_DATE)) END AS LOCAL_TXN_DATE\n,SETL_DATE\n,SETL_CURR_CODE\n,NETWORK_IND\n,ADVICE_REASON_CODE\n,REJECT_CODE\n,PS_INDICATOR\n,PS_TRAN_IDENTIFIER\n,PS_VALIDATION_CODE\n,MCD_POS_COND\n,BANKNET_REF_NBR\n,MCD_ME_ACCEPT_IND\n,AMEX_TRAN_ID\n,AMEX_MERCH_ID\n,ACCT_ID_1\n,ACCT_ID_2\n,FLAG_ACTUAL_TRAN_AMT\n,ACTUAL_TRAN_AMT\n,FLAG_ACTUAL_SETL_AMT\n,ACTUAL_SETL_AMT\n,FLAG_ACTUAL_BILLING_AMT\n,ACTUAL_BILLING_AMT\n,ORIG_MTI\n,ORIG_TRACE_ID\n,ORIG_GMT_DATE_TIME\n,ORIG_ACQ_ID\n,ORIG_FORWARDER_ID\n,RECV_ID\n,NETWORK_ID\n,MSG_RSN_CODE\n,STIP_RSN_CODE\n,PLUS_PMC_ID\n,CARD_SEQ\n,T9F26_IND\n,T9F26_APPL_CRYPTO\n,T9F27_IND\n,T9F27_CRYPTO_INFO\n,T9F10_IND\n,T9F10_ISS_APPL_LEN\n,T9F10_ISS_APPL_DATA\n,T9F37_IND\n,T9F37_UNPRED_NBR\n,T9F36_IND\n,T9F36_APPL_TRAN_CNT\n,T95_IND\n,T95_TERM_VER_RSLT\n,T9A_IND\n, CASE WHEN ISDATE(T9A_TERM_TRAN_DATE) = 0 THEN CAST('19000101' AS DATE)\nELSE CONVERT(DATE, CONVERT(VARCHAR,T9A_TERM_TRAN_DATE)) END AS T9A_TERM_TRAN_DATE\n,T9C_IND\n,T9C_CRYPTO_TRAN_TYPE\n,T9F02_IND\n,T9F02_CRYPTO_AMT\n,T5F2A_IND\n,T5F2A_CRYPTO_CURR_CODE\n,T82_IND\n,T82_APPL_INCHG_PROF\n,T9F1A_IND\n,T9F1A_TERM_CNTRY_CODE\n,T9F03_IND\n,T9F03_CRYPTO_OTH_AMT\n,T9F34_IND\n,T9F34_CVM_RSLT\n,T9F33_IND\n,T9F33_TERM_CAP_PROF\n,T9F1E_IND\n,T9F1E_TERM_SERIAL\n,T9F35_IND\n,T9F35_TERM_TYPE\n,T91_IND\n,T91_LEN\n,T91_ARPC\n,T91_ARPC_RESP\n,T9F53_IND\n,T9F53_TRAN_CAT_CODE\n,T84_IND\n,T84_LEN\n,T84_DED_FILE_NAME\n,T9F09_IND\n,T9F09_APPL_VER_NBR\n,T9F41_IND\n,T9F41_LEN\n,T9F41_TRAN_SEQ_CNT\n,T4F_IND\n,T4F_ICC_APPL_ID\n,T5A_IND\n,T5A_PAN_LEN\n,T5A_PAN\n,T5F34_IND\n,T5F34_PAN_SEQ\n,T9F39_IND\n,T9F39_POS_ENTRY_MODE\n,T8A_IND\n,T8A_AUTH_RESP_CODE\n,ARQC_VER_RSLT\n,ISS_SCRIPT_DOWNLOAD\n,ISS_SCRIPT_RSLT\n,TLOG_AUTP_ID\n,P0001_RESP_CODE\n,P0002_RESP_CODE\n,P0003_RESP_CODE\n,P0004_RESP_CODE\n,P0005_RESP_CODE\n,P0006_RESP_CODE\n,P0007_RESP_CODE\n,P0008_RESP_CODE\n,P0009_RESP_CODE\n,P0010_RESP_CODE\n,P0011_RESP_CODE\n,P0012_RESP_CODE\n,P0013_RESP_CODE\n,P0014_RESP_CODE\n,P0015_RESP_CODE\n,P0016_RESP_CODE\n,P0017_RESP_CODE\n,P0018_RESP_CODE\n,P0019_RESP_CODE\n,P0020_RESP_CODE\n,P0021_RESP_CODE\n,P0022_RESP_CODE\n,P0023_RESP_CODE\n,P0024_RESP_CODE\n,P0025_RESP_CODE\n,P0026_RESP_CODE\n,P0027_RESP_CODE\n,P0028_RESP_CODE\n,P0029_RESP_CODE\n,P0030_RESP_CODE\n,P0031_RESP_CODE\n,P0032_RESP_CODE\n,P0033_RESP_CODE\n,P0034_RESP_CODE\n,P0035_RESP_CODE\n,P0036_RESP_CODE\n,P0037_RESP_CODE\n,P0038_RESP_CODE\n,P0039_RESP_CODE\n,P0040_RESP_CODE\n,MCD_MER_TRAN_CAT_CODE\n,ECOMM_SEC_LEVEL_IND\n,CRDHLD_AUTH_IND\n,UCAF_COLL_IND\n,TXLG_INSTL_OPT_FLG\n,CREDIT_ACP\n,FLAG_ATM_FEE_TXN\n,ATM_FEE_TXN\n,FLAG_ATM_FEE_CH_BILLING\n,ATM_FEE_CH_BILLING\n,NODE_ID\n,PORTFOLIO_NBR\n,MCC_GROUP\n,PSL_ID\n,FLAG_PREPAID_CARD_FEE_AMT\n,PREPAID_CARD_FEE_AMT\n,PREPAID_AMT_IND\n,CUP_MERCH_ID\n,CVV1_RSLT_CODE\n,CVV2_RSLT_CODE\n,PAN_KEY_IDX\n,AMEX_POS_DATA\n,ECI_IND\n,AEVV_RSLT_CODE\n,TLOG_LOYLT_PGM\n,TLOG_LOYLT_REDEEM_COMB_PTS\n,FLAG_TLOG_LOYLT_SALE_AMT\n,TLOG_LOYLT_SALE_AMT\n,FLAG_TLOG_LOYLT_REDEEM_PTS\n,TLOG_LOYLT_REDEEM_PTS\n,FLAG_TLOG_LOYLT_REDEEM_AMT\n,TLOG_LOYLT_REDEEM_AMT\n,FLAG_TLOG_LOYLT_AWARD_PTS\n,TLOG_LOYLT_AWARD_PTS\n,FLAG_TLOG_LOYLT_AWARD_AMT\n,TLOG_LOYLT_AWARD_AMT\n,FLAG_TLOG_LOYLT_PTS_BAL\n,TLOG_LOYLT_PTS_BAL\n,MER_ID_X\n,FLAG_AVAIL_CR_BEFORE\n,AVAIL_CR_BEFORE\n,PIN_LEN\n,VCIND\n,MCD_PYMT_FAC_ID\n,MCD_SALES_ORG_ID\n,MCD_SUB_MECH_ID\n,TOKEN_VALUE\n,TOKEN_ASU_LVL\n,TOKEN_REQ_ID\n,TOKEN_EXP_DTE\n,TOKEN_TYPE\n,TOKEN_DEV_TYPE\n,TOKEN_WALLET_ID\n,PYMT_ACCT_REF\n,MVISA_TRAN_IND\n,MER_INDICATOR\n,SENDER_ACCT\n,RECIPIENT_ACCT\n,MPQR_TRAN_IND\n,DE48_SE95_DATA\n,DE112_DATA\n,LAST6_CARD_ACCT_NBR\n,LAST6_BILLING_ACCT_NBR\n,BNK_CODE\n,SOURCE_CODE\n,FILE_NAME\n,INSERT_DTTM\n,BUSINESSDATE\nFROM [BUSC].[CCD_CBCEXTXLGP];\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DROP VIEW",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "DROP VIEW EDS.CCD_CBCEXCTDBP;\n\nDROP VIEW EDS.CCD_CBCEXTXLGP;\n\nDROP TABLE EDS.RIB_CUSTOMERLOCATION;\n\nDROP TABLE EDS.ATM_CLIENT_DE_DUP;\n\nDROP TABLE EDS.ATM_CLIENT;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-08-07T09:43:17Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

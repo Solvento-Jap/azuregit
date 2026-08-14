@@ -1,0 +1,20 @@
+{
+	"name": "bnkm_CustomerAccountMapping_sec",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nALTER PROC [BNKM].[SP_CUSTOMERACCOUNTMAPPING_SEC] AS\nBEGIN\n\nWITH TEMP_BNKM_CustomerAccountMapping\nAS(\nSELECT\nBST.ACCTCODE AS CustomerAccountId\n,'CBC11' AS FinancialInstitutionId\n,BST.ACCTKEY AS BossInternalAccountId\n,'SEC' AS SourceSystemCode\n,CASE \n    WHEN BST.DATE_UPDATED = '1900-01-01' THEN BST.DATE_OPEN\n    ELSE BST.DATE_UPDATED\nEND AS CustomerAccountMappingTimestamp\n,0 AS WorkFlowId\n,0 AS TaskRunId\n,getdate() as InsertDttm\nFROM BUSC.SEC_TBLACCOUNTS BST\nWHERE BST.isLatest = 1\n)\n\n\nSELECT *INTO #TEMP_BNKM_CustomerAccountMapping FROM TEMP_BNKM_CustomerAccountMapping;\n\nWITH TEMP_BNKM_CustomerAccountMapping_SRC\nAS(\nSELECT\nHASHBYTES('MD5', CONCAT(\nCONVERT(nvarchar, CustomerAccountId)\n,CONVERT(nvarchar, FinancialInstitutionId)\n,CONVERT(nvarchar, BossInternalAccountId)\n,CONVERT(varchar, SourceSystemCode)\n,CONVERT(datetime, CustomerAccountMappingTimestamp)\n))HASHROW, CustomerAccountId, FinancialInstitutionId, SourceSystemCode, CustomerAccountMappingTimestamp\nFROM #TEMP_BNKM_CustomerAccountMapping\n)\n,\nTEMP_BNKM_CustomerAccountMapping_TGT\nAS(\nSELECT\nHASHBYTES('MD5', CONCAT(\nCONVERT(nvarchar, CustomerAccountId)\n,CONVERT(nvarchar, FinancialInstitutionId)\n,CONVERT(nvarchar, BossInternalAccountId)\n,CONVERT(varchar, SourceSystemCode)\n,CONVERT(datetime, CustomerAccountMappingTimestamp)\n))HASHROW, CustomerAccountId, FinancialInstitutionId, SourceSystemCode, CustomerAccountMappingTimestamp\nFROM BNKM.CustomerAccountMapping\nWHERE SourceSystemCode = 'SEC'\n)\n,\nTEMP_BNKM_CustomerAccountMapping_DELTA\nAS(\nSELECT\n    \n    SRC.HASHROW AS SRC_HR\n    ,TGT.HASHROW AS TGT_HR\n    ,ISNULL(SRC.CustomerAccountId, TGT.CustomerAccountId) AS CustomerAccountId\n    ,ISNULL(SRC.CustomerAccountMappingTimestamp, TGT.CustomerAccountMappingTimestamp) AS CustomerAccountMappingTimestamp\n    ,ISNULL(SRC.FinancialInstitutionId, TGT.FinancialInstitutionId) AS FinancialInstitutionId\n    ,ISNULL(SRC.SourceSystemCode, TGT.SourceSystemCode) AS SourceSystemCode\n    ,CASE\n        WHEN TGT.HASHROW IS NULL THEN 'INSERT'\n        WHEN SRC.HASHROW <> TGT.HASHROW THEN 'INSERT'\n        ELSE NULL \n    END AS RECORD_STATUS\nFROM TEMP_BNKM_CustomerAccountMapping_SRC SRC\nLEFT JOIN TEMP_BNKM_CustomerAccountMapping_TGT TGT\nON SRC.CustomerAccountId = TGT.CustomerAccountId\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\n)\n\nSELECT * INTO #TEMP_BNKM_CustomerAccountMapping_DELTA FROM TEMP_BNKM_CustomerAccountMapping_DELTA;\n\n\n\nINSERT INTO BNKM.CustomerAccountMapping\n(\nCustomerAccountId\n,FinancialInstitutionId\n,BossInternalAccountId\n,SourceSystemCode\n,CustomerAccountMappingTimestamp\n,WorkFlowId\n,TaskRunId\n,InsertDttm\n)\n\nSELECT\nDISTINCT\n SRC.CustomerAccountId\n,SRC.FinancialInstitutionId\n,SRC.BossInternalAccountId\n,SRC.SourceSystemCode\n,SRC.CustomerAccountMappingTimestamp\n,SRC.WorkFlowId\n,SRC.TaskRunId\n,SRC.InsertDttm\nFROM #TEMP_BNKM_CustomerAccountMapping SRC\nJOIN #TEMP_BNKM_CustomerAccountMapping_DELTA DELTA \nON DELTA.CustomerAccountId = SRC.CustomerAccountId\nAND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\nAND DELTA.SourceSystemCode = SRC.SourceSystemCode\n WHERE DELTA.RECORD_STATUS IN ('INSERT')\n\nDROP TABLE #TEMP_BNKM_CustomerAccountMapping\nDROP TABLE #TEMP_BNKM_CustomerAccountMapping_DELTA;\n\n\nEND\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

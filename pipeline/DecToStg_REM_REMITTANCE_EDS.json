@@ -1,0 +1,385 @@
+{
+	"name": "DecToStg_REM_REMITTANCE_EDS",
+	"properties": {
+		"activities": [
+			{
+				"name": "REM_REMITTANCE_getfile_CBC01",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('CBC01_REM_REMITTANCE*',pipeline().parameters.DatetoProcessed,'*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/REM"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "If Condition5",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "REM_REMITTANCE_getfile_CBC01",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@empty(activity('REM_REMITTANCE_getfile_CBC01').output.childItems)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "REM_REMITTANCE",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/REM",
+										"wildcardFileName": {
+											"value": "@concat('*REM_REMITTANCE*',pipeline().parameters.DatetoProcessed,'*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": "truncate TABLE D360.STG_EDS_REM_REMITTANCE",
+									"allowCopyCommand": true,
+									"tableOption": "autoCreate",
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									},
+									"path": "data360/dev/stg_synapse",
+									"enableCompression": true
+								},
+								"enableSkipIncompatibleRow": true,
+								"logSettings": {
+									"enableCopyActivityLog": true,
+									"copyActivityLogSettings": {
+										"logLevel": "Warning",
+										"enableReliableLogging": true
+									},
+									"logLocationSettings": {
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+											"type": "LinkedServiceReference"
+										},
+										"path": {
+											"value": "@concat('data360/dev/Logging/REM/REM_REMITTANCE/',substring(replace(replace(replace(addHours(utcnow(),+8),'-',''),'T','_'),':',''),0,15))",
+											"type": "Expression"
+										}
+									}
+								},
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "H",
+												"type": "String"
+											},
+											"sink": {
+												"name": "H",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BAC_ID",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "BAC_ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "BAC_UUID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BAC_UUID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BAC_CLT_ID",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "BAC_CLT_ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "BAC_ACCOUNT_NUMBER",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BAC_ACCOUNT_NUMBER",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BAC_BAT_ID",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "BAC_BAT_ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "BAC_CREATED_BY",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "BAC_CREATED_BY",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "BAC_CREATED_TS",
+												"type": "DateTime",
+												"format": "yyyyMMddHHmmss"
+											},
+											"sink": {
+												"name": "BAC_CREATED_TS",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "BAC_UPDATED_BY",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "BAC_UPDATED_BY",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "BAC_UPDATED_TS",
+												"type": "DateTime",
+												"format": "yyyyMMddHHmmss"
+											},
+											"sink": {
+												"name": "BAC_UPDATED_TS",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "BAC_STS_ID",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "BAC_STS_ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "BAC_AUDIT_LOG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BAC_AUDIT_LOG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BAC_CUR_ID",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "BAC_CUR_ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "BAC_INS_ID",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "BAC_INS_ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "BAC_BRN_ID",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "BAC_BRN_ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "BAC_ACCOUNT_NUMBER_MASKED",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BAC_ACCOUNT_NUMBER_MASKED",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BAC_KEY_ROTATION_NUMBER",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "BAC_KEY_ROTATION_NUMBER",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FILE_NAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm",
+												"type": "String"
+											},
+											"sink": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": " "
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_EDS_REM_REMITTANCE"
+									}
+								}
+							]
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Fail5",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": {
+									"value": "File not found: REM_REMITTANCE",
+									"type": "Expression"
+								},
+								"errorCode": {
+									"value": "404",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"DatetoProcessed": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-07-09T03:18:38Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

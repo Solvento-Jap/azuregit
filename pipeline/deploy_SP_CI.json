@@ -1,0 +1,358 @@
+{
+	"name": "deploy_SP_CI",
+	"properties": {
+		"activities": [
+			{
+				"name": "SP_CI_Cards_Corporate",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [DW].[SP_CI_Cards_Corporate] AS\r\nBEGIN\r\n\r\n\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'CI_Cards_Corporate') \r\nBEGIN\r\n   DROP TABLE  DW.CI_Cards_Corporate;\r\nEND;\r\n\r\n\r\nWITH DIMCUSTOMERACCOUNT AS\r\n(\r\n    SELECT DDC.AccountID,DDC.CustomerSK,DDC.BANKSK,DDC.BRANCHSK,DB.BANKID,DDC.ACCOUNTSK,DDC.CustomerID,DDC.SourceSystemCode,DDC.ValidStartDate \r\n    FROM DW.DIMCUSTOMERACCOUNT DDC\r\n    LEFT JOIN DW.DIMBANK DB ON DDC.BANKSK = DB.BANKSK\r\n    WHERE SourceSystemCode = 'CCD' AND CurrentIndicator = 1 AND DB.BANKID IN ('CBC01','CBC11')\r\n\r\n\r\n)\r\nSELECT DISTINCT\r\n    DCA.AccountId AS AccountID\r\n    ,DCA.CustomerID AS CustomerID\r\n    ,CASE WHEN DDC.GlobalCIF IS NOT NULL THEN REPLACE(DDC.GlobalCIF,'Global_CIF_','Entity_CIF_')\r\n      ELSE CONCAT('Entity_CIF_', DDC.SourceSystemCode, '_', DDC.CustomerID) END AS EntityCIF\r\n    ,DDC.FCBSCIF AS FCBSCIF\r\n    ,DCA.BankID AS BankCode\r\n    ,DDBR.BranchID AS BranchCode\r\n    ,DDBR.BranchDescription AS BranchDescription\r\n    ,DDBR.Area AS Area\r\n    ,DDBR.Region AS Region\r\n    ,DCA.SourceSystemCode AS Source\r\n    ,DDP.ProductGroup AS ProductGrouping\r\n    ,DDP.Productname AS ProductType\r\n    ,CONCAT(DDP.ProductGroup,'-',DDP.ProductName) AS ProductDetails\r\n    ,DDA.AccountOpenedDate AS OpenedDate\r\n    ,DFC.RelationshipExposure AS RelationshipExposure\r\n    ,DFL.OutstandingBalanceFull AS StatementBalance\r\n    ,DFLC.CreditLimitAmountFull AS CreditLimit\r\n    ,DFC.BusinessDateSK AS BusinessDate\r\n    ,DCA.ValidStartDate AS LastUpdatedDate\r\n    ,CONCAT(DCA.AccountId,DCA.CustomerID,DCA.BankID,DCA.SourceSystemCode) as AccountKey\r\nINTO   DW.CI_Cards_Corporate\r\nFROM DIMCUSTOMERACCOUNT DCA\r\n    JOIN (SELECT CustomerSK ,FCBSCIF,GlobalCIF,SourceSystemCode,CustomerID FROM DW.DimCustomer WHERE CustomerType = 'Corporate' AND CurrentIndicator = '1') DDC ON DCA.CustomerSK = DDC.CustomerSK\r\n    LEFT JOIN (SELECT BranchID,BranchDescription,Area,Region,BRANCHSK FROM DW.DIMBRANCH WHERE CurrentIndicator = '1') DDBR ON DCA.BRANCHSK = DDBR.BRANCHSK\r\n    LEFT JOIN (SELECT ACCOUNTSK,PRODUCTSK FROM DW.DIMACCOUNTPRODUCT WHERE CurrentIndicator = '1' ) DAP ON DCA.ACCOUNTSK = DAP.ACCOUNTSK\r\n    LEFT JOIN (SELECT ProductGroup,ProductName,PRODUCTSK FROM DW.DIMPRODUCT WHERE CurrentIndicator = '1') DDP ON DAP.PRODUCTSK = DDP.PRODUCTSK \r\n    LEFT JOIN (SELECT AccountOpenedDate,ACCOUNTSK FROM DW.DIMACCOUNT WHERE CurrentIndicator = '1') DDA ON DCA.ACCOUNTSK = DDA.ACCOUNTSK\r\n    LEFT JOIN (SELECT RelationshipExposure,BusinessDateSK,ACCOUNTSK FROM DW.FACTCARDSRELATIONSHIPEXPOSURE) DFC ON DCA.ACCOUNTSK = DFC.ACCOUNTSK\r\n    LEFT JOIN (SELECT ACCOUNTSK,OutstandingBalanceFull FROM DW.FACTLOANSOUTSTANDINGBALANCE) DFL ON DCA.ACCOUNTSK = DFL.ACCOUNTSK\r\n    LEFT JOIN (SELECT ACCOUNTSK,CreditLimitAmountFull FROM DW.FACTLOANSCREDITLIMIT) DFLC ON DCA.ACCOUNTSK = DFLC.ACCOUNTSK\r\n    \r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "SP_CI_Cards_Retail",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [DW].[SP_CI_Cards_Retail] AS\r\nBEGIN\r\n\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'CI_Cards_Retail') \r\nBEGIN\r\n   DROP TABLE  DW.CI_Cards_Retail;\r\nEND;\r\n\r\nWITH DIMCUSTOMERACCOUNT AS\r\n(\r\n    SELECT AccountID,CustomerSK,BANKSK,BRANCHSK,ACCOUNTSK,CustomerID,SourceSystemCode,ValidStartDate \r\n    FROM DW.DIMCUSTOMERACCOUNT\r\n    WHERE SourceSystemCode = 'CCD' AND CurrentIndicator = 1 AND ShareIndicator = 'Y'\r\n\r\n\r\n)\r\n\r\nSELECT DISTINCT\r\n    DCA.AccountId AS AccountID\r\n    ,DCA.CustomerID AS CustomerID\r\n    ,CASE WHEN DDC.GlobalCIF IS NOT NULL THEN REPLACE(DDC.GlobalCIF,'Global_CIF_','Entity_CIF_')\r\n      ELSE CONCAT('Entity_CIF_', DDC.SourceSystemCode, '_', DDC.CustomerID) END AS EntityCIF\r\n    ,DDC.FCBSCIF AS FCBSCIF\r\n    ,DDB.BankID AS BankCode\r\n    ,DDBR.BranchID AS BranchCode\r\n    ,DDBR.BranchName AS BranchName\r\n    ,DDBR.Area AS Area\r\n    ,DDBR.Region AS Region\r\n    ,DCA.SourceSystemCode AS Source\r\n    ,DDP.ProductGroup AS ProductGrouping\r\n    ,DDP.Productname AS ProductType\r\n    ,CONCAT(DDP.ProductGroup,'-',DDP.ProductName) AS ProductDetails\r\n    ,DDA.AccountOpenedDate AS OpenedDate\r\n    ,DFC.RelationshipExposure AS RelationshipExposure\r\n    ,DFL.StatementBalance AS StatementBalance\r\n    ,DFLC.CurrentCreditLimit AS CreditLimit\r\n    ,DFC.BusinessDateSK AS BusinessDate\r\n    ,DCA.ValidStartDate AS LastUpdatedDate\r\n    ,CONCAT(DCA.AccountId,DCA.CustomerID,DDB.BankID,DCA.SourceSystemCode) as AccountKey\r\nINTO   DW.CI_Cards_Retail\r\nFROM DIMCUSTOMERACCOUNT DCA\r\n    JOIN (SELECT CustomerSK ,FCBSCIF,GlobalCIF,SourceSystemCode,CustomerID FROM DW.DimCustomer WHERE CustomerType = 'Retail') DDC ON DCA.CustomerSK = DDC.CustomerSK\r\n    LEFT JOIN (SELECT BANKSK,BankID FROM DW.DIMBANK) DDB ON DCA.BANKSK = DDB.BANKSK\r\n    LEFT JOIN (SELECT BranchID,BranchName,Area,Region,BRANCHSK FROM DW.DIMBRANCH) DDBR ON DCA.BRANCHSK = DDBR.BRANCHSK\r\n    LEFT JOIN (SELECT ACCOUNTSK,PRODUCTSK FROM DW.DIMACCOUNTPRODUCT) DAP ON DCA.ACCOUNTSK = DAP.ACCOUNTSK\r\n    LEFT JOIN (SELECT ProductGroup,ProductName,PRODUCTSK FROM DW.DIMPRODUCT) DDP ON DAP.PRODUCTSK = DDP.PRODUCTSK \r\n    LEFT JOIN (SELECT AccountOpenedDate,ACCOUNTSK FROM DW.DIMACCOUNT) DDA ON DCA.ACCOUNTSK = DDA.ACCOUNTSK\r\n    LEFT JOIN (SELECT RelationshipExposure,BusinessDateSK,ACCOUNTSK  FROM DW.FACTCARDSRELATIONSHIPEXPOSURE WHERE BusinessDateSK = (SELECT MAX(BusinessDateSK) FROM DW.FACTCARDSRELATIONSHIPEXPOSURE )) DFC ON DCA.ACCOUNTSK = DFC.ACCOUNTSK\r\n    LEFT JOIN (SELECT ACCOUNTSK,StatementBalance FROM DW.FactCardsOutstandingBalance) DFL ON DCA.ACCOUNTSK = DFL.ACCOUNTSK\r\n    LEFT JOIN (SELECT ACCOUNTSK,CurrentCreditLimit FROM DW.FactCardsCreditLimit) DFLC ON DCA.ACCOUNTSK = DFLC.ACCOUNTSK\r\n    \r\nGROUP BY\r\nDCA.AccountId\r\n,DCA.CustomerId\r\n,DDC.CustomerID\r\n,DDC.GlobalCIF\r\n,DDC.SourceSystemCode\r\n,DDB.BankId\r\n,DDBR.BranchID\r\n,DDBR.BranchName\r\n,DDBR.Area\r\n,DDBR.Region\r\n,DCA.SourceSystemCode\r\n,DDP.ProductGroup\r\n,DDP.ProductName\r\n,DDA.AccountOpenedDate\r\n,DFC.BusinessDateSK\r\n,DCA.ValidStartDate\r\n,RelationshipExposure\r\n,DFC.BusinessDateSK\r\n,DFL.StatementBalance\r\n,DFLC.CurrentCreditLimit\r\n,DDC.FCBSCIF\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "SP_CI_Deposit_Corporate",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [DW].[SP_CI_Deposit_Corporate] AS\r\nBEGIN\r\n\r\n\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'CI_Deposit_Corporate') \r\nBEGIN\r\n   DROP TABLE DW.CI_Deposit_Corporate;\r\nEND;\r\n\r\n\r\n\r\nWITH DimCustomerAccount_DEP AS\r\n(\r\n    SELECT\r\n        DCA.AccountID ,DCA.CustomerID ,DCA.SourceSystemCode ,DCA.ValidStartDate ,DCA.CustomerSK ,DCA.BankSK ,DCA.BranchSK ,DCA.AccountSK ,DA.AccountOpenedDate ,DB.BankID,DCA.ShareIndicator\r\n    FROM DW.DimCustomerAccount DCA\r\n    LEFT JOIN DW.DimAccount DA ON DCA.AccountSK = DA.AccountSK\r\n    LEFT JOIN DW.DimBank DB ON DCA.BankSK = DB.BankSK \r\n    WHERE DCA.SourceSystemCode = 'DEP' AND DCA.CurrentIndicator = '1' AND DB.BankID IN ('CBC01', 'CBC11') \r\n     GROUP BY DCA.AccountID ,DCA.CustomerID ,DCA.SourceSystemCode ,DCA.ValidStartDate ,DCA.CustomerSK ,DCA.BankSK ,DCA.BranchSK ,DCA.AccountSK ,DA.AccountOpenedDate, DB.BankID,DCA.ShareIndicator\r\n)\r\n\r\nSELECT DISTINCT\r\n    DCA.AccountID\r\n    ,DCA.CustomerID\r\n    ,CASE WHEN DC.GlobalCIF IS NOT NULL THEN REPLACE(DC.GlobalCIF,'Global_CIF_','Entity_CIF_')\r\n      ELSE CONCAT('Entity_CIF_', DC.SourceSystemCode, '_', DC.CustomerID) END AS EntityCIF\r\n    ,DC.FCBSCIF AS FCBSCIF\r\n    ,DCA.BankID AS BankCode\r\n    ,DBr.BranchID AS BranchCode\r\n    ,DBr.BranchName AS BranchName\r\n    ,DBr.Area\r\n    ,DBr.Region\r\n    ,DCA.SourceSystemCode AS Source\r\n    ,DP.ProductGroup AS ProductGrouping\r\n    ,DP.ProductName as ProductType\r\n    ,CONCAT(DP.ProductGroup,'-',DP.ProductName) AS ProductDetails\r\n    ----,DP.FcbsApplication AS Application ----This column does not exist in DIM PRODUCT\r\n    ,DCA.AccountOpenedDate AS OpenedDate\r\n    ,CASE WHEN DCA.ShareIndicator = 'Y' THEN FADMTD.AverageDailBalanceAmountMTDFull ELSE 0 END AS MonthToDateAverageDailyBalance_Full\r\n    ,CASE WHEN DCA.ShareIndicator = 'Y' THEN FADMTD.AverageDailBalanceAmountMTDProrated ELSE 0 END AS MonthToDateAverageDailyBalance_Shared\r\n    ,CASE WHEN DCA.ShareIndicator = 'Y' THEN FADYTD.AverageDailBalanceAmountYTDFull ELSE 0 END AS YearToDateAverageDailyBalance_Full\r\n    ,CASE WHEN DCA.ShareIndicator = 'Y' THEN FADYTD.AverageDailBalanceAmountYTDProrated ELSE 0 END AS YearToDateAverageDailyBalance_Shared\r\n    ,CASE WHEN DCA.ShareIndicator = 'Y' THEN FDOB.BalanceAmountFull ELSE 0 END AS OutstandingBalance_Full\r\n    ,CASE WHEN DCA.ShareIndicator = 'Y' THEN FDOB.BalanceAmountProrated ELSE 0 END AS OutstandingBalance_Shared\r\n    ,FDOB.BusinessDateSK AS BusinessDate\r\n    ,DCA.ValidStartDate AS LastUpdatedDate\r\n    ,CONCAT(DCA.AccountId,DCA.CustomerID,DCA.BankID,DCA.SourceSystemCode) as AccountKey    \r\n    INTO  DW.CI_Deposit_Corporate\r\nFROM DimCustomerAccount_DEP DCA\r\nJOIN (SELECT CustomerSK,FCBSCIF ,GlobalCIF,SourceSystemCode,CustomerID FROM DW.DimCustomer WHERE CustomerType = 'Corporate') DC ON DCA.CustomerSK = DC.CustomerSK\r\nLEFT JOIN (SELECT AccountSK,ProductSK FROM DW.DimAccountProduct) DAP ON DCA.AccountSK = DAP.AccountSK\r\nLEFT JOIN (SELECT BranchSK ,BranchID ,BranchName ,Area ,Region FROM DW.DimBranch) DBr ON DCA.BranchSK = DBr.BranchSK\r\nLEFT JOIN (SELECT ProductSK ,ProductGroup ,ProductName FROM DW.DimProduct) DP ON DAP.ProductSK = DP.ProductSK\r\nLEFT JOIN (SELECT AccountSK ,AverageDailBalanceAmountMTDFull ,AverageDailBalanceAmountMTDProrated FROM DW.FactAverageDailyBalanceMTD  WHERE BusinessDateSK = (SELECT MAX(BusinessDateSK) FROM DW.FactAverageDailyBalanceMTD )) FADMTD ON DCA.AccountSK = FADMTD.AccountSK\r\nLEFT JOIN (SELECT AccountSK ,AverageDailBalanceAmountYTDFull ,AverageDailBalanceAmountYTDProrated FROM DW.FactAverageDailyBalanceYTD WHERE BusinessDateSK = (SELECT MAX(BusinessDateSK) FROM DW.FactAverageDailyBalanceYTD )) FADYTD ON DCA.AccountSK = FADYTD.AccountSK\r\nLEFT JOIN (SELECT A.AccountSK ,BalanceAmountFull ,BalanceAmountProrated, A.BusinessDateSK \r\nFROM DW.FactDepositsOutstandingBalance A\r\nLEFT JOIN  (SELECT AccountSK, MAX(BusinessDateSK) BusinessDateSK FROM DW.FactDepositsOutstandingBalance  GROUP BY AccountSK )  B ON A.AccountSK = B.AccountSK\r\nWHERE A.BusinessDateSK = B.BusinessDateSK) FDOB ON DCA.AccountSK = FDOB.AccountSK ----NO DATA\r\nGROUP BY\r\nDCA.AccountID\r\n,DCA.CustomerID\r\n,DC.GlobalCIF\r\n,DCA.BankID\r\n,DBr.BranchID\r\n,DBr.BranchName\r\n,DBr.Area\r\n,DBr.Region\r\n,DCA.SourceSystemCode\r\n,DP.ProductGroup\r\n,DP.ProductName\r\n,DCA.AccountOpenedDate\r\n,FADMTD.AverageDailBalanceAmountMTDFull\r\n,FADMTD.AverageDailBalanceAmountMTDProrated\r\n,FADYTD.AverageDailBalanceAmountYTDFull\r\n,FADYTD.AverageDailBalanceAmountYTDProrated\r\n,FDOB.BalanceAmountFull\r\n,FDOB.BalanceAmountProrated\r\n,FDOB.BusinessDateSK\r\n,DCA.ValidStartDate\r\n,DC.SourceSystemCode\r\n,DC.CustomerID\r\n,DCA.ShareIndicator\r\n,DC.FCBSCIF\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "SP_CI_Deposits_Retail",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [DW].[SP_CI_Deposits_Retail] AS\r\nBEGIN\r\n\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'CI_Deposits_Retail') \r\nBEGIN\r\n   DROP TABLE DW.CI_Deposits_Retail;\r\nEND;\r\n\r\nWITH DimCustomerAccount_DEP AS\r\n(\r\n    SELECT \r\n        DCA.AccountID ,DCA.CustomerID ,DCA.SourceSystemCode ,DCA.ValidStartDate ,DCA.CustomerSK ,DCA.BankSK ,DCA.BranchSK ,DCA.AccountSK ,DA.AccountOpenedDate, DB.BankID,DCA.ShareIndicator\r\n    FROM DW.DimCustomerAccount DCA\r\n    LEFT JOIN DW.DimAccount DA ON DCA.AccountSK = DA.AccountSK\r\n    LEFT JOIN DW.DimBank DB ON DCA.BankSK = DB.BankSK \r\n    WHERE DCA.SourceSystemCode = 'DEP' AND DCA.CurrentIndicator = '1' \r\n    GROUP BY DCA.AccountID ,DCA.CustomerID ,DCA.SourceSystemCode ,DCA.ValidStartDate ,DCA.CustomerSK ,DCA.BankSK ,DCA.BranchSK ,DCA.AccountSK ,DA.AccountOpenedDate, DB.BankID,DCA.ShareIndicator\r\n  \r\n)\r\n\r\n\r\nSELECT DISTINCT\r\n     DCA.AccountID\r\n    ,DCA.CustomerID\r\n    ,CASE WHEN DC.GlobalCIF IS NOT NULL THEN REPLACE(DC.GlobalCIF,'Global_CIF_','Entity_CIF_')\r\n      ELSE CONCAT('Entity_CIF_', DC.SourceSystemCode, '_', DC.CustomerID) END AS EntityCIF\r\n    ,DC.FCBSCIF AS FCBSCIF\r\n    ,DCA.BankID AS BankCode\r\n    ,DBr.BranchID AS BranchCode\r\n    ,DBr.BranchName AS BranchName\r\n    ,DBr.Area\r\n    ,DBr.Region\r\n    ,DCA.SourceSystemCode AS Source\r\n    ,DP.ProductGroup AS ProductGrouping\r\n    ,CONCAT(DP.ProductGroup,'-',DP.ProductName) AS ProductDetails\r\n    ,DP.ProductName AS ProductType\r\n    ----,DP.FcbsApplication AS Application ----This column does not exist in DIM PRODUCT\r\n    ,DCA.AccountOpenedDate AS OpenedDate\r\n    ,DCA.ShareIndicator \r\n    ,CASE WHEN DCA.ShareIndicator = 'Y' THEN FADMTD.AverageDailBalanceAmountMTDFull ELSE 0 END AS MonthToDateAverageDailyBalance_Full\r\n    ,CASE WHEN DCA.ShareIndicator = 'Y' THEN FADMTD.AverageDailBalanceAmountMTDProrated ELSE 0 END AS MonthToDateAverageDailyBalance_Prorated\r\n    ,CASE WHEN DCA.ShareIndicator = 'Y' THEN FADYTD.AverageDailBalanceAmountYTDFull ELSE 0 END AS YearToDateAverageDailyBalance_Full\r\n    ,CASE WHEN DCA.ShareIndicator = 'Y' THEN FADYTD.AverageDailBalanceAmountYTDProrated ELSE 0 END AS YearToDateAverageDailyBalance_Prorated\r\n    ,CASE WHEN DCA.ShareIndicator = 'Y' THEN FDOB.BalanceAmountFull ELSE 0 END AS OutstandingBalance_Full\r\n    ,CASE WHEN DCA.ShareIndicator = 'Y' THEN FDOB.BalanceAmountProrated ELSE 0 END AS OutstandingBalance_Prorated\r\n    ,CONVERT(DATE,CONVERT(VARCHAR,FDOB.BusinessDateSK)) AS BusinessDate\r\n    ,DCA.ValidStartDate AS LastUpdatedDate\r\n    ,CONCAT(DCA.AccountId,DCA.CustomerID,DCA.BankID,DCA.SourceSystemCode) as AccountKey \r\n    INTO DW.CI_Deposits_Retail\r\nFROM DimCustomerAccount_DEP DCA\r\nJOIN (SELECT CustomerSK,FCBSCIF ,GlobalCIF,SourceSystemCode,CustomerID FROM DW.DimCustomer  WHERE CustomerType = 'Retail' AND CurrentIndicator = '1') DC ON DCA.CustomerSK = DC.CustomerSK\r\nLEFT JOIN (SELECT AccountSK,ProductSK FROM DW.DimAccountProduct WHERE CurrentIndicator = '1') DAP ON DCA.AccountSK = DAP.AccountSK\r\nLEFT JOIN (SELECT BranchSK ,BranchID ,BranchName ,Area ,Region FROM DW.DimBranch  WHERE CurrentIndicator = '1') DBr ON DCA.BranchSK = DBr.BranchSK\r\nLEFT JOIN (SELECT ProductSK ,ProductGroup ,ProductName FROM DW.DimProduct  WHERE CurrentIndicator = '1') DP ON DAP.ProductSK = DP.ProductSK\r\nLEFT JOIN (SELECT AccountSK ,AverageDailBalanceAmountMTDFull ,AverageDailBalanceAmountMTDProrated FROM DW.FactAverageDailyBalanceMTD  WHERE BusinessDateSK = (SELECT MAX(BusinessDateSK) FROM DW.FactAverageDailyBalanceMTD )) FADMTD ON DCA.AccountSK = FADMTD.AccountSK ----NO DATA\r\nLEFT JOIN (SELECT AccountSK ,AverageDailBalanceAmountYTDFull ,AverageDailBalanceAmountYTDProrated FROM DW.FactAverageDailyBalanceYTD WHERE BusinessDateSK = (SELECT MAX(BusinessDateSK) FROM DW.FactAverageDailyBalanceYTD )) FADYTD ON DCA.AccountSK = FADYTD.AccountSK ----NO DATA\r\nLEFT JOIN \r\n(SELECT A.AccountSK ,BalanceAmountFull ,BalanceAmountProrated, A.BusinessDateSK \r\nFROM DW.FactDepositsOutstandingBalance A\r\nLEFT JOIN  (SELECT AccountSK, MAX(BusinessDateSK) BusinessDateSK FROM DW.FactDepositsOutstandingBalance  GROUP BY AccountSK )  B ON A.AccountSK = B.AccountSK\r\nWHERE A.BusinessDateSK = B.BusinessDateSK) FDOB ON DCA.AccountSK = FDOB.AccountSK ----NO DATA\r\nwhere DCA.ShareIndicator = 'Y'\r\nGROUP BY\r\nDCA.AccountID\r\n,DCA.CustomerID\r\n,DC.GlobalCIF\r\n,DCA.BankID\r\n,DBr.BranchID\r\n,DBr.BranchName\r\n,DBr.Area\r\n,DBr.Region\r\n,DCA.SourceSystemCode\r\n,DP.ProductGroup\r\n,DP.ProductName\r\n,DCA.AccountOpenedDate\r\n,FADMTD.AverageDailBalanceAmountMTDFull\r\n,FADMTD.AverageDailBalanceAmountMTDProrated\r\n,FADYTD.AverageDailBalanceAmountYTDFull\r\n,FADYTD.AverageDailBalanceAmountYTDProrated\r\n,FDOB.BalanceAmountFull\r\n,FDOB.BalanceAmountProrated\r\n,FDOB.BusinessDateSK\r\n,DCA.ValidStartDate\r\n,DC.SourceSystemCode\r\n,DC.CustomerID\r\n,DCA.ShareIndicator\r\n,DC.FCBSCIF\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "SP_CI_Loans_Corporate",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [DW].[SP_CI_Loans_Corporate] AS\r\nBEGIN\r\n\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'CI_Loans_Corporate') \r\nBEGIN\r\n   DROP TABLE  DW.CI_Loans_Corporate;\r\nEND;\r\n\r\n\r\n\r\nWITH DimCustomerAccount_LNS AS\r\n(\r\n    SELECT  \r\n     DCA.AccountID ,DCA.CustomerID ,DCA.SourceSystemCode ,DCA.ValidStartDate ,DCA.CustomerSK ,DCA.BankSK ,DCA.BranchSK ,DCA.AccountSK ,DA.AccountOpenedDate ,DB.BankID \r\n    FROM DW.DimCustomerAccount DCA\r\n    LEFT JOIN DW.DimAccount DA ON DCA.AccountSK = DA.AccountSK\r\n    LEFT JOIN DW.DimBank DB ON DCA.BankSK = DB.BankSK \r\n    WHERE DCA.SourceSystemCode = 'LNS' AND DCA.CurrentIndicator = '1' AND DB.BankID IN ('CBC01', 'CBC11')  AND DCA.Shareindicator = 'Y'\r\n    GROUP BY DCA.AccountID ,DCA.CustomerID ,DCA.SourceSystemCode ,DCA.ValidStartDate ,DCA.CustomerSK ,DCA.BankSK ,DCA.BranchSK ,DCA.AccountSK ,DA.AccountOpenedDate,DB.BankID \r\n)\r\n\r\nSELECT DISTINCT\r\n    DCA.AccountID\r\n    ,DCA.CustomerID\r\n    ,CASE WHEN DC.GlobalCIF IS NOT NULL THEN REPLACE(DC.GlobalCIF,'Global_CIF_','Entity_CIF_')\r\n      ELSE CONCAT('Entity_CIF_', DC.SourceSystemCode, '_', DC.CustomerID) END AS EntityCIF\r\n    ,DC.FCBSCIF AS FCBSCIF\r\n    ,DCA.BankID AS BankCode\r\n    ,DBr.BranchID AS BranchCode\r\n    ,DBr.BranchName\r\n    ,DBr.Area\r\n    ,DBr.Region\r\n    ,DCA.SourceSystemCode AS Source\r\n    ,DP.ProductGroup AS ProductGrouping\r\n    ,DP.ProductName as ProductType\r\n    ,CONCAT(DP.ProductGroup,'-',DP.ProductName) AS ProductDetails\r\n    ----,DP.FcbsApplication AS Application ----This column does not exist in DIM PRODUCT\r\n    ,DCA.AccountOpenedDate AS OpenedDate\r\n    ,FLRE.TotalRelationshipExposureFull AS RelationshipExposure_Full\r\n    ,FLRE.TotalRelationshipExposureProrated AS RelationshipExposure_Shared\r\n    ,FLOB.OutstandingBalanceFull AS DueForTheMonth_Full\r\n    ,FLOB.OutstandingBalanceProrated AS DueForTheMonth_Shared\r\n    ,FLCL.CreditLimitAmountFull AS CreditLimit_Full\r\n    ,FLCL.CreditLimitAmountProrated AS CreditLimit_Shared\r\n    ,FLRE.BusinessDateSK AS BusinessDate\r\n    ,DCA.ValidStartDate AS LastUpdatedDate\r\n    ,CONCAT(DCA.AccountId,DCA.CustomerID,DCA.BankID,DCA.SourceSystemCode) as AccountKey    \r\n    INTO DW.CI_Loans_Corporate\r\nFROM DimCustomerAccount_LNS DCA\r\nJOIN (SELECT CustomerSK,FCBSCIF ,GlobalCIF,SourceSystemCode,CustomerID FROM DW.DimCustomer WHERE CustomerType = 'Corporate' AND CurrentIndicator = '1') DC ON DCA.CustomerSK = DC.CustomerSK\r\nLEFT JOIN (SELECT AccountSK,ProductSK FROM DW.DimAccountProduct WHERE  CurrentIndicator = '1') DAP ON DCA.AccountSK = DAP.AccountSK\r\nLEFT JOIN (SELECT BranchSK ,BranchID ,BranchName ,Area ,Region FROM DW.DimBranch WHERE  CurrentIndicator = '1') DBr ON DCA.BranchSK = DBr.BranchSK\r\nLEFT JOIN (SELECT ProductSK ,ProductGroup ,ProductName FROM DW.DimProduct WHERE  CurrentIndicator = '1') DP ON DAP.ProductSK = DP.ProductSK\r\nLEFT JOIN (SELECT AccountSK ,TotalRelationshipExposureFull ,TotalRelationshipExposureProrated ,BusinessDateSK FROM DW.FactLoansRelationshipExposure WHERE BusinessDateSK IN (SELECT MAX(BusinessDateSK) FROM  DW.FactLoansRelationshipExposure )) FLRE ON DCA.AccountSK = FLRE.AccountSK\r\nLEFT JOIN (SELECT AccountSK ,OutstandingBalanceFull ,OutstandingBalanceProrated FROM DW.FactLoansOutstandingBalance WHERE BusinessDateSK IN (SELECT MAX(BusinessDateSK) FROM  DW.FactLoansOutstandingBalance )) FLOB ON DCA.AccountSK = FLOB.AccountSK ----NO DATA\r\nLEFT JOIN (SELECT AccountSK ,CreditLimitAmountFull ,CreditLimitAmountProrated FROM DW.FactLoansCreditLimit WHERE BusinessDateSK IN (SELECT MAX(BusinessDateSK) FROM  DW.FactLoansCreditLimit) ) FLCL ON DCA.AccountSK = FLCL.AccountSK ----NO DATA\r\nGROUP BY\r\nDCA.AccountID\r\n,DCA.CustomerID\r\n,DC.GlobalCIF\r\n,DC.SourceSystemCode\r\n,DC.CustomerID\r\n,DCA.BankID\r\n,DBr.BranchID\r\n,DBr.BranchName\r\n,DBr.Area\r\n,DBr.Region\r\n,DCA.SourceSystemCode\r\n,DP.ProductGroup\r\n,DP.ProductName\r\n,DCA.AccountOpenedDate\r\n,FLRE.TotalRelationshipExposureFull\r\n,FLRE.TotalRelationshipExposureProrated\r\n,FLOB.OutstandingBalanceFull\r\n,FLOB.OutstandingBalanceProrated\r\n,FLCL.CreditLimitAmountFull\r\n,FLCL.CreditLimitAmountProrated\r\n,FLRE.BusinessDateSK\r\n,DCA.ValidStartDate\r\n,DC.FCBSCIF\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "SP_CI_Loans_Retail",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [DW].[SP_CI_Loans_Retail] AS\r\nBEGIN\r\n\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'CI_Loans_Retail') \r\nBEGIN\r\n   DROP TABLE  DW.CI_Loans_Retail;\r\nEND;\r\n\r\n\r\nWITH DimCustomerAccount_LNS AS\r\n(\r\n    SELECT\r\n        DCA.AccountID ,DCA.CustomerID ,DCA.SourceSystemCode ,DCA.ValidStartDate ,DCA.CustomerSK ,DCA.BankSK ,DCA.BranchSK ,DCA.AccountSK ,DA.AccountOpenedDate\r\n    FROM DW.DimCustomerAccount DCA\r\n    JOIN DW.DimAccount DA ON DCA.AccountSK = DA.AccountSK\r\n    WHERE DCA.SourceSystemCode = 'LNS' AND DCA.CurrentIndicator = '1' AND DCA.Shareindicator = 'Y'\r\n    GROUP BY DCA.AccountID ,DCA.CustomerID ,DCA.SourceSystemCode ,DCA.ValidStartDate ,DCA.CustomerSK ,DCA.BankSK ,DCA.BranchSK ,DCA.AccountSK ,DA.AccountOpenedDate\r\n)\r\n\r\nSELECT DISTINCT\r\n    DCA.AccountID\r\n    ,DCA.CustomerID\r\n    ,CASE WHEN DC.GlobalCIF IS NOT NULL THEN REPLACE(DC.GlobalCIF,'Global_CIF_','Entity_CIF_')\r\n      ELSE CONCAT('Entity_CIF_', DC.SourceSystemCode, '_', DC.CustomerID) END AS EntityCIF\r\n    ,DC.FCBSCIF AS FCBSCIF\r\n    ,DB.BankID AS BankCode\r\n    ,DBr.BranchID AS BranchCode\r\n    ,DBr.BranchName\r\n    ,DBr.Area\r\n    ,DBr.Region\r\n    ,DCA.SourceSystemCode AS Source\r\n    ,DP.ProductGroup AS ProductGrouping\r\n    ,DP.ProductName AS ProductType\r\n    ,CONCAT(DP.ProductGroup,'-',DP.ProductName) AS ProductDetails\r\n    ----,DP.FcbsApplication AS Application ----This column does not exist in DIM PRODUCT\r\n    ,DCA.AccountOpenedDate AS OpenedDate\r\n    ,FLRE.TotalRelationshipExposureFull AS RelationshipExposure_Full\r\n    ,FLRE.TotalRelationshipExposureProrated AS RelationshipExposure_Prorated\r\n    ,FLOB.OutstandingBalanceFull AS DueForTheMonth_Full\r\n    ,FLOB.OutstandingBalanceProrated AS DueForTheMonth_Prorated\r\n    ,FLCL.CreditLimitAmountFull AS CreditLimit_Full\r\n    ,FLCL.CreditLimitAmountProrated AS CreditLimit_Prorated\r\n    ,CONVERT(DATE,CONVERT(VARCHAR,FLRE.BusinessDateSK)) AS BusinessDate\r\n    ,DCA.ValidStartDate AS LastUpdatedDate\r\n    ,CONCAT(DCA.AccountId,DCA.CustomerID,DB.BankID,DCA.SourceSystemCode) as AccountKey\r\n    INTO DW.CI_Loans_Retail\r\nFROM DimCustomerAccount_LNS DCA\r\nJOIN (SELECT CustomerSK,FCBSCIF ,GlobalCIF,SourceSystemCode,CustomerID FROM DW.DimCustomer WHERE CustomerType = 'Retail' AND CurrentIndicator = '1') DC ON DCA.CustomerSK = DC.CustomerSK\r\nLEFT JOIN (SELECT BankSK ,BankID FROM DW.DimBank) DB ON DCA.BankSK = DB.BankSK\r\nLEFT JOIN (SELECT AccountSK,ProductSK FROM DW.DimAccountProduct WHERE CurrentIndicator = '1') DAP ON DCA.AccountSK = DAP.AccountSK\r\nLEFT JOIN (SELECT BranchSK ,BranchID ,BranchName ,Area ,Region FROM DW.DimBranch WHERE CurrentIndicator = '1') DBr ON DCA.BranchSK = DBr.BranchSK\r\nLEFT JOIN (SELECT ProductSK ,ProductGroup ,ProductName FROM DW.DimProduct  WHERE CurrentIndicator = '1') DP ON DAP.ProductSK = DP.ProductSK\r\nLEFT JOIN (SELECT AccountSK ,TotalRelationshipExposureFull ,TotalRelationshipExposureProrated ,BusinessDateSK FROM DW.FactLoansRelationshipExposure WHERE BusinessDateSK IN (SELECT MAX(BusinessDateSK) FROM  DW.FactLoansRelationshipExposure )) FLRE ON DCA.AccountSK = FLRE.AccountSK\r\nLEFT JOIN (SELECT AccountSK ,OutstandingBalanceFull ,OutstandingBalanceProrated FROM DW.FactLoansOutstandingBalance WHERE BusinessDateSK IN (SELECT MAX(BusinessDateSK) FROM  DW.FactLoansOutstandingBalance )) FLOB ON DCA.AccountSK = FLOB.AccountSK ----NO DATA\r\nLEFT JOIN (SELECT AccountSK ,CreditLimitAmountFull ,CreditLimitAmountProrated FROM DW.FactLoansCreditLimit WHERE BusinessDateSK IN (SELECT MAX(BusinessDateSK) FROM  DW.FactLoansCreditLimit) ) FLCL ON DCA.AccountSK = FLCL.AccountSK ----NO DATA\r\n\r\nGROUP BY\r\nDCA.AccountID\r\n,DCA.CustomerID\r\n,DC.GlobalCIF\r\n,DC.SourceSystemCode\r\n,DC.CustomerID\r\n,DB.BankID\r\n,DBr.BranchID\r\n,DBr.BranchName\r\n,DBr.Area\r\n,DBr.Region\r\n,DCA.SourceSystemCode\r\n,DP.ProductGroup\r\n,DP.ProductName\r\n,DCA.AccountOpenedDate\r\n,FLRE.TotalRelationshipExposureFull\r\n,FLRE.TotalRelationshipExposureProrated\r\n,FLOB.OutstandingBalanceFull\r\n,FLOB.OutstandingBalanceProrated\r\n,FLCL.CreditLimitAmountFull\r\n,FLCL.CreditLimitAmountProrated\r\n,FLRE.BusinessDateSK\r\n,DCA.ValidStartDate\r\n,DC.FCBSCIF\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "SP_CI_Securities_Corporate",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [DW].[SP_CI_Securities_Corporate] AS\r\nBEGIN\r\n\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'CI_Securities_Corporate') \r\nBEGIN\r\n   DROP TABLE DW.CI_Securities_Corporate;\r\nEND;\r\n\r\n\r\n\r\nWITH DimCustomerAccount\r\nAS(\r\nSELECT AccountID,AccountSK,CustomerID,CustomerSK,BranchSK,DCA.SourceSystemCode,DCA.ValidStartDate,DCA.BankSK,DB.BankID\r\nFROM DW.DimCustomerAccount DCA\r\nLEFT JOIN DW.DimBank DB ON DCA.BankSK = DB.BankSK \r\nWHERE DCA.SourceSystemCode = 'SEC' AND DCA.CurrentIndicator = '1' AND DB.BankID IN ('CBC01', 'CBC11')\r\n)\r\n,\r\nDimCustomer AS (\r\n    SELECT CustomerSK,FCBSCIF ,GlobalCIF,SourceSystemCode,CustomerID FROM DW.DimCustomer\r\n    WHERE CurrentIndicator = '1' AND  CustomerType IN ( 'Corporate' )\r\n)\r\n\r\n\r\nSELECT DISTINCT\r\n DCA.AccountID\r\n,DCA.CustomerID\r\n,CASE WHEN DC.GlobalCIF IS NOT NULL THEN REPLACE(DC.GlobalCIF,'Global_CIF_','Entity_CIF_')\r\n      ELSE CONCAT('Entity_CIF_', DC.SourceSystemCode, '_', DC.CustomerID) END AS EntityCIF\r\n,DC.FCBSCIF AS FCBSCIF\r\n,DCA.BankID AS Bank_Code\r\n,DBCH.BranchID AS Branch_Code\r\n,DBCH.BranchName\r\n,DBCH.Area\r\n,DBCH.Region\r\n,DCA.SourceSystemCode AS Source\r\n,DP.ProductGroup AS Product_Grouping\r\n,DP.ProductName as Product_Type \r\n,CONCAT(DP.ProductGroup,'-',DP.ProductName) AS ProductDetails\r\n,DA.AccountOpenedDate AS OpenedDate\r\n,DFSP.PortfolioEndValueFull AS PortfolioSize_Full\r\n,DFSP.PortfolioEndValueProrated AS PortfolioSize_Shared\r\n,DFSP.BusinessDateSK AS BusinessDate\r\n,DCA.ValidStartDate AS LastUpdatedDate\r\n,CONCAT(DCA.AccountId,DCA.CustomerID,DCA.BankID,DCA.SourceSystemCode) as AccountKey\r\nINTO DW.CI_Securities_Corporate\r\nFROM DimCustomerAccount DCA\r\nJOIN DimCustomer DC ON DCA.CustomerSK = DC.CustomerSK\r\nLEFT JOIN (SELECT BranchSK,BranchID,BranchName,Area,Region FROM DW.DimBranch WHERE CurrentIndicator = '1' ) DBCH ON DCA.BranchSK = DBCH.BranchSK\r\nLEFT JOIN (SELECT AccountSK,ProductSK FROM DW.DimAccountProduct WHERE CurrentIndicator = '1') DAP ON DCA.AccountSK = DAP.AccountSK\r\nLEFT JOIN (SELECT ProductSK,ProductGroup,ProductName FROM DW.DimProduct WHERE CurrentIndicator = '1') DP ON DAP.ProductSK = DP.ProductSK\r\nLEFT JOIN (SELECT AccountOpenedDate,AccountSK FROM DW.DimAccount WHERE CurrentIndicator = '1') DA ON DCA.AccountSK = DA.AccountSK\r\nLEFT JOIN (SELECT AccountSK,PortfolioEndValueFull,PortfolioEndValueProrated,BusinessDateSK FROM DW.FactSecurityPortfolio WHERE BusinessDateSK IN (SELECT MAX(BusinessDateSK) FROM DW.FactSecurityPortfolio)) DFSP ON DCA.AccountSK = DFSP.AccountSK\r\n\r\n\r\n\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "SP_CI_Securities_Retail",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [DW].[SP_CI_Securities_Retail] AS\r\nBEGIN\r\n\r\n\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'CI_Securities_Retail') \r\nBEGIN\r\n   DROP TABLE DW.CI_Securities_Retail;\r\nEND;\r\n\r\nWITH DimCustomerAccount\r\nAS(\r\nSELECT AccountID,AccountSK,CustomerID,CustomerSK,BranchSK,DCA.SourceSystemCode,DCA.ValidStartDate,DCA.BankSK,DB.BankID\r\nFROM DW.DimCustomerAccount DCA\r\nLEFT JOIN DW.DimBank DB ON DCA.BankSK = DB.BankSK \r\nWHERE DCA.SourceSystemCode = 'SEC' AND DCA.CurrentIndicator = '1' AND DB.BankID IN ('CBC01', 'CBC11') \r\n)\r\n,\r\nDimCustomer AS (\r\n    SELECT CustomerSK,FCBSCIF ,GlobalCIF,SourceSystemCode,CustomerID FROM DW.DimCustomer\r\n    WHERE CurrentIndicator = '1' AND  CustomerType IN ( 'Retail' )\r\n)\r\n\r\n\r\nSELECT DISTINCT\r\n DCA.AccountID\r\n,DCA.CustomerID\r\n,CASE WHEN DC.GlobalCIF IS NOT NULL THEN REPLACE(DC.GlobalCIF,'Global_CIF_','Entity_CIF_')\r\n      ELSE CONCAT('Entity_CIF_', DC.SourceSystemCode, '_', DC.CustomerID) END AS EntityCIF\r\n,DC.FCBSCIF AS FCBSCIF\r\n,DCA.BankID AS Bank_Code\r\n,DBCH.BranchID AS Branch_Code\r\n,DBCH.BranchName\r\n,DBCH.Area\r\n,DBCH.Region\r\n,DCA.SourceSystemCode AS Source\r\n,DP.ProductGroup AS ProductGrouping\r\n,DP.ProductName AS ProductType\r\n,CONCAT(DP.ProductGroup,'-',DP.ProductName) AS ProductDetails\r\n,DA.AccountOpenedDate AS OpenedDate\r\n,DFSP.PortfolioEndValueFull AS PortfolioSize_Full\r\n,DFSP.PortfolioEndValueProrated AS PortfolioSize_ProRated\r\n,DFSP.BusinessDateSK AS BusinessDate\r\n,DCA.ValidStartDate AS LastUpdatedDate\r\n,CONCAT(DCA.AccountId,DCA.CustomerID,DCA.BankID,DCA.SourceSystemCode) as AccountKey\r\nINTO DW.CI_Securities_Retail\r\nFROM DimCustomerAccount DCA\r\nJOIN DimCustomer DC ON DCA.CustomerSK = DC.CustomerSK\r\nLEFT JOIN (SELECT BranchSK,BranchID,BranchName,Area,Region FROM DW.DimBranch WHERE CurrentIndicator = '1' ) DBCH ON DCA.BranchSK = DBCH.BranchSK\r\nLEFT JOIN (SELECT AccountSK,ProductSK FROM DW.DimAccountProduct WHERE CurrentIndicator = '1') DAP ON DCA.AccountSK = DAP.AccountSK\r\nLEFT JOIN (SELECT ProductSK,ProductGroup,ProductName FROM DW.DimProduct WHERE CurrentIndicator = '1') DP ON DAP.ProductSK = DP.ProductSK\r\nLEFT JOIN (SELECT AccountOpenedDate,AccountSK FROM DW.DimAccount WHERE CurrentIndicator = '1') DA ON DCA.AccountSK = DA.AccountSK\r\nLEFT JOIN (SELECT AccountSK,PortfolioEndValueFull,PortfolioEndValueProrated,BusinessDateSK FROM DW.FactSecurityPortfolio WHERE BusinessDateSK IN (SELECT MAX(BusinessDateSK) FROM DW.FactSecurityPortfolio)) DFSP ON DCA.AccountSK = DFSP.AccountSK\r\nGROUP BY\r\n DCA.AccountID\r\n,DCA.CustomerID\r\n,DC.GlobalCIF\r\n,DC.SourceSystemCode\r\n,DC.CustomerID\r\n,DCA.BankID\r\n,DBCH.BranchID\r\n,DBCH.BranchName\r\n,DBCH.Area\r\n,DBCH.Region\r\n,DCA.SourceSystemCode\r\n,DP.ProductGroup\r\n,DP.ProductName\r\n,DA.AccountOpenedDate\r\n,DFSP.BusinessDateSK\r\n,DCA.ValidStartDate\r\n,DFSP.PortfolioEndValueFull\r\n,DFSP.PortfolioEndValueProrated\r\n,DC.FCBSCIF\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "SP_CI_Treasury_Corporate",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [DW].[SP_CI_Treasury_Corporate] AS\r\nBEGIN\r\n\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'CI_Treasury_Corporate') \r\nBEGIN\r\n   DROP TABLE  DW.CI_Treasury_Corporate;\r\nEND;\r\n\r\n\r\nWITH DimCustomerAccount_TRY AS\r\n(\r\n    SELECT\r\n        DCA.AccountID ,DCA.CustomerID ,DCA.SourceSystemCode ,DCA.ValidStartDate ,DCA.CustomerSK ,DCA.BankSK ,DCA.BranchSK ,DCA.AccountSK ,DA.AccountOpenedDate ,DB.BankId\r\n    FROM DW.DimCustomerAccount DCA\r\n    LEFT JOIN DW.DimAccount DA ON DCA.AccountSK = DA.AccountSK\r\n    LEFT JOIN DW.DimBank DB ON DCA.BankSK = DB.BankSK \r\n    WHERE DCA.SourceSystemCode = 'TRY' AND DCA.CurrentIndicator = '1' AND DB.BankID IN ('CBC01', 'CBC11')\r\n),\r\nCustomerAccountBalance AS\r\n(\r\nSELECT CustomerAccountId,BalanceTypeId,Timestamp,IsoCurrencyCode, SUM(BalanceAmount) BalanceAmount FROM BNKM.CustomerAccountBalance WHERE BalanceTypeId IN ('Fixed Income Product Outstanding', 'Money Market Product Outstanding', 'Structured Product PYA Outstanding', 'Structured Product Asset Swap')\r\nAND SourceSystemCode = 'TRY' AND IsoCurrencyCode = 'PHP'\r\nGROUP BY \r\nCustomerAccountId, BalanceTypeId, Timestamp, IsoCurrencyCode\r\n\r\n\r\n)\r\n, CNT_CustomerAccountParticipation\r\nAS(\r\nSELECT CustomerAccountId, COUNT(CUSTOMERID) CNT FROM BNKM.CustomerAccountParticipation where SourceSystemCode = 'TRY' \r\nGROUP BY CustomerAccountId \r\n)\r\n\r\nSELECT DISTINCT\r\n    DCA.AccountID\r\n    ,DCA.CustomerID\r\n    ,CASE WHEN DC.GlobalCIF IS NOT NULL THEN REPLACE(DC.GlobalCIF,'Global_CIF_','Entity_CIF_')\r\n      ELSE CONCAT('Entity_CIF_', DC.SourceSystemCode, '_', DC.CustomerID) END AS EntityCIF\r\n    ,DC.FCBSCIF AS FCBSCIF\r\n    ,DCA.BankID AS BankCode\r\n    ,DBr.BranchID as BranchCode\r\n    ,DBr.BranchName\r\n    ,DBr.Area\r\n    ,DBr.Region\r\n    ,DCA.SourceSystemCode\r\n    ,DP.ProductGroup AS ProductGrouping\r\n    ,DP.ProductName as ProductType\r\n    ,CONCAT(DP.ProductGroup,'-',DP.ProductName) AS ProductDetails\r\n    ,DCA.AccountOpenedDate AS OpenedDate\r\n    ,BCAB.BalanceAmount AS OutstandingInvestmentFull\r\n    ,BCAB.BalanceAmount / CNT AS OutstandingInvestmentProrated\r\n    ,convert(varchar,BCAB.[Timestamp],112) AS BusinessDate\r\n    ,DCA.ValidStartDate AS LastUpdatedDate\r\n    ,CONCAT(DCA.AccountId,DCA.CustomerID,DP.ProductName,DCA.BankID,DCA.SourceSystemCode) as AccountKey    \r\n    INTO DW.CI_Treasury_Corporate\r\nFROM DimCustomerAccount_TRY DCA\r\nJOIN (SELECT CustomerSK,FCBSCIF,GlobalCIF,SourceSystemCode,CustomerID FROM DW.DimCustomer WHERE CustomerType = 'Corporate' AND CurrentIndicator = '1' ) DC ON DCA.CustomerSK = DC.CustomerSK\r\nLEFT JOIN (SELECT AccountSK,ProductSK FROM DW.DimAccountProduct WHERE  CurrentIndicator = '1') DAP ON DCA.AccountSK = DAP.AccountSK\r\nLEFT JOIN (SELECT BranchSK ,BranchID ,BranchName ,Area ,Region FROM DW.DimBranch  WHERE  CurrentIndicator = '1') DBr ON DCA.BranchSK = DBr.BranchSK\r\nLEFT JOIN (SELECT ProductSK ,ProductGroup ,ProductName FROM DW.DimProduct  WHERE  CurrentIndicator = '1') DP ON DAP.ProductSK = DP.ProductSK ---- NO DATA\r\n--LEFT JOIN (SELECT AccountSK ,OutstandingInvestmentFull ,OutstandingInvestmentProrated ,BusinessDateSK FROM DW.FactTreasuryOutstandingInvestment WHERE BusinessDateSK = (SELECT MAX(BusinessDateSK) FROM DW.FactTreasuryOutstandingInvestment )) FTOI ON DCA.AccountSK = FTOI.AccountSK\r\nLEFT JOIN CustomerAccountBalance BCAB ON DCA.AccountID = BCAB.CustomerAccountId AND DP.ProductName = BCAB.BalanceTypeId\r\nLEFT JOIN CNT_CustomerAccountParticipation BCAP ON BCAB.CustomerAccountId = BCAP.CustomerAccountId --join for count\r\nGROUP BY \r\nDCA.AccountID\r\n,DCA.CustomerID\r\n,DC.GlobalCIF\r\n,DC.SourceSystemCode\r\n,DC.CustomerID\r\n,DCA.BankID\r\n,DBr.BranchID\r\n,DBr.BranchName\r\n,DBr.Area\r\n,DBr.Region\r\n,DCA.SourceSystemCode\r\n,DP.ProductGroup\r\n,DP.ProductName\r\n,DCA.AccountOpenedDate\r\n,BCAB.BalanceAmount\r\n,BCAB.[Timestamp]\r\n,DCA.ValidStartDate\r\n,CNT\r\n,DC.FCBSCIF\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "SP_CI_Treasury_Retail",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [DW].[SP_CI_Treasury_Retail] AS\r\nBEGIN\r\n\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'CI_Treasury_Retail') \r\nBEGIN\r\n   DROP TABLE  DW.CI_Treasury_Retail;\r\nEND;\r\n\r\nWITH DimCustomerAccount_TRY AS\r\n(\r\n    SELECT\r\n        DCA.AccountID ,DCA.CustomerID ,DCA.SourceSystemCode ,DCA.ValidStartDate ,DCA.CustomerSK ,DCA.BankSK ,DCA.BranchSK ,DCA.AccountSK ,DA.AccountOpenedDate\r\n    FROM DW.DimCustomerAccount DCA\r\n    JOIN DW.DimAccount DA ON DCA.AccountSK = DA.AccountSK AND DA.SourceSystemCode = 'TRY'\r\n    WHERE DCA.SourceSystemCode = 'TRY' AND DCA.CurrentIndicator = '1' \r\n),\r\nCustomerAccountBalance AS\r\n(\r\nSELECT CustomerAccountId,BalanceTypeId,Timestamp,IsoCurrencyCode, SUM(BalanceAmount) BalanceAmount FROM BNKM.CustomerAccountBalance WHERE BalanceTypeId IN ('Fixed Income Product Outstanding', 'Money Market Product Outstanding', 'Structured Product PYA Outstanding', 'Structured Product Asset Swap')\r\nAND SourceSystemCode = 'TRY' AND IsoCurrencyCode = 'PHP'\r\nGROUP BY \r\nCustomerAccountId, BalanceTypeId, Timestamp, IsoCurrencyCode\r\n\r\n\r\n)\r\n, CNT_CustomerAccountParticipation\r\nAS(\r\nSELECT CustomerAccountId, COUNT(CUSTOMERID) CNT FROM BNKM.CustomerAccountParticipation where SourceSystemCode = 'TRY' \r\nGROUP BY CustomerAccountId \r\n)\r\n\r\nSELECT DISTINCT\r\n     DCA.AccountID\r\n    ,DCA.CustomerID\r\n    ,CASE WHEN DC.GlobalCIF IS NOT NULL THEN REPLACE(DC.GlobalCIF,'Global_CIF_','Entity_CIF_')\r\n      ELSE CONCAT('Entity_CIF_', DC.SourceSystemCode, '_', DC.CustomerID) END AS EntityCIF\r\n    ,DC.FCBSCIF AS FCBSCIF\r\n    ,DB.BankID AS BankCode\r\n    ,DBr.BranchID as BranchCode\r\n    ,DBr.BranchName\r\n    ,DBr.Area\r\n    ,DBr.Region\r\n    ,DCA.SourceSystemCode\r\n    ,DP.ProductGroup AS ProductGrouping\r\n    ,DP.ProductName AS ProductType\r\n    ,CONCAT(DP.ProductGroup,'-',DP.ProductName) AS ProductDetails\r\n    ,DCA.AccountOpenedDate AS OpenedDate\r\n    ,BCAB.BalanceAmount AS OutstandingInvestmentFull\r\n    ,BCAB.BalanceAmount / CNT AS OutstandingInvestmentProrated\r\n    ,convert(varchar,BCAB.[Timestamp],112) AS BusinessDate\r\n    ,DCA.ValidStartDate AS LastUpdatedDate\r\n    ,CONCAT(DCA.AccountId,DCA.CustomerID,DP.ProductName,DB.BankID,DCA.SourceSystemCode) as AccountKey     \r\n    INTO DW.CI_Treasury_Retail\r\nFROM DimCustomerAccount_TRY DCA\r\nJOIN (SELECT CustomerSK,FCBSCIF ,GlobalCIF,SourceSystemCode,CustomerID FROM DW.DimCustomer WHERE CustomerType = 'Retail' AND CurrentIndicator = '1' ) DC ON DCA.CustomerSK = DC.CustomerSK\r\nLEFT JOIN (SELECT BankSK ,BankID FROM DW.DimBank) DB ON DCA.BankSK = DB.BankSK\r\nLEFT JOIN (SELECT AccountSK,ProductSK FROM DW.DimAccountProduct WHERE CurrentIndicator = '1' ) DAP ON DCA.AccountSK = DAP.AccountSK\r\nLEFT JOIN (SELECT BranchSK ,BranchID ,BranchName ,Area ,Region FROM DW.DimBranch WHERE CurrentIndicator = '1' ) DBr ON DCA.BranchSK = DBr.BranchSK\r\nLEFT JOIN (SELECT ProductSK ,ProductGroup ,ProductName FROM DW.DimProduct WHERE CurrentIndicator = '1' ) DP ON DAP.ProductSK = DP.ProductSK ---- NO DATA\r\n--LEFT JOIN (SELECT AccountSK ,OutstandingInvestmentFull ,OutstandingInvestmentProrated ,BusinessDateSK FROM DW.FactTreasuryOutstandingInvestment WHERE BusinessDateSK = (SELECT MAX(BusinessDateSK) FROM DW.FactTreasuryOutstandingInvestment )) FTOI ON DCA.AccountSK = FTOI.AccountSK\r\nLEFT JOIN CustomerAccountBalance BCAB ON DCA.AccountID = BCAB.CustomerAccountId AND DP.ProductName = BCAB.BalanceTypeId\r\nLEFT JOIN CNT_CustomerAccountParticipation BCAP ON BCAB.CustomerAccountId = BCAP.CustomerAccountId --join for count\r\nGROUP BY \r\nDCA.AccountID\r\n,DCA.CustomerID\r\n,DC.GlobalCIF\r\n,DC.SourceSystemCode\r\n,DC.CustomerID\r\n,DB.BankID\r\n,DBr.BranchID\r\n,DBr.BranchName\r\n,DBr.Area\r\n,DBr.Region\r\n,DCA.SourceSystemCode\r\n,DP.ProductGroup\r\n,DP.ProductName\r\n,DCA.AccountOpenedDate\r\n,BCAB.BalanceAmount\r\n,BCAB.[Timestamp]\r\n,DCA.ValidStartDate\r\n,CNT\r\n,DC.FCBSCIF\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "SP_CI_Trust_Corporate",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [DW].[SP_CI_Trust_Corporate] AS\r\nBEGIN\r\n\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'CI_Trust_Corporate') \r\nBEGIN\r\n   DROP TABLE  DW.CI_Trust_Corporate;\r\nEND;\r\n\r\n\r\n\r\n\r\n\r\nWITH DimCustomerAccount_TRU\r\nAS(\r\n    SELECT AccountID,AccountSK,CustomerID,CustomerSK,BranchSK,DCA.SourceSystemCode,DCA.ValidStartDate,DCA.BankSK,DB.BankID\r\n    FROM DW.DimCustomerAccount DCA\r\n    LEFT JOIN DW.DimBank DB ON DCA.BankSK = DB.BankSK \r\n    WHERE DCA.SourceSystemCode = 'TRU' AND DCA.CurrentIndicator = '1' AND DB.BankID IN ('CBC01', 'CBC11')\r\n)\r\n\r\n\r\nSELECT DISTINCT\r\n    DCA.AccountID\r\n    ,DCA.CustomerID\r\n    ,CASE WHEN DC.GlobalCIF IS NOT NULL THEN REPLACE(DC.GlobalCIF,'Global_CIF_','Entity_CIF_')\r\n      ELSE CONCAT('Entity_CIF_', DC.SourceSystemCode, '_', DC.CustomerID) END AS EntityCIF\r\n    ,DC.FCBSCIF AS FCBSCIF\r\n    ,DCA.BankID AS Bank_Code\r\n    ,DBCH.BranchID AS Branch_Code\r\n    ,DBCH.BranchName\r\n    ,DBCH.Area\r\n    ,DBCH.Region\r\n    ,DCA.SourceSystemCode AS Source\r\n    ,DP.ProductGroup AS Product_Grouping\r\n    ,DP.ProductName as Product_Type\r\n    ,CONCAT(DP.ProductGroup,'-',DP.ProductName) AS ProductDetails\r\n    ,DA.AccountOpenedDate AS OpenedDate\r\n    --, 0 as AssetsUnderManagementBalance_Full\r\n    --, 0 as AssetsUnderManagementBalance_Shared\r\n    ,DFTFV.AUMAmountFull AS AssetsUnderManagementBalance_Full\r\n    ,DFTFV.AUMAmountProrated AS AssetsUnderManagementBalance_Shared\r\n    ,DFTFV.BusinessDateSK AS BusinessDate\r\n    ,DCA.ValidStartDate AS LastUpdatedDate\r\n    ,CONCAT(DCA.AccountId,DCA.CustomerID,DCA.BankID,DCA.SourceSystemCode) as AccountKey    \r\n    INTO DW.CI_Trust_Corporate\r\n    FROM DimCustomerAccount_TRU DCA\r\nJOIN (SELECT CustomerSK,FCBSCIF ,GlobalCIF,SourceSystemCode,CustomerID FROM DW.DimCustomer WHERE CustomerType = 'Corporate' AND CurrentIndicator = '1') DC ON DCA.CustomerSK = DC.CustomerSK\r\nLEFT JOIN (SELECT BranchSK,BranchID,BranchName,Area,Region FROM DW.DimBranch WHERE CurrentIndicator = '1') DBCH ON DCA.BranchSK = DBCH.BranchSK\r\nLEFT JOIN (SELECT AccountSK,ProductSK FROM DW.DimAccountProduct WHERE CurrentIndicator = '1') DAP ON DCA.AccountSK = DAP.AccountSK\r\nLEFT JOIN (SELECT ProductSK,ProductGroup,ProductName FROM DW.DimProduct WHERE CurrentIndicator = '1') DP ON DAP.ProductSK = DP.ProductSK\r\nLEFT JOIN (SELECT AccountOpenedDate,AccountSK FROM DW.DimAccount) DA ON DCA.AccountSK = DA.AccountSK\r\n--LEFT JOIN (SELECT AccountSK,AUMAmountFull,AUMAmountProrated,BusinessDateSK FROM DW.FactTrustFundValue) DFTFV ON DCA.AccountSK = DFTFV.AccountSK\r\nLEFT JOIN (SELECT AccountSK,AUMAmountFull,AUMAmountProrated,BusinessDateSK FROM DW.FactTrustFundValue WHERE BusinessDateSK = (SELECT MAX(BusinessDateSK) FROM DW.FactTrustFundValue )) DFTFV ON DCA.AccountSK = DFTFV.AccountSK\r\nGROUP BY\r\nDCA.AccountID\r\n,DCA.CustomerID\r\n,DC.GlobalCIF\r\n,DC.SourceSystemCode\r\n,DC.CustomerID\r\n,DCA.BankID\r\n,DBCH.BranchID\r\n,DBCH.BranchName\r\n,DBCH.Area\r\n,DBCH.Region\r\n,DCA.SourceSystemCode\r\n,DP.ProductGroup\r\n,DP.ProductName\r\n,DA.AccountOpenedDate\r\n,DFTFV.AUMAmountFull\r\n,DFTFV.AUMAmountProrated\r\n,DFTFV.BusinessDateSK\r\n,DCA.ValidStartDate\r\n,DC.FCBSCIF\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "SP_CI_Trust_Retail",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [DW].[SP_CI_Trust_Retail] AS\r\nBEGIN\r\n\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'CI_Trust_Retail') \r\nBEGIN\r\n   DROP TABLE  DW.CI_Trust_Retail;\r\nEND;\r\n\r\n\r\n\r\nWITH DimCustomerAccount_TRU\r\nAS(\r\n    SELECT AccountID,AccountSK,CustomerID,CustomerSK,BranchSK,DCA.SourceSystemCode,DCA.ValidStartDate,DCA.BankSK\r\n    FROM DW.DimCustomerAccount DCA\r\n    WHERE DCA.SourceSystemCode = 'TRU' AND DCA.CurrentIndicator = '1'\r\n)\r\n\r\n\r\nSELECT DISTINCT\r\n    DCA.AccountID\r\n    ,DCA.CustomerID\r\n    ,CASE WHEN DC.GlobalCIF IS NOT NULL THEN REPLACE(DC.GlobalCIF,'Global_CIF_','Entity_CIF_')\r\n      ELSE CONCAT('Entity_CIF_', DC.SourceSystemCode, '_', DC.CustomerID) END AS EntityCIF\r\n    ,DC.FCBSCIF AS FCBSCIF\r\n    ,DB.BankID AS Bank_Code\r\n    ,DBCH.BranchID AS Branch_Code\r\n    ,DBCH.BranchName\r\n    ,DBCH.Area\r\n    ,DBCH.Region\r\n    ,DCA.SourceSystemCode AS Source\r\n    ,DP.ProductGroup AS ProductGrouping\r\n    ,DP.ProductName AS ProductType\r\n    ,CONCAT(DP.ProductGroup,'-',DP.ProductName) AS ProductDetails\r\n    ,DA.AccountOpenedDate AS OpenedDate\r\n    ,DFTFV.AUMAmountFull AS AssetsUnderManagementBalance_Full\r\n    ,DFTFV.AUMAmountProrated AS AssetsUnderManagementBalance_Prorated\r\n    ,DFTFV.BusinessDateSK AS BusinessDate\r\n    ,DCA.ValidStartDate AS LastUpdatedDate\r\n    ,CONCAT(DCA.AccountId,DCA.CustomerID,DB.BankID,DCA.SourceSystemCode) as AccountKey    \r\n    INTO DW.CI_Trust_Retail\r\nFROM DimCustomerAccount_TRU DCA\r\nJOIN (SELECT CustomerSK,FCBSCIF ,GlobalCIF,SourceSystemCode,CustomerID FROM DW.DimCustomer WHERE CustomerType = 'Retail' AND CurrentIndicator = '1') DC ON DCA.CustomerSK = DC.CustomerSK\r\nLEFT JOIN (SELECT BranchSK,BranchID,BranchName,Area,Region FROM DW.DimBranch WHERE CurrentIndicator = '1') DBCH ON DCA.BranchSK = DBCH.BranchSK\r\nLEFT JOIN (SELECT BankSK ,BankID FROM DW.DimBank) DB ON DCA.BankSK = DB.BankSK \r\nLEFT JOIN (SELECT AccountSK,ProductSK FROM DW.DimAccountProduct WHERE CurrentIndicator = '1') DAP ON DCA.AccountSK = DAP.AccountSK\r\nLEFT JOIN (SELECT ProductSK,ProductGroup,ProductName FROM DW.DimProduct WHERE CurrentIndicator = '1') DP ON DAP.ProductSK = DP.ProductSK\r\nLEFT JOIN (SELECT AccountOpenedDate,AccountSK FROM DW.DimAccount) DA ON DCA.AccountSK = DA.AccountSK\r\nLEFT JOIN (SELECT AccountSK,AUMAmountFull,AUMAmountProrated,BusinessDateSK FROM DW.FactTrustFundValue WHERE BusinessDateSK = (SELECT MAX(BusinessDateSK) FROM DW.FactTrustFundValue )) DFTFV ON DCA.AccountSK = DFTFV.AccountSK\r\nGROUP BY\r\nDCA.AccountID\r\n,DCA.CustomerID\r\n,DC.GlobalCIF\r\n,DC.SourceSystemCode\r\n,DC.CustomerID\r\n,DB.BankID\r\n,DBCH.BranchID\r\n,DBCH.BranchName\r\n,DBCH.Area\r\n,DBCH.Region\r\n,DCA.SourceSystemCode\r\n,DP.ProductGroup\r\n,DP.ProductName\r\n,DA.AccountOpenedDate\r\n,DFTFV.AUMAmountFull\r\n,DFTFV.AUMAmountProrated\r\n,DFTFV.BusinessDateSK\r\n,DCA.ValidStartDate\r\n,DC.FCBSCIF\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-10-09T12:57:20Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

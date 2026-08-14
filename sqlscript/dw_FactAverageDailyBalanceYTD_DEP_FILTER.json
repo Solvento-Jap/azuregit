@@ -1,0 +1,20 @@
+{
+	"name": "dw_FactAverageDailyBalanceYTD_DEP_FILTER",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "\nWITH CurrencyConversion\nAS(\n    SELECT * FROM BNKM.CurrencyConversion WHERE ConvertToCurrencyId = 'PHP' AND RateId = 'REV'\n),\n CasaTdAggregateBalance\nAS(\n    SELECT  * FROM [BNKM].[CasaTdAggregateBalance] WHERE AggregateBalanceType = 'Year-to-Date Average Daily Balance'\n    --AND @Businessdate = ISNULL(CONVERT(VARCHAR,PERIODENDDATE,112),'20991231')\n)\n,\nCnt_DimCustomerAccount\nAS(\n    SELECT BCB.CustomerAccountId, COUNT(1) CNT FROM CasaTdAggregateBalance BCB\n    LEFT JOIN DW.DimCustomerAccount DCA ON BCB.CustomerAccountId = DCA.AccountID \n    and DCA.ShareIndicator = 'Y' \n    GROUP BY BCB.CustomerAccountId\n\n)\n\n--INSERT INTO DW.FactAverageDailyBalanceYTD\n--(\n--BusinessDateSK\n--,BranchSK\n--,BankSK\n--,AccountSK\n--,AccountID\n--,AverageDailBalanceAmountYTDFull\n--,AverageDailBalanceAmountYTDProrated\n--,SourceSystemCode\n--,WorkFlowId\n--,TaskRunId\n--,InsertDttm)\n\nSELECT \nGETDATE() AS BusinessDateSK\n,DDB.BranchSK AS BranchSK\n,DDBK.BankSK AS BankSK\n,DDA.AccountSK AS AccountSK\n,DDA.AccountId AS AccountId\n,CASE WHEN BCA.IsoCurrencyCode <> 'PHP' THEN (BCB.AccumulatedCurrentBalance * BCC.ConversionRate) / DDD.DayOfYear\n    ELSE BCB.AccumulatedCurrentBalance / DDD.DayOfYear END  AS AverageDailBalanceAmountYTDFull\n\n,CASE WHEN BCA.IsoCurrencyCode <> 'PHP' THEN ( (BCB.ACCUMULATEDCURRENTBALANCE * BCC.ConversionRate )/ ISNULL(NULLIF(DCA.CNT,''),1)  ) / DDD.DayOfYear\n    ELSE (BCB.ACCUMULATEDCURRENTBALANCE / ISNULL(NULLIF(DCA.CNT,''),1)  ) / DDD.DayOfYear\n    END AS AverageDailBalanceAmountYTDProrated\n,BCB.SourceSystemCode AS SourceSystemCode\n,0 AS WorkFlowId\n,0 AS TaskRunId\n,Getdate() AS InsertDttm\nFROM \nCasaTdAggregateBalance BCB\nJOIN BNKM.CustomerAccountFinancialProduct CAFP ON BCB.CustomerAccountid = CAFP.CustomerAccountId AND BCB.FinancialInstitutionId = CAFP.FinancialInstitutionId\nJOIN BNKM.FinancialProductApplication FPA ON CAFP.ProductId = FPA.FinancialproductId AND CAFP.FinancialInstitutionId = FPA.FinancialInstitutionId\nLEFT JOIN [BNKM].[CustomerAccount] BCA ON BCB.CustomerAccountId = BCA.CustomerAccountId \nLEFT JOIN CurrencyConversion BCC ON BCA.IsoCurrencyCode = BCC.ConvertFromCurrencyId AND BCB.FinancialInstitutionId = BCC.FinancialInstitutionId AND BCB.PeriodEndDate = BCC.CurrencyConversionTimestamp\nLEFT JOIN [DW].[DimBranch] DDB ON convert(varchar,BCA.BranchId) = DDB.BranchID\nLEFT JOIN [DW].[DimBank] DDBK ON convert(varchar,BCB.FinancialInstitutionId) = convert(varchar,DDBK.BankID)\n\nLEFT JOIN Cnt_DimCustomerAccount DCA ON BCB.CustomerAccountId = DCA.CustomerAccountId \n\nLEFT JOIN [DW].[DimAccount] DDA ON convert(varchar,BCB.CustomerAccountId) = convert(varchar,DDA.AccountID)\nLEFT JOIN DW.DIMDATE DDD ON CONVERT(VARCHAR,GETDATE()) = CONVERT(VARCHAR,DDD.DateSK)--@Businessdate = DDD.DateSK\n--WHERE @Businessdate NOT IN (SELECT DISTINCT BusinessDateSK FROM DW.FactAverageDailyBalanceYTD)\nWHERE CAFP.ProductId LIKE ('09%')\nAND FPA.FcbsApplicationId IN ('CAA','SBA','TDA')\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

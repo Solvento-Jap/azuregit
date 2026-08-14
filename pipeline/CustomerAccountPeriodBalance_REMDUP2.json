@@ -1,0 +1,435 @@
+{
+	"name": "CustomerAccountPeriodBalance_REMDUP2",
+	"properties": {
+		"activities": [
+			{
+				"name": "Create BU",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Count Dups",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": " select\n[CustomerAccountId]\n,[PeriodBalanceTypeId]\n,[PeriodStartDate]\n,[PeriodEndDate]\n,[BillingCycleId]\n,[BalanceAmount]\n,[IsoCurrencyCode]\n,[FinancialInstitutionId]\n,[PeriodMonthYear]\n,[PeriodQuarterYear]\n,[SourceSystemCode]\n,[taskrunid]\n,[workflowid]\n,[insertdttm]\ninto [BNKM].CustomerAccountPeriodBalance_BU_20231206\n FROM [BNKM].[CustomerAccountPeriodBalance]\n group by\n[CustomerAccountId]\n,[PeriodBalanceTypeId]\n,[PeriodStartDate]\n,[PeriodEndDate]\n,[BillingCycleId]\n,[BalanceAmount]\n,[IsoCurrencyCode]\n,[FinancialInstitutionId]\n,[PeriodMonthYear]\n,[PeriodQuarterYear]\n,[SourceSystemCode]\n,[taskrunid]\n,[workflowid]\n,[insertdttm]"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Create Temp",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Create BU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT ROW_NUMBER() OVER(PARTITION BY  CustomerAccountId, PeriodBalanceTypeId,PeriodStartDate, FinancialInstitutionId, SourceSystemCode ORDER BY CustomerAccountId DESC, INSERTDTTM DESC ) RN , \r\n* INTO Bnkm.CustomerAccountPeriodBalance_WITH_DUP_20231206  \r\nFROM bnkm.CustomerAccountPeriodBalance_BU_20231206;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Count temp dups",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Create Temp",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "Select count(1) CNT from bnkm.CustomerAccountPeriodBalance_WITH_DUP_20231206;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Count BU",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Count temp dups",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "Select count(1) CNT from bnkm.CustomerAccountPeriodBalance_BU_20231206;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Truncate BU",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Count BU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "truncate table Bnkm.CustomerAccountPeriodBalance_BU_20231206;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Insert",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Truncate BU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "INSERT INTO bnkm.CustomerAccountPeriodBalance_BU_20231206 --Target table to remove duplicate\r\n(\r\n[CustomerAccountId]\r\n,[PeriodBalanceTypeId]\r\n,[PeriodStartDate]\r\n,[PeriodEndDate]\r\n,[BillingCycleId]\r\n,[BalanceAmount]\r\n,[IsoCurrencyCode]\r\n,[FinancialInstitutionId]\r\n,[PeriodMonthYear]\r\n,[PeriodQuarterYear]\r\n,[SourceSystemCode]\r\n,[taskrunid]\r\n,[workflowid]\r\n,[insertdttm]\r\n)\r\nSELECT  \r\n[CustomerAccountId]\r\n,[PeriodBalanceTypeId]\r\n,[PeriodStartDate]\r\n,[PeriodEndDate]\r\n,[BillingCycleId]\r\n,[BalanceAmount]\r\n,[IsoCurrencyCode]\r\n,[FinancialInstitutionId]\r\n,[PeriodMonthYear]\r\n,[PeriodQuarterYear]\r\n,[SourceSystemCode]\r\n,[taskrunid]\r\n,[workflowid]\r\n,[insertdttm]\r\nFROM Bnkm.CustomerAccountPeriodBalance_WITH_DUP_20231206 -- Name of backup table to store duplicate records\r\nWHERE RN = 1;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "True BU",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Insert",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "rename object bnkm.CustomerAccountPeriodBalance to CustomerAccountPeriodBalance_BU_20231206_2;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "True Target",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "True BU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "rename object bnkm.CustomerAccountPeriodBalance_BU_20231206 to CustomerAccountPeriodBalance;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Check for dups",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "True Target",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT  CustomerAccountId, PeriodBalanceTypeId,PeriodStartDate, FinancialInstitutionId,SOURCESYSTEMCODE, count(1) CNT\nFROM bnkm.CustomerAccountPeriodBalance\nGROUP BY CustomerAccountId, PeriodBalanceTypeId,PeriodStartDate, FinancialInstitutionId,SOURCESYSTEMCODE\nHAVING count(1) > 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Count With_Dup Records",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Check for dups",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(*) CNT FROM Bnkm.CustomerAccountPeriodBalance_WITH_DUP_20231206;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Count Target Records",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Count With_Dup Records",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(*) CNT FROM Bnkm.CustomerAccountPeriodBalance;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Count Dups",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT  CustomerAccountId, PeriodBalanceTypeId,PeriodStartDate, FinancialInstitutionId,SOURCESYSTEMCODE, count(1) CNT\nFROM bnkm.CustomerAccountPeriodBalance\nGROUP BY CustomerAccountId, PeriodBalanceTypeId,PeriodStartDate, FinancialInstitutionId,SOURCESYSTEMCODE\nHAVING count(1) > 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-03-19T13:44:32Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

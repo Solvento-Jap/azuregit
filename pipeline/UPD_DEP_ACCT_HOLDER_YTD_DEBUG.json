@@ -1,0 +1,111 @@
+{
+	"name": "UPD_DEP_ACCT_HOLDER_YTD_DEBUG",
+	"properties": {
+		"activities": [
+			{
+				"name": "BU_DEP_ACCT_HOLDER",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nCREATE TABLE D360.DEPOSITS_ACCOUNT_HOLDER_BU_20240716\r\nWITH(\r\n    DISTRIBUTION = ROUND_ROBIN,\r\n    HEAP\r\n) AS\r\nSELECT *  FROM eds.DEPOSITS_ACCOUNT_HOLDER\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "UPD_DEP_ACCT_HOLDER_YTD",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "BU_CHECK",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "UPDATE DAH\r\nSET\r\nYTD_BANK_ID =   YTD.BANK_ID\r\n,YTD_ACID    =   YTD.ACID\r\n,PREVIOUS_CURRBAL    =   YTD.PREVIOUS_CURRBAL\r\n,PREVIOUS_CLEARBAL   =   YTD.PREVIOUS_CLEARBAL\r\n,CURRENT_EOD_DATE    =   YTD.CURRENT_EOD_DATE\r\n,ACCUMULATED_CURRBAL =   YTD.ACCUMULATED_CURRBAL\r\n,ACCUMULATED_CLEARBAL    =   YTD.ACCUMULATED_CLEARBAL\r\n,YTD_BNK_CODE    =   YTD.BNK_CODE\r\n,YTD_SOURCE_CODE =   YTD.SOURCE_CODE\r\n,YTD_FILE_NAME   =   YTD.FILE_NAME\r\n,YTD_INSERT_DTTM =   YTD.INSERT_DTTM\r\n,YEAR_TO_DATE_AVERAGE_DAILY_BALANCE = YTD.ACCUMULATED_CURRBAL/DT.DAYOFYEAR\r\n,YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP = YTD.ACCUMULATED_CURRBAL/DT.DAYOFYEAR\r\n---Need to be derived: DAH.YTD_BUSINESS_DATE    =   YTD.BUSINESS_DATE\r\nFROM eds.DEPOSITS_ACCOUNT_HOLDER DAH\r\n    INNER JOIN\r\n            (SELECT *\r\n            ,ROW_NUMBER() OVER (PARTITION BY CURRENT_EOD_DATE, ACID, BANK_ID ORDER BY ACID) RN\r\n            FROM busc.DEP_YTDDEPAGGRBALANCES\r\n            WHERE CURRENT_EOD_DATE IN ('2024-01-31', '2024-02-29')\r\n            ) YTD\r\n        ON DAH.AAS_ACID = YTD.ACID\r\n        AND DAH.AAS_BANK_ID = YTD.BANK_ID\r\n        AND DAH.AAS_AS_OF_DATE = YTD.CURRENT_EOD_DATE\r\n        AND YTD.RN = 1\r\n    LEFT JOIN eds.DATE_DIM DT\r\n        ON DAH.AAS_AS_OF_DATE = DT.FULLDATE\r\n    WHERE DAH.AAS_AS_OF_DATE IN ('2024-01-31', '2024-02-29')\r\nAND DAH.ACCT_CRNCY_CODE = 'PHP'\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "BU_CHECK",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "BU_DEP_ACCT_HOLDER",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT, 'D360' TBLS FROM D360.DEPOSITS_ACCOUNT_HOLDER_BU_20240716 \r\nUNION ALL\r\nSELECT COUNT(1) CNT, 'EDS' TBLS FROM eds.DEPOSITS_ACCOUNT_HOLDER"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-07-16T08:49:55Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

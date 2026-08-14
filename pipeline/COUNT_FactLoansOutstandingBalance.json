@@ -1,0 +1,364 @@
+{
+	"name": "COUNT_FactLoansOutstandingBalance",
+	"properties": {
+		"description": "08/31/2023 - Ito yung may nacount",
+		"activities": [
+			{
+				"name": "LOAD_factlnsoutstdbal_Balance",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DROP_temptables",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "WITH Cnt_DimCustomerAccount AS(\nSELECT\nAccountID,\nCOUNT(ShareIndicator) AS CNT\nFROM DW.dimcustomeraccount WHERE ShareIndicator = 'y'\nGROUP BY AccountID\n)\n,Balance AS (\n        SELECT\n        CONVERT(VARCHAR,BRPP.DemandEffectiveDate,112) AS BusinessDateSK\n        ,DDB.BranchSK AS BranchSK\n        ,DDBK.BankSK AS BankSK\n        ,DDA.AccountSK AS AccountSK\n        ,DDA.AccountId AS AccountId\n        ,0 AS WorkFlowId\n        ,0 AS TaskRunId\n        ,Getdate() AS InsertDttm\n        ,BRPP.IsoCurrencyCode\n        ,BRPP.FinancialInstitutionId\n        ,BRPP.DemandFlowId\n        ,BRPP.DemandAmount\n        ,CASE WHEN DemandFlowId = 'PRDEM' THEN BRPP.DemandAmount  ELSE 0 END AS AmortizationAmount\n        ,CASE WHEN BRPP.DemandFlowId = 'INDEM' THEN BRPP.DemandAmount  ELSE 0 END AS InterestAmount\n        ,CASE WHEN BRPP.DemandFlowId = 'APDEM' THEN BRPP.DemandAmount  ELSE 0 END AS PenaltyAmount\n        ,ISNULL(NULLIF(DCA.CNT,''),1) CNT\n        ,'LNS' AS SourceSystemCode\n        FROM \n        [BNKM].[RepaymentPlanPayment] BRPP\n        LEFT JOIN [BNKM].[CustomerAccount] BCA ON BRPP.CustomerAccountId = BCA.CustomerAccountId\n        LEFT JOIN [DW].[DimBranch] DDB ON BCA.BranchId = DDB.BranchID AND DDB.CurrentIndicator = 1\n        LEFT JOIN [DW].[DimBank] DDBK ON BRPP.FinancialInstitutionId = DDBK.BankID\n        LEFT JOIN [DW].[DimAccount] DDA ON BRPP.CustomerAccountId = DDA.AccountID AND DDA.CurrentIndicator = 1\n        LEFT JOIN Cnt_DimCustomerAccount DCA ON DCA.AccountId = BRPP.CustomerAccountId\n)\nSELECT * INTO dw.factlnsoutstdbal_Balance FROM Balance;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "LOAD_factlnsoutstdbal_join_balance",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "COUNT_factlnsoutstdbal_Balance",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "with GetMinMaxDate AS (\nSELECT \n    BranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n    ,SourceSystemCode\n    ,convert(DATE, MIN(BusinessDateSK)) AS min_date\n    ,CONVERT(DATE, MAX(BusinessDateSK)) AS max_date \n    ,DemandFlowId\n  FROM \n     dw.factlnsoutstdbal_Balance\nWHERE (BranchSK IS NOT NULL\n    AND BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL) AND BusinessDateSK between '20230626' and '20230703' \n\tGROUP BY BranchSK ,BankSK ,AccountSK ,AccountID ,SourceSystemCode,DemandFlowId\n)\n,FullDateBalance AS (\nSELECT \n\tBranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n\t,SourceSystemCode\n    ,CONVERT(VARCHAR,fulldate,112) AS fulldate2\n    ,a.FullDate\n    ,b.min_date \n    ,b.max_date\n    ,DemandFlowId\n  FROM \n    dw.dimdate a \n    LEFT JOIN GetMinMaxDate b\n\tON a.FullDate >= b.min_date \n    AND a.FullDate <= b.max_date \nWHERE (BranchSK IS NOT NULL\n    AND BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL)\n)\n,distinct_balance AS (\nSELECT DISTINCT \n    BranchSK, BankSK, AccountSK, AccountId, BusinessDateSK, SourceSystemCode, WorkFlowId, TaskRunId, InsertDttm ,CNT  ,DemandFlowId ,DemandAmount, IsoCurrencyCode, FinancialInstitutionId, AmortizationAmount, InterestAmount, PenaltyAmount\nFROM  dw.factlnsoutstdbal_Balance b\nWHERE (BranchSK IS NOT NULL\n    AND BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL)\n)\n,join_balance as (\nselect \n CONVERT(VARCHAR,CONVERT(DATE,ISNULL(b.BusinessDateSK, a.FullDate)),112)  AS BusinessDateSK\n,ISNULL(b.BranchSK,a.BranchSK) AS BranchSK\n,ISNULL(b.BankSK,a.BankSK) AS BankSK\n,ISNULL(b.AccountSK,a.AccountSK) AS AccountSK\n,ISNULL(b.AccountId,a.AccountId) AS AccountId\n,ISNULL(b.SourceSystemCode,a.SourceSystemCode) AS SourceSystemCode\n,ISNULL(b.WorkFlowId,0) AS WorkFlowId\n,ISNULL(b.TaskRunId,0) AS TaskRunId\n,ISNULL(b.InsertDttm,getdate()) AS InsertDttm                           \n,IsoCurrencyCode\n,FinancialInstitutionId\n,DemandAmount\n,ISNULL(b.DemandFlowId,a.DemandFlowId) AS DemandFlowId    \n,AmortizationAmount\n,InterestAmount\n,PenaltyAmount\n,CNT\n,ROW_NUMBER() OVER (PARTITION BY a.BankSK,a.AccountId,A.DemandFlowId ORDER BY a.FullDate ) AS Row#\n, case when [DemandAmount] is null OR [DemandAmount] = 0 then 0 else 1 end as ChangeIndicator\nFROM FullDateBalance a\nLEFT JOIN DISTINCT_BALANCE b\n    ON a.BranchSK = b.BranchSK\n    AND a.BankSK = b.BankSK\n    AND a.AccountSK = b.AccountSK\n    AND a.AccountID = b.AccountID\n    AND a.fulldate2 = b.BusinessDateSK\n    AND a.SourceSystemCode = b.SourceSystemCode\n    AND a.DemandFlowId = b.DemandFlowId\n)\nSELECT * INTO dw.factlnsoutstdbal_join_balance FROM join_balance;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "LOAD_factlnsoutstdbal_rowgrp",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "COUNT_factlnsoutstdbal_join_balance",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "SELECT\r\n    *\r\n    ,SUM(ChangeIndicator) OVER (PARTITION BY BankSK,AccountId,DemandFlowId ORDER BY Row#) RowGroup\r\nINTO DW.factlnsoutstdbal_rowgrp\r\nFROM dw.factlnsoutstdbal_join_balance;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "LOAD_factlnsoutstdbal_final_balance",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "COUNT_factlnsoutstdbal_rowgrp",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "with final_balance as (\nselect \nBusinessDateSK\n,BranchSK\n,BankSK\n,AccountSK\n,AccountId\n,case when IsoCurrencyCode is not null then IsoCurrencyCode else first_value(IsoCurrencyCode) over (partition by RowGroup,AccountId,BankSK,DemandFlowId ORDER BY Row#) end IsoCurrencyCode\n,case when FinancialInstitutionId is not null then FinancialInstitutionId else first_value(FinancialInstitutionId) over (partition by RowGroup,AccountId,BankSK,DemandFlowId ORDER BY Row#) end FinancialInstitutionId\n,case when [DemandAmount] is not null then DemandAmount else first_value(DemandAmount) over (partition by RowGroup,AccountId,BankSK,DemandFlowId ORDER BY Row#) end DemandAmount\n,case when [CNT] is not null then CNT else first_value(CNT) over (partition by RowGroup,AccountId,BankSK,DemandFlowId ORDER BY Row#) end CNT\n,case when [AmortizationAmount] is not null then AmortizationAmount else first_value(AmortizationAmount) over (partition by RowGroup,AccountId,BankSK,DemandFlowId ORDER BY Row#) end AmortizationAmount\n,case when [PenaltyAmount] is not null then PenaltyAmount else first_value(PenaltyAmount) over (partition by RowGroup,AccountId,BankSK,DemandFlowId ORDER BY Row#) end PenaltyAmount\n,case when [InterestAmount] is not null then InterestAmount else first_value(InterestAmount) over (partition by RowGroup,AccountId,BankSK,DemandFlowId ORDER BY Row#) end InterestAmount\n,SourceSystemCode\n,WorkFlowId\n,TaskRunId\n,InsertDttm                           \nfrom dw.factlnsoutstdbal_rowgrp\n) \nSELECT * INTO dw.factlnsoutstdbal_final_balance FROM final_balance;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "COUNT_maintabletofact",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "COUNT_factlnsoutstdbal_final_balance",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH CurrencyConversion AS (\n    SELECT * FROM BNKM.CurrencyConversion_FillGapDates WHERE ConvertToCurrencyId = 'PHP' AND RateId = 'REV'\n)\n,Cnt_DimCustomerAccount AS (\nselect Accountid,\ncount(shareindicator) as CNT\n from dw.dimcustomeraccount where shareindicator = 'y'\n group by accountid\n)\n,Main AS (\nSELECT \nCONVERT(VARCHAR,CONVERT(DATE,BRPP.BusinessDateSK),112) AS BusinessDateSK\n,BranchSK\n,BankSK\n,AccountSK\n,BRPP.AccountId\n,SUM(AmortizationAmount) AS AmortizationAmount\n,SUM(InterestAmount) AS InterestAmount\n,SUM(PenaltyAmount) AS PenaltyAmount\n,SUM(AmortizationAmount) + SUM(InterestAmount) + SUM(PenaltyAmount) AS OutstandingBalanceFull\n,(SUM(AmortizationAmount) + SUM(InterestAmount) + SUM(PenaltyAmount) ) / ISNULL(NULLIF(DCA.CNT,''),1)  AS OutstandingBalanceProrated\n,'LNS' AS SourceSystemCode\n,0 AS WorkFlowId\n,0 AS TaskRunId\n,Getdate() AS InsertDttm\nFROM (\nselect\n BusinessDateSK\n,BranchSK\n,BankSK\n,AccountSK\n,AccountId\n,CASE WHEN BRPP.IsoCurrencyCode <> 'PHP' THEN BRPP.AmortizationAmount * CC.ConversionRate ELSE BRPP.AmortizationAmount END AS AmortizationAmount\n,CASE WHEN BRPP.IsoCurrencyCode <> 'PHP' THEN BRPP.InterestAmount * CC.ConversionRate ELSE BRPP.InterestAmount END AS InterestAmount\n,CASE WHEN BRPP.IsoCurrencyCode <> 'PHP' THEN BRPP.PenaltyAmount * CC.ConversionRate ELSE BRPP.PenaltyAmount END AS PenaltyAmount\nFROM dw.factlnsoutstdbal_final_balance   BRPP\nLEFT JOIN CurrencyConversion CC ON  BRPP.IsoCurrencyCode  = CC.ConvertFromCurrencyId AND BRPP.FinancialInstitutionId = CC.FinancialInstitutionId AND CONVERT(VARCHAR,BRPP.BusinessDateSK) = CC.CurrencyConversionTimestamp\n) BRPP\nLEFT JOIN Cnt_DimCustomerAccount DCA ON DCA.AccountId = BRPP.AccountId\nGROUP BY \nBusinessDateSK\n,BranchSK\n,BankSK\n,AccountSK\n,BRPP.AccountId\n,DCA.CNT\n)\nSELECT COUNT(1) AS Main\nFROM Main;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DROP_temptables",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "drop table dw.factlnsoutstdbal_Balance\ndrop table dw.factlnsoutstdbal_join_balance\ndrop table dw.factlnsoutstdbal_rowgrp\ndrop table dw.factlnsoutstdbal_final_balance"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "COUNT_factlnsoutstdbal_Balance",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "LOAD_factlnsoutstdbal_Balance",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) AS factlnsoutstdbal_Balance\nFROM DW.factlnsoutstdbal_Balance"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "COUNT_factlnsoutstdbal_join_balance",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "LOAD_factlnsoutstdbal_join_balance",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) AS factlnsoutstdbal_join_balance\nFROM DW.factlnsoutstdbal_join_balance"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "COUNT_factlnsoutstdbal_rowgrp",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "LOAD_factlnsoutstdbal_rowgrp",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) AS factlnsoutstdbal_rowgrp\r\nFROM DW.factlnsoutstdbal_rowgrp"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "COUNT_factlnsoutstdbal_final_balance",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "LOAD_factlnsoutstdbal_final_balance",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) AS factlnsoutstdbal_final_balance\nFROM DW.factlnsoutstdbal_final_balance"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-09-01T05:35:57Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

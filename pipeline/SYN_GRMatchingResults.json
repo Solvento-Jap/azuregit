@@ -1,0 +1,223 @@
+{
+	"name": "SYN_GRMatchingResults",
+	"properties": {
+		"activities": [
+			{
+				"name": "GetMaxDate_SKP",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlServerSource",
+						"sqlReaderQuery": "SELECT MAX(LOAD_DATE) DATE FROM dbo.GlobalMatchResults",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SKP_MathcingResults",
+						"type": "DatasetReference",
+						"parameters": {
+							"TABLENAME": "lobalMatchResults"
+						}
+					}
+				}
+			},
+			{
+				"name": "GetMaxDate_SYN",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "select MAX(insert_dttm) DATE from syn.GLOBAL_CIF_TABLE",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_SYN",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "GlobalMatchResults"
+						}
+					}
+				}
+			},
+			{
+				"name": "If Condition1",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "GetMaxDate_SKP",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "GetMaxDate_SYN",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('GetMaxDate_SKP').output.firstRow.DATE,coalesce(activity('GetMaxDate_SYN').output.firstRow.DATE,'1900-01-01'))\n",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "No update from Global SKP",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GlobalMatch_extract",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlServerSource",
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": "TRUNCATE TABLE SYN.GlobalMatchResults",
+									"allowPolyBase": true,
+									"polyBaseSettings": {
+										"rejectValue": 0,
+										"rejectType": "value",
+										"useTypeDefault": true
+									},
+									"tableOption": "autoCreate",
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									},
+									"path": "data360/dev/sstg_synapse",
+									"enableCompression": true
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "SKP_MathcingResults",
+									"type": "DatasetReference",
+									"parameters": {
+										"TABLENAME": {
+											"value": "GlobalMatchResults",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_SYN",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": {
+											"value": "GlobalMatchResults",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "Global_CIF_Generation",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "GlobalMatch_extract",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[syn].[GLOBALCIFGENERATE]"
+							}
+						},
+						{
+							"name": "Bnkm_CustomerRelatedParty",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "Global_CIF_Generation",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[BNKM].[SP_CUSTOMERRELATEDPARTY_SYN]"
+							}
+						}
+					]
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-04-24T01:49:03Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

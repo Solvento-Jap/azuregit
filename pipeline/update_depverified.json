@@ -1,0 +1,75 @@
+{
+	"name": "update_depverified",
+	"properties": {
+		"activities": [
+			{
+				"name": "Script1",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\n\r\nALTER TABLE [DW].[RefDepositVerifiedAccounts] \r\nADD SCHM_TYPE VARCHAR(10)\r\n\r\nALTER TABLE [DW].[RefDepositVerifiedAccounts] \r\nADD SCHM_CODE VARCHAR(10)"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script2",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "SET ANSI_NULLS ON\r\nGO\r\nSET QUOTED_IDENTIFIER ON\r\nGO\r\n\r\nALTER PROC [DW].[SP_DW_RefDepositVerifiedAccounts] @DatetoProcessed [DATE] AS\r\nBEGIN\r\n\r\nTRUNCATE TABLE [DW].[RefDepositVerifiedAccounts];\r\n\r\nWITH CTE AS (\r\nSELECT \r\nFORACID\r\n, ACCT_OPN_DATE\r\n, ISLATEST\r\n, ENTITY_CRE_FLG\r\n, BNK_CODE\r\n, FILE_NAME\r\n, SCHM_TYPE\r\n, SCHM_CODE\r\n, 0 WorkFlowI\r\n, 0 TaskRunId\r\n, CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) InsertDttm\r\n, ROW_NUMBER () OVER(PARTITION BY FORACID,BANK_ID ORDER BY LEFT(RIGHT(FILE_NAME ,12),8) DESC) RN\r\nFROM BUSC.DEP_GENERALACCOUNTMASTER A\r\nWHERE A.ENTITY_CRE_FLG = 'Y' AND A.SCHM_CODE NOT LIKE '09%' AND LEFT(RIGHT(A.FILE_NAME,12),8) <= @DatetoProcessed \r\n)\r\n\r\n\r\nINSERT INTO [DW].[RefDepositVerifiedAccounts] \r\n(\r\nFORACID\r\n, ACCT_OPN_DATE\r\n, ISLATEST\r\n, ENTITY_CRE_FLG\r\n, BNK_CODE\r\n, FILE_NAME\r\n, SCHM_TYPE\r\n, SCHM_CODE\r\n, WorkFlowId\r\n, TaskRunId\r\n, InsertDttm \r\n)\r\nSELECT \r\nFORACID\r\n, ACCT_OPN_DATE\r\n, 1\r\n, ENTITY_CRE_FLG\r\n, BNK_CODE\r\n, FILE_NAME\r\n, SCHM_TYPE\r\n, SCHM_CODE\r\n, 0\r\n, 0\r\n, InsertDttm\r\nFROM CTE WHERE RN = 1\r\n\r\n\r\n\r\n\r\nEND\r\nGO\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-02-02T11:34:07Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,111 @@
+{
+	"name": "StgTo_EDS_ATM_CASHCARDACCOUNT",
+	"properties": {
+		"activities": [
+			{
+				"name": "ATM_CASHCARDACCOUNT_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": {
+							"value": "@concat('SELECT COUNT(1)CNT FROM D360.STG_EDS_', pipeline().parameters.tables,' WHERE H = ''D''')",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": {
+								"value": "@concat('STG_EDS_', pipeline().parameters.tables)",
+								"type": "Expression"
+							}
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "ATM_CASHCARDACCOUNT_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('ATM_CASHCARDACCOUNT_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "ATM_CASHCARDACCOUNT",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"type": "NonQuery",
+										"text": "\nTRUNCATE TABLE d360.STG_EDS_ATM_CASHCARDACCOUNT_SELECT_SRC;\n\nINSERT INTO d360.STG_EDS_ATM_CASHCARDACCOUNT_SELECT_SRC\n( \n                CAC_ID\n                ,CAC_UUID\n                ,CAC_CLT_ID\n                ,CAC_ACCOUNT_NUMBER\n                ,CAC_BAT_ID\n                ,CAC_STS_ID\n                ,CAC_CREATED_BY\n                ,CAC_CREATED_TS\n                ,CAC_UPDATED_BY\n                ,CAC_UPDATED_TS\n                ,CAC_BRN_ID\n                ,CAC_PRS_ID\n                ,CAC_AUDIT_LOG\n                ,CAC_INS_ID\n                ,CAC_ACCOUNT_NUMBER_MASKED\n                ,CAC_KEY_ROTATION_NUMBER\n                ,FILE_NAME\n\t\t\t\t,JSRC_FLG \n\t\t\t\t,JTAR_FLG \n)\n\n\nSELECT \n                CAC_ID\n                ,CAC_UUID\n                ,CAC_CLT_ID\n                ,CAC_ACCOUNT_NUMBER\n                ,CAC_BAT_ID\n                ,CAC_STS_ID\n                ,CAC_CREATED_BY\n                ,CAC_CREATED_TS\n                ,CAC_UPDATED_BY\n                ,CAC_UPDATED_TS\n                ,CAC_BRN_ID\n                ,CAC_PRS_ID\n                ,CAC_AUDIT_LOG\n                ,CAC_INS_ID\n                ,CAC_ACCOUNT_NUMBER_MASKED\n                ,CAC_KEY_ROTATION_NUMBER\n                ,FILE_NAME\n\t\t\t\t,1 AS JSRC_FLG \n\t\t\t\t,0 AS JTAR_FLG \n\t\t\tFROM [d360].[STG_EDS_ATM_CASHCARDACCOUNT]\n            WHERE H = 'D';\n\n\nINSERT INTO d360.STG_EDS_ATM_CASHCARDACCOUNT_SELECT_SRC\n(\n                CAC_ID\n                ,CAC_UUID\n                ,CAC_CLT_ID\n                ,CAC_ACCOUNT_NUMBER\n                ,CAC_BAT_ID\n                ,CAC_STS_ID\n                ,CAC_CREATED_BY\n                ,CAC_CREATED_TS\n                ,CAC_UPDATED_BY\n                ,CAC_UPDATED_TS\n                ,CAC_BRN_ID\n                ,CAC_PRS_ID\n                ,CAC_AUDIT_LOG\n                ,CAC_INS_ID\n                ,CAC_ACCOUNT_NUMBER_MASKED\n                ,CAC_KEY_ROTATION_NUMBER\n                ,FILE_NAME\n\t\t\t\t,JSRC_FLG \n\t\t\t\t,JTAR_FLG \n)\n\t\t\tSELECT \t\t\t\t\n                 CC.CAC_ID\n                ,CC.CAC_UUID\n                ,CC.CAC_CLT_ID\n                ,CC.CAC_ACCOUNT_NUMBER\n                ,CC.CAC_BAT_ID\n                ,CC.CAC_STS_ID\n                ,CC.CAC_CREATED_BY\n                ,CC.CAC_CREATED_TS\n                ,CC.CAC_UPDATED_BY\n                ,CC.CAC_UPDATED_TS\n                ,CC.CAC_BRN_ID\n                ,CC.CAC_PRS_ID\n                ,CC.CAC_AUDIT_LOG\n                ,CC.CAC_INS_ID\n                ,CC.CAC_ACCOUNT_NUMBER_MASKED\n                ,CC.CAC_KEY_ROTATION_NUMBER\n                ,CC.FILE_NAME\n\t\t        ,0 AS JSRC_FLG \n\t\t\t\t,1 AS JTAR_FLG \n\t\t\tFROM EDS.ATM_CASHCARDACCOUNT CC\n            JOIN d360.STG_EDS_ATM_CASHCARDACCOUNT B\n            ON CC.CAC_ID  = B.CAC_ID \n            AND LEFT(CC.FILE_NAME, 5) = LEFT(B.FILE_NAME, 5)\n\t\t\tWHERE CC.ISLATEST = '1';\n\t\n\n\nTRUNCATE TABLE d360.STG_EDS_ATM_CASHCARDACCOUNT_GROUP_SRC;\n\nINSERT INTO d360.STG_EDS_ATM_CASHCARDACCOUNT_GROUP_SRC\n(\n                CAC_ID\n                ,CAC_UUID\n                ,CAC_CLT_ID\n                ,CAC_ACCOUNT_NUMBER\n                ,CAC_BAT_ID\n                ,CAC_STS_ID\n                ,CAC_CREATED_BY\n                ,CAC_CREATED_TS\n                ,CAC_UPDATED_BY\n                ,CAC_UPDATED_TS\n                ,CAC_BRN_ID\n                ,CAC_PRS_ID\n                ,CAC_AUDIT_LOG\n                ,CAC_INS_ID\n                ,CAC_ACCOUNT_NUMBER_MASKED\n                ,CAC_KEY_ROTATION_NUMBER\n                ,FILE_NAME\n\t\t\t\t,JSRC_FLG_CNT\n\t\t\t\t,JTAR_FLG_CNT \n\t\t\t\t,FILE_DATE\n)\n\nselect \n                CAC_ID\n                ,CAC_UUID\n                ,CAC_CLT_ID\n                ,CAC_ACCOUNT_NUMBER\n                ,CAC_BAT_ID\n                ,CAC_STS_ID\n                ,CAC_CREATED_BY\n                ,CAC_CREATED_TS\n                ,CAC_UPDATED_BY\n                ,CAC_UPDATED_TS\n                ,CAC_BRN_ID\n                ,CAC_PRS_ID\n                ,CAC_AUDIT_LOG\n                ,CAC_INS_ID\n                ,CAC_ACCOUNT_NUMBER_MASKED\n                ,CAC_KEY_ROTATION_NUMBER\n\t\t\t\t,FILE_NAME\n\t\t\t\t,JSRC_FLG_CNT \n\t\t\t\t,JTAR_FLG_CNT\n\t\t\t\t,CAST(LEFT(RIGHT(FILE_NAME , 12), 8) AS DATE) FILE_DATE\nfrom \n(\n\tSELECT \t\t\t\t\n                CAC_ID\n                ,CAC_UUID\n                ,CAC_CLT_ID\n                ,CAC_ACCOUNT_NUMBER\n                ,CAC_BAT_ID\n                ,CAC_STS_ID\n                ,CAC_CREATED_BY\n                ,CAC_CREATED_TS\n                ,CAC_UPDATED_BY\n                ,CAC_UPDATED_TS\n                ,CAC_BRN_ID\n                ,CAC_PRS_ID\n                ,CAC_AUDIT_LOG\n                ,CAC_INS_ID\n                ,CAC_ACCOUNT_NUMBER_MASKED\n                ,CAC_KEY_ROTATION_NUMBER\n\t\t\t\t,MAX(FILE_NAME) FILE_NAME\n\t\t\t\t,SUM(JSRC_FLG) AS JSRC_FLG_CNT \n\t\t\t\t,SUM(JTAR_FLG) AS JTAR_FLG_CNT\n\tFROM d360.STG_EDS_ATM_CASHCARDACCOUNT_SELECT_SRC\n\tGROUP BY \t\t\t\t\t\n                CAC_ID\n                ,CAC_UUID\n                ,CAC_CLT_ID\n                ,CAC_ACCOUNT_NUMBER\n                ,CAC_BAT_ID\n                ,CAC_STS_ID\n                ,CAC_CREATED_BY\n                ,CAC_CREATED_TS\n                ,CAC_UPDATED_BY\n                ,CAC_UPDATED_TS\n                ,CAC_BRN_ID\n                ,CAC_PRS_ID\n                ,CAC_AUDIT_LOG\n                ,CAC_INS_ID\n                ,CAC_ACCOUNT_NUMBER_MASKED\n                ,CAC_KEY_ROTATION_NUMBER\n\tHAVING ( SUM(JSRC_FLG) > 0 AND SUM(JTAR_FLG) = 0 ) OR ( SUM(JSRC_FLG) = 0 AND SUM(JTAR_FLG) = 1) \n) AS TEMP\n\n\nDECLARE @PREVIOUS_BUSINESS_DAY AS DATE\nSELECT @PREVIOUS_BUSINESS_DAY = PREVIOUS_BUSINESS_DAY FROM EDS.DATE_DIM \nINNER JOIN (SELECT TOP 1 CAST(LEFT(RIGHT(FILE_NAME, 12), 8) AS INTEGER) MX_DT FROM [d360].[STG_EDS_ATM_CASHCARDACCOUNT]) MX_DT_TBL\nON DATESK = MX_DT;\t\n\n\nUPDATE A\nSET\nSCD_END_DATE = @PREVIOUS_BUSINESS_DAY\n, ISLATEST = 0\nFROM EDS.ATM_CASHCARDACCOUNT A \nINNER JOIN d360.STG_EDS_ATM_CASHCARDACCOUNT_GROUP_SRC B ON\nCOALESCE(A.CAC_ID,'-1') = COALESCE(B.CAC_ID,'-1')\nAND COALESCE(LEFT(A.FILE_NAME, 5),'-1') = COALESCE(LEFT(B.FILE_NAME, 5),'-1')\nAND A.ISLATEST = 1\nAND B.JTAR_FLG_CNT = 1\n\n\nINSERT INTO EDS.ATM_CASHCARDACCOUNT\n(\n                CAC_ID\n                ,CAC_UUID\n                ,CAC_CLT_ID\n                ,CAC_ACCOUNT_NUMBER\n                ,CAC_BAT_ID\n                ,CAC_STS_ID\n                ,CAC_CREATED_BY\n                ,CAC_CREATED_TS\n                ,CAC_UPDATED_BY\n                ,CAC_UPDATED_TS\n                ,CAC_BRN_ID\n                ,CAC_PRS_ID\n                ,CAC_AUDIT_LOG\n                ,CAC_INS_ID\n                ,CAC_ACCOUNT_NUMBER_MASKED\n                ,CAC_KEY_ROTATION_NUMBER\n\t\t\t\t,SCD_START_DATE \n\t\t\t\t,SCD_END_DATE \n\t\t\t\t,ISACTIVE\n\t\t\t\t,ISLATEST \n\t\t\t\t,BNK_CODE \n\t\t\t\t,SOURCE_CODE \n\t\t\t\t,FILE_NAME\n\t\t\t\t,insert_dttm\n)\nSELECT\n                 SRC.CAC_ID\n                ,SRC.CAC_UUID\n                ,SRC.CAC_CLT_ID\n                ,SRC.CAC_ACCOUNT_NUMBER\n                ,SRC.CAC_BAT_ID\n                ,SRC.CAC_STS_ID\n                ,SRC.CAC_CREATED_BY\n                ,SRC.CAC_CREATED_TS\n                ,SRC.CAC_UPDATED_BY\n                ,SRC.CAC_UPDATED_TS\n                ,SRC.CAC_BRN_ID\n                ,SRC.CAC_PRS_ID\n                ,SRC.CAC_AUDIT_LOG\n                ,SRC.CAC_INS_ID\n                ,SRC.CAC_ACCOUNT_NUMBER_MASKED\n                ,SRC.CAC_KEY_ROTATION_NUMBER\n\t\t\t\t,SRC.FILE_DATE\n\t\t\t\t,'9999-12-31'\n\t\t\t\t,1\n\t\t\t\t,1\n\t\t\t\t,LEFT(SRC.FILE_NAME, 5)\n\t\t\t\t,'ATM'\n\t\t\t\t,SRC.FILE_NAME\n\t\t\t\t,CURRENT_TIMESTAMP\nFROM d360.STG_EDS_ATM_CASHCARDACCOUNT_GROUP_SRC SRC\nWHERE JSRC_FLG_CNT > 0\n\n"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"tables": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-07-02T07:39:04Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

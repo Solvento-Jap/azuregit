@@ -1,0 +1,20 @@
+{
+	"name": "currency_gapdates",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "CREATE PROC BNKM.SP_CurrencyConversion_FillGapDates\nAS\nBEGIN\n\nIF EXISTS(SELECT * FROM sys.tables WHERE [name] like '%CurrencyConversion_FillGapDates%') \nBEGIN\n   DROP TABLE bnkm.CurrencyConversion_FillGapDates;\nEND;\n\n\nwith CurrencyConversion\nAS(\n    SELECT * FROM BNKM.CurrencyConversion WHERE ConvertToCurrencyId = 'PHP' AND RateId = 'REV' )\n\n\n,GetMinMaxDate AS (\nSELECT \n\tConvertFromCurrencyId,\n\tConvertToCurrencyId,\n\tExchangeRateTypeId,\n    RateId, \n    FinancialInstitutionId,\n    SourceCode,\n    convert(DATE, MIN(CurrencyConversionTimestamp)) AS min_date,\n    CONVERT(DATE, MAX(CurrencyConversionTimestamp)) AS max_date \n  FROM \n    CurrencyConversion\n    GROUP BY ConvertFromCurrencyId, ConvertToCurrencyId, ExchangeRateTypeId, RateId,  FinancialInstitutionId, SourceCode\n)\n,FullDate AS (\nSELECT \n\tb.ConvertFromCurrencyId,\n\tb.ConvertToCurrencyId,\n\tb.ExchangeRateTypeId,\n    b.RateId, \n    b.FinancialInstitutionId,\n    b.SourceCode,\n\tCONVERT(VARCHAR,a.FullDate,112) AS FullDate2,\n    a.FullDate, \n    b.min_date, \n    b.max_date \n  FROM \n    dw.dimdate a \n    LEFT JOIN GetMinMaxDate b\n\tON a.FullDate >= b.min_date \n    AND a.FullDate <= b.max_date \n  WHERE b.ConvertFromCurrencyId IS NOT NULL\n)\n\n,Distinct_Curr AS (\nSELECT DISTINCT \n ConvertFromCurrencyId ,ConvertToCurrencyId ,ExchangeRateTypeId ,ConversionRate ,CurrencyConversionTimestamp ,RateId ,FinancialInstitutionId,SourceCode ,WorkFlowId ,TaskRunId ,InsertDttm \nFROM CurrencyConversion b\n)\n\n, join_balance as (\nselect \n ISNULL(b.ConvertFromCurrencyId,a.ConvertFromCurrencyId) AS ConvertFromCurrencyId\n,ISNULL(b.ConvertToCurrencyId, a.ConvertToCurrencyId) AS ConvertToCurrencyId\n,ISNULL(b.ExchangeRateTypeId,a.ExchangeRateTypeId) AS ExchangeRateTypeId\n,b.ConversionRate AS ConversionRate\n,ISNULL(b.CurrencyConversionTimestamp,a.FullDate) AS CurrencyConversionTimestamp\n,FullDate2\n,ISNULL(b.RateId,a.RateId) AS RateId\n,ISNULL(b.FinancialInstitutionId,a.FinancialInstitutionId) AS FinancialInstitutionId\n,ISNULL(b.SourceCode,a.SourceCode) AS SourceCode\n,ISNULL(b.WorkFlowId,0) AS WorkFlowId\n,ISNULL(b.TaskRunId,0) AS TaskRunId\n,ISNULL(b.InsertDttm,getdate()) AS InsertDttm                           \nFROM FullDate a\nLEFT JOIN Distinct_Curr b\n    ON b.ConvertFromCurrencyId = a.ConvertFromCurrencyId\n    AND b.ConvertToCurrencyId = a.ConvertToCurrencyId\n    AND b.ExchangeRateTypeId = a.ExchangeRateTypeId\n    AND b.RateId = a.RateId\n    AND a.FullDate = b.CurrencyConversionTimestamp\n    AND b.FinancialInstitutionId = a.FinancialInstitutionId\n    AND b.SourceCode = a.SourceCode\n)\n, get_row as (\nselect *,ROW_NUMBER() OVER (PARTITION BY ConvertFromCurrencyId,FinancialInstitutionId ORDER BY CurrencyConversionTimestamp ) AS Row# \n, case when [ConversionRate] is null then 0 else 1 end as ChangeIndicator\nfrom join_balance\n)\n\n,rowgrp as (\nselect *, Sum(ChangeIndicator) over (PARTITION BY ConvertFromCurrencyId,FinancialInstitutionId ORDER BY Row#) RowGroup from get_row\n)\n\n\n,final_curr as (\nselect \nConvertFromCurrencyId\n,ConvertToCurrencyId\n,CurrencyConversionTimestamp\n,RateId\n,case when [ConversionRate] is not null then ConversionRate else first_value(ConversionRate) over (partition by RowGroup,ConvertFromCurrencyId, ConvertToCurrencyId,FinancialInstitutionId ORDER BY Row#) end ConversionRate\n,FinancialInstitutionId\n,SourceCode\n,WorkFlowId\n,TaskRunId\n,InsertDttm                           \nfrom rowgrp ) \n\nselect * \ninto BNKM.CurrencyConversion_FillGapDates from final_curr ;\n\nEND\nGO\n\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

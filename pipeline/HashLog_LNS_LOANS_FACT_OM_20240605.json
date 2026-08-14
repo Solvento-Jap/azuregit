@@ -1,0 +1,102 @@
+{
+	"name": "HashLog_LNS_LOANS_FACT_OM_20240605",
+	"properties": {
+		"description": "GAM_EAB",
+		"activities": [
+			{
+				"name": "EAB PROCESS",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@contains(pipeline().parameters.tables,'LNS_EODACCTBALFULL')",
+						"type": "Expression"
+					},
+					"ifTrueActivities": [
+						{
+							"name": "HashLog_Loans_Fact_EAB",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testsqlpool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"type": "NonQuery",
+										"text": "\r\nWITH CTE1 \r\nAS(\r\nSELECT convert(numeric(25,5),COUNT(*)) COUNT_tgt\r\n, isnull(sum(convert(numeric(25,5),TRAN_DATE_BAL)),0) TRAN_DATE_BAL_tgt\r\n, isnull(sum(convert(numeric(25,5),VALUE_DATE_BAL)),0) VALUE_DATE_BAL_tgt\r\n, isnull(sum(convert(numeric(25,5),VALUE_DATE_TOT_TRAN)),0) VALUE_DATE_TOT_TRAN_tgt\r\n\r\n, FILE_NAME, INSERT_DTTM \r\nFROM d360.STG_LNS_EODACCTBALFULL WHERE H = 'D'\r\nGROUP BY FILE_NAME, INSERT_DTTM\r\n\r\n)\r\n,\r\nCTE2 AS (\r\nSELECT cast(REPLACE(TRIM(H),'F-','') AS numeric(38,10)) COUNT_src\r\n,cast(TRAN_DATE_BAL AS numeric(38,5)) TRAN_DATE_BAL_src\r\n,cast(VALUE_DATE_BAL AS numeric(38,5)) VALUE_DATE_BAL_src\r\n,cast(VALUE_DATE_TOT_TRAN AS numeric(38,5)) VALUE_DATE_TOT_TRAN_src\r\n\r\n, FILE_NAME, INSERT_DTTM FROM d360.STG_LNS_EODACCTBALFULL WHERE H <> 'D'\r\n)\r\n,\r\nCTE12 as (\r\nSELECT COUNT_SRC, COUNT_TGT\r\n,TRAN_DATE_BAL_src\r\n,VALUE_DATE_BAL_src\r\n,VALUE_DATE_TOT_TRAN_src\r\n,TRAN_DATE_BAL_tgt\r\n,VALUE_DATE_BAL_tgt\r\n,VALUE_DATE_TOT_TRAN_tgt\r\n\r\n, A.FILE_NAME, A.INSERT_DTTM, CONVERT(DATE,(left(right(A.FILE_NAME, 12),8))) DATE FROM CTE1 A\r\nJOIN CTE2 B ON A.FILE_NAME = B.FILE_NAME AND A.INSERT_DTTM = B.INSERT_DTTM\r\n)\r\nSELECT * INTO #CTE12_LNS_EAB from CTE12;\r\n\r\n\r\nINSERT INTO [d360].[HASH_LOG_TBL]\r\nSELECT \r\nFILE_NAME\r\n,DATE\r\n,insert_dttm\r\n,REPLACE(METRICS,'_SRC','') METRICS\r\n,SRC\r\n,TGT \r\n\r\nFROM\r\n(\r\nSELECT\r\n CAST(COUNT_SRC AS numeric(25,5)) COUNT_SRC\r\n,CAST(COUNT_TGT AS numeric(25,5)) COUNT_TGT\r\n,CAST(TRAN_DATE_BAL_src AS numeric(25,5)) TRAN_DATE_BAL_src\r\n,CAST(VALUE_DATE_BAL_src AS numeric(25,5)) VALUE_DATE_BAL_src\r\n,CAST(VALUE_DATE_TOT_TRAN_src AS numeric(25,5)) VALUE_DATE_TOT_TRAN_src\r\n,CAST(TRAN_DATE_BAL_tgt AS numeric(25,5)) TRAN_DATE_BAL_tgt\r\n,CAST(VALUE_DATE_BAL_tgt AS numeric(25,5)) VALUE_DATE_BAL_tgt\r\n,CAST(VALUE_DATE_TOT_TRAN_tgt AS numeric(25,5)) VALUE_DATE_TOT_TRAN_tgt\r\n,FILE_NAME\r\n,INSERT_DTTM\r\n,[DATE]\r\nFROM #CTE12_LNS_EAB\r\n) pvt\r\n\r\nUNPIVOT\r\n(\r\nSRC FOR METRICS IN (COUNT_SRC\r\n,TRAN_DATE_BAL_src\r\n,VALUE_DATE_BAL_src\r\n,VALUE_DATE_TOT_TRAN_src\r\n\r\n )\r\n) pvt1\r\n\r\nUNPIVOT\r\n(\r\nTGT For METRICS2 IN (COUNT_TGT\r\n,TRAN_DATE_BAL_tgt\r\n,VALUE_DATE_BAL_tgt\r\n,VALUE_DATE_TOT_TRAN_tgt\r\n\r\n )\r\n) pvt2\r\n \r\nWHERE REPLACE(METRICS,'_SRC','') = REPLACE(METRICS2,'_TGT','');\r\n\r\n"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "GAM PROCESS",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@contains(pipeline().parameters.tables,'LNS_GENERALACCTMASTFULL')",
+						"type": "Expression"
+					},
+					"ifTrueActivities": [
+						{
+							"name": "HashLog_Loans_Fact_GAM",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testsqlpool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"type": "NonQuery",
+										"text": "\r\nWITH CTE1 \r\nAS(\r\nSELECT convert(numeric(25,5),COUNT(*)) COUNT_tgt\r\n,isnull(sum(convert(numeric(25,5),ADHOC_LIM)),0) ADHOC_LIM_tgt\r\n,isnull(sum(convert(numeric(25,5),BAL_ON_FREZ_DATE)),0) BAL_ON_FREZ_DATE_tgt\r\n,isnull(sum(convert(numeric(25,5),BAL_ON_PURGE_DATE)),0) BAL_ON_PURGE_DATE_tgt\r\n,isnull(sum(convert(numeric(25,5),CLEAN_ADHOC_LIM)),0) CLEAN_ADHOC_LIM_tgt\r\n,isnull(sum(convert(numeric(25,5),CLEAN_EMER_ADVN)),0) CLEAN_EMER_ADVN_tgt\r\n,isnull(sum(convert(numeric(25,5),CLEAN_SINGLE_TRAN_LIM)),0) CLEAN_SINGLE_TRAN_LIM_tgt\r\n,isnull(sum(convert(numeric(25,5),DACC_LIM)),0) DACC_LIM_tgt\r\n,isnull(sum(convert(numeric(25,5),DACC_LIM_ABS)),0) DACC_LIM_ABS_tgt\r\n,isnull(sum(convert(numeric(25,5),DAFA_LIM)),0) DAFA_LIM_tgt\r\n,isnull(sum(convert(numeric(25,5),DAFA_LIM_ABS)),0) DAFA_LIM_ABS_tgt\r\n,isnull(sum(convert(numeric(25,5),DR_BAL_LIM)),0) DR_BAL_LIM_tgt\r\n,isnull(sum(convert(numeric(25,5),DRWNG_POWER)),0) DRWNG_POWER_tgt\r\n,isnull(sum(convert(numeric(25,5),EMER_ADVN)),0) EMER_ADVN_tgt\r\n,isnull(sum(convert(numeric(25,5),FFD_CONTRIB_TO_ACCT)),0) FFD_CONTRIB_TO_ACCT_tgt\r\n,isnull(sum(convert(numeric(25,5),FX_BAL_ON_PURGE_DATE)),0) FX_BAL_ON_PURGE_DATE_tgt\r\n,isnull(sum(convert(numeric(25,5),SANCT_LIM)),0) SANCT_LIM_tgt\r\n,isnull(sum(convert(numeric(25,5),SINGLE_TRAN_LIM)),0) SINGLE_TRAN_LIM_tgt\r\n,isnull(sum(convert(numeric(25,5),SYSTEM_GEN_LIM)),0) SYSTEM_GEN_LIM_tgt\r\n,isnull(sum(convert(numeric(25,5),TARGET_BAL_FOR_SWEEPS)),0) TARGET_BAL_FOR_SWEEPS_tgt\r\n,isnull(sum(convert(numeric(25,5),USED_CLEAN_SINGLE_TRAN_LIM)),0) USED_CLEAN_SINGLE_TRAN_LIM_tgt\r\n,isnull(sum(convert(numeric(25,5),USED_OC_CLN_SINGLE_TRAN_LIM)),0) USED_OC_CLN_SINGLE_TRAN_LIM_tgt\r\n,isnull(sum(convert(numeric(25,5),USED_SINGLE_TRAN_LIM)),0) USED_SINGLE_TRAN_LIM_tgt\r\n,isnull(sum(convert(numeric(25,5),WTAX_FLOOR_LIMIT)),0) WTAX_FLOOR_LIMIT_tgt\r\n\r\n, FILE_NAME, INSERT_DTTM \r\nFROM d360.STG_LNS_GENERALACCTMASTFULL WHERE H = 'D'\r\nGROUP BY FILE_NAME, INSERT_DTTM\r\n\r\n)\r\n,\r\nCTE2 AS (\r\nSELECT REPLACE(H,'F-','') COUNT_src\r\n,ADHOC_LIM ADHOC_LIM_src\r\n,BAL_ON_FREZ_DATE BAL_ON_FREZ_DATE_src\r\n,BAL_ON_PURGE_DATE BAL_ON_PURGE_DATE_src\r\n,CLEAN_ADHOC_LIM CLEAN_ADHOC_LIM_src\r\n,CLEAN_EMER_ADVN CLEAN_EMER_ADVN_src\r\n,CLEAN_SINGLE_TRAN_LIM CLEAN_SINGLE_TRAN_LIM_src\r\n,DACC_LIM DACC_LIM_src\r\n,DACC_LIM_ABS DACC_LIM_ABS_src\r\n,DAFA_LIM DAFA_LIM_src\r\n,DAFA_LIM_ABS DAFA_LIM_ABS_src\r\n,DR_BAL_LIM DR_BAL_LIM_src\r\n,DRWNG_POWER DRWNG_POWER_src\r\n,EMER_ADVN EMER_ADVN_src\r\n,FFD_CONTRIB_TO_ACCT FFD_CONTRIB_TO_ACCT_src\r\n,FX_BAL_ON_PURGE_DATE FX_BAL_ON_PURGE_DATE_src\r\n,SANCT_LIM SANCT_LIM_src\r\n,SINGLE_TRAN_LIM SINGLE_TRAN_LIM_src\r\n,SYSTEM_GEN_LIM SYSTEM_GEN_LIM_src\r\n,TARGET_BAL_FOR_SWEEPS TARGET_BAL_FOR_SWEEPS_src\r\n,USED_CLEAN_SINGLE_TRAN_LIM USED_CLEAN_SINGLE_TRAN_LIM_src\r\n,USED_OC_CLN_SINGLE_TRAN_LIM USED_OC_CLN_SINGLE_TRAN_LIM_src\r\n,USED_SINGLE_TRAN_LIM USED_SINGLE_TRAN_LIM_src\r\n,WTAX_FLOOR_LIMIT WTAX_FLOOR_LIMIT_src\r\n\r\n, FILE_NAME, INSERT_DTTM FROM d360.STG_LNS_GENERALACCTMASTFULL WHERE H <> 'D'\r\n)\r\n,\r\nCTE12 as (\r\nSELECT COUNT_SRC, COUNT_TGT\r\n,ADHOC_LIM_src\r\n,BAL_ON_FREZ_DATE_src\r\n,BAL_ON_PURGE_DATE_src\r\n,CLEAN_ADHOC_LIM_src\r\n,CLEAN_EMER_ADVN_src\r\n,CLEAN_SINGLE_TRAN_LIM_src\r\n,DACC_LIM_src\r\n,DACC_LIM_ABS_src\r\n,DAFA_LIM_src\r\n,DAFA_LIM_ABS_src\r\n,DR_BAL_LIM_src\r\n,DRWNG_POWER_src\r\n,EMER_ADVN_src\r\n,FFD_CONTRIB_TO_ACCT_src\r\n,FX_BAL_ON_PURGE_DATE_src\r\n,SANCT_LIM_src\r\n,SINGLE_TRAN_LIM_src\r\n,SYSTEM_GEN_LIM_src\r\n,TARGET_BAL_FOR_SWEEPS_src\r\n,USED_CLEAN_SINGLE_TRAN_LIM_src\r\n,USED_OC_CLN_SINGLE_TRAN_LIM_src\r\n,USED_SINGLE_TRAN_LIM_src\r\n,WTAX_FLOOR_LIMIT_src\r\n,ADHOC_LIM_tgt\r\n,BAL_ON_FREZ_DATE_tgt\r\n,BAL_ON_PURGE_DATE_tgt\r\n,CLEAN_ADHOC_LIM_tgt\r\n,CLEAN_EMER_ADVN_tgt\r\n,CLEAN_SINGLE_TRAN_LIM_tgt\r\n,DACC_LIM_tgt\r\n,DACC_LIM_ABS_tgt\r\n,DAFA_LIM_tgt\r\n,DAFA_LIM_ABS_tgt\r\n,DR_BAL_LIM_tgt\r\n,DRWNG_POWER_tgt\r\n,EMER_ADVN_tgt\r\n,FFD_CONTRIB_TO_ACCT_tgt\r\n,FX_BAL_ON_PURGE_DATE_tgt\r\n,SANCT_LIM_tgt\r\n,SINGLE_TRAN_LIM_tgt\r\n,SYSTEM_GEN_LIM_tgt\r\n,TARGET_BAL_FOR_SWEEPS_tgt\r\n,USED_CLEAN_SINGLE_TRAN_LIM_tgt\r\n,USED_OC_CLN_SINGLE_TRAN_LIM_tgt\r\n,USED_SINGLE_TRAN_LIM_tgt\r\n,WTAX_FLOOR_LIMIT_tgt\r\n\r\n, A.FILE_NAME, A.INSERT_DTTM, CONVERT(DATE,(left(right(A.FILE_NAME, 12),8))) DATE FROM CTE1 A\r\nJOIN CTE2 B ON A.FILE_NAME = B.FILE_NAME AND A.INSERT_DTTM = B.INSERT_DTTM\r\n)\r\nSELECT * INTO #CTE12_LNS_GAM from CTE12;\r\n\r\n\r\nINSERT INTO [d360].[HASH_LOG_TBL]\r\nSELECT \r\nFILE_NAME\r\n,DATE\r\n,insert_dttm\r\n,REPLACE(METRICS,'_SRC','') METRICS\r\n,SRC\r\n,TGT \r\n\r\nFROM\r\n(\r\nSELECT\r\n CAST(COUNT_SRC AS numeric(25,5)) COUNT_SRC\r\n,CAST(COUNT_TGT AS numeric(25,5)) COUNT_TGT\r\n,CAST(ADHOC_LIM_src AS numeric(25,5)) ADHOC_LIM_src\r\n,CAST(BAL_ON_FREZ_DATE_src AS numeric(25,5)) BAL_ON_FREZ_DATE_src\r\n,CAST(BAL_ON_PURGE_DATE_src AS numeric(25,5)) BAL_ON_PURGE_DATE_src\r\n,CAST(CLEAN_ADHOC_LIM_src AS numeric(25,5)) CLEAN_ADHOC_LIM_src\r\n,CAST(CLEAN_EMER_ADVN_src AS numeric(25,5)) CLEAN_EMER_ADVN_src\r\n,CAST(CLEAN_SINGLE_TRAN_LIM_src AS numeric(25,5)) CLEAN_SINGLE_TRAN_LIM_src\r\n,CAST(DACC_LIM_src AS numeric(25,5)) DACC_LIM_src\r\n,CAST(DACC_LIM_ABS_src AS numeric(25,5)) DACC_LIM_ABS_src\r\n,CAST(DAFA_LIM_src AS numeric(25,5)) DAFA_LIM_src\r\n,CAST(DAFA_LIM_ABS_src AS numeric(25,5)) DAFA_LIM_ABS_src\r\n,CAST(DR_BAL_LIM_src AS numeric(25,5)) DR_BAL_LIM_src\r\n,CAST(DRWNG_POWER_src AS numeric(25,5)) DRWNG_POWER_src\r\n,CAST(EMER_ADVN_src AS numeric(25,5)) EMER_ADVN_src\r\n,CAST(FFD_CONTRIB_TO_ACCT_src AS numeric(25,5)) FFD_CONTRIB_TO_ACCT_src\r\n,CAST(FX_BAL_ON_PURGE_DATE_src AS numeric(25,5)) FX_BAL_ON_PURGE_DATE_src\r\n,CAST(SANCT_LIM_src AS numeric(25,5)) SANCT_LIM_src\r\n,CAST(SINGLE_TRAN_LIM_src AS numeric(25,5)) SINGLE_TRAN_LIM_src\r\n,CAST(SYSTEM_GEN_LIM_src AS numeric(25,5)) SYSTEM_GEN_LIM_src\r\n,CAST(TARGET_BAL_FOR_SWEEPS_src AS numeric(25,5)) TARGET_BAL_FOR_SWEEPS_src\r\n,CAST(USED_CLEAN_SINGLE_TRAN_LIM_src AS numeric(25,5)) USED_CLEAN_SINGLE_TRAN_LIM_src\r\n,CAST(USED_OC_CLN_SINGLE_TRAN_LIM_src AS numeric(25,5)) USED_OC_CLN_SINGLE_TRAN_LIM_src\r\n,CAST(USED_SINGLE_TRAN_LIM_src AS numeric(25,5)) USED_SINGLE_TRAN_LIM_src\r\n,CAST(WTAX_FLOOR_LIMIT_src AS numeric(25,5)) WTAX_FLOOR_LIMIT_src\r\n,CAST(ADHOC_LIM_tgt AS numeric(25,5)) ADHOC_LIM_tgt\r\n,CAST(BAL_ON_FREZ_DATE_tgt AS numeric(25,5)) BAL_ON_FREZ_DATE_tgt\r\n,CAST(BAL_ON_PURGE_DATE_tgt AS numeric(25,5)) BAL_ON_PURGE_DATE_tgt\r\n,CAST(CLEAN_ADHOC_LIM_tgt AS numeric(25,5)) CLEAN_ADHOC_LIM_tgt\r\n,CAST(CLEAN_EMER_ADVN_tgt AS numeric(25,5)) CLEAN_EMER_ADVN_tgt\r\n,CAST(CLEAN_SINGLE_TRAN_LIM_tgt AS numeric(25,5)) CLEAN_SINGLE_TRAN_LIM_tgt\r\n,CAST(DACC_LIM_tgt AS numeric(25,5)) DACC_LIM_tgt\r\n,CAST(DACC_LIM_ABS_tgt AS numeric(25,5)) DACC_LIM_ABS_tgt\r\n,CAST(DAFA_LIM_tgt AS numeric(25,5)) DAFA_LIM_tgt\r\n,CAST(DAFA_LIM_ABS_tgt AS numeric(25,5)) DAFA_LIM_ABS_tgt\r\n,CAST(DR_BAL_LIM_tgt AS numeric(25,5)) DR_BAL_LIM_tgt\r\n,CAST(DRWNG_POWER_tgt AS numeric(25,5)) DRWNG_POWER_tgt\r\n,CAST(EMER_ADVN_tgt AS numeric(25,5)) EMER_ADVN_tgt\r\n,CAST(FFD_CONTRIB_TO_ACCT_tgt AS numeric(25,5)) FFD_CONTRIB_TO_ACCT_tgt\r\n,CAST(FX_BAL_ON_PURGE_DATE_tgt AS numeric(25,5)) FX_BAL_ON_PURGE_DATE_tgt\r\n,CAST(SANCT_LIM_tgt AS numeric(25,5)) SANCT_LIM_tgt\r\n,CAST(SINGLE_TRAN_LIM_tgt AS numeric(25,5)) SINGLE_TRAN_LIM_tgt\r\n,CAST(SYSTEM_GEN_LIM_tgt AS numeric(25,5)) SYSTEM_GEN_LIM_tgt\r\n,CAST(TARGET_BAL_FOR_SWEEPS_tgt AS numeric(25,5)) TARGET_BAL_FOR_SWEEPS_tgt\r\n,CAST(USED_CLEAN_SINGLE_TRAN_LIM_tgt AS numeric(25,5)) USED_CLEAN_SINGLE_TRAN_LIM_tgt\r\n,CAST(USED_OC_CLN_SINGLE_TRAN_LIM_tgt AS numeric(25,5)) USED_OC_CLN_SINGLE_TRAN_LIM_tgt\r\n,CAST(USED_SINGLE_TRAN_LIM_tgt AS numeric(25,5)) USED_SINGLE_TRAN_LIM_tgt\r\n,CAST(WTAX_FLOOR_LIMIT_tgt AS numeric(25,5)) WTAX_FLOOR_LIMIT_tgt\r\n,FILE_NAME\r\n,INSERT_DTTM\r\n,[DATE]\r\nFROM #CTE12_LNS_GAM\r\n) pvt\r\n\r\nUNPIVOT\r\n(\r\nSRC FOR METRICS IN (COUNT_SRC\r\n,ADHOC_LIM_src\r\n,BAL_ON_FREZ_DATE_src\r\n,BAL_ON_PURGE_DATE_src\r\n,CLEAN_ADHOC_LIM_src\r\n,CLEAN_EMER_ADVN_src\r\n,CLEAN_SINGLE_TRAN_LIM_src\r\n,DACC_LIM_src\r\n,DACC_LIM_ABS_src\r\n,DAFA_LIM_src\r\n,DAFA_LIM_ABS_src\r\n,DR_BAL_LIM_src\r\n,DRWNG_POWER_src\r\n,EMER_ADVN_src\r\n,FFD_CONTRIB_TO_ACCT_src\r\n,FX_BAL_ON_PURGE_DATE_src\r\n,SANCT_LIM_src\r\n,SINGLE_TRAN_LIM_src\r\n,SYSTEM_GEN_LIM_src\r\n,TARGET_BAL_FOR_SWEEPS_src\r\n,USED_CLEAN_SINGLE_TRAN_LIM_src\r\n,USED_OC_CLN_SINGLE_TRAN_LIM_src\r\n,USED_SINGLE_TRAN_LIM_src\r\n,WTAX_FLOOR_LIMIT_src\r\n\r\n )\r\n) pvt1\r\n\r\nUNPIVOT\r\n(\r\nTGT For METRICS2 IN (COUNT_TGT\r\n,ADHOC_LIM_tgt\r\n,BAL_ON_FREZ_DATE_tgt\r\n,BAL_ON_PURGE_DATE_tgt\r\n,CLEAN_ADHOC_LIM_tgt\r\n,CLEAN_EMER_ADVN_tgt\r\n,CLEAN_SINGLE_TRAN_LIM_tgt\r\n,DACC_LIM_tgt\r\n,DACC_LIM_ABS_tgt\r\n,DAFA_LIM_tgt\r\n,DAFA_LIM_ABS_tgt\r\n,DR_BAL_LIM_tgt\r\n,DRWNG_POWER_tgt\r\n,EMER_ADVN_tgt\r\n,FFD_CONTRIB_TO_ACCT_tgt\r\n,FX_BAL_ON_PURGE_DATE_tgt\r\n,SANCT_LIM_tgt\r\n,SINGLE_TRAN_LIM_tgt\r\n,SYSTEM_GEN_LIM_tgt\r\n,TARGET_BAL_FOR_SWEEPS_tgt\r\n,USED_CLEAN_SINGLE_TRAN_LIM_tgt\r\n,USED_OC_CLN_SINGLE_TRAN_LIM_tgt\r\n,USED_SINGLE_TRAN_LIM_tgt\r\n,WTAX_FLOOR_LIMIT_tgt\r\n\r\n )\r\n) pvt2\r\n \r\nWHERE REPLACE(METRICS,'_SRC','') = REPLACE(METRICS2,'_TGT','');\r\n\r\n\r\n"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"tables": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-06-05T09:01:24Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

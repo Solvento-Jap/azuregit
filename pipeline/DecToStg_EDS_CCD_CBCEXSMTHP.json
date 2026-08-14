@@ -1,0 +1,1661 @@
+{
+	"name": "DecToStg_EDS_CCD_CBCEXSMTHP",
+	"properties": {
+		"activities": [
+			{
+				"name": "CCD_CBCEXSMTHP_getfile_CBC01",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat(pipeline().parameters.Bank_id,'_',pipeline().parameters.tables,'_*',pipeline().parameters.DateToProcess,'*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/CCD"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "If Condition5",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "CCD_CBCEXSMTHP_getfile_CBC01",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@empty(activity('CCD_CBCEXSMTHP_getfile_CBC01').output.childItems)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "CCD_CBCEXSMTHP",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/CCD",
+										"wildcardFileName": {
+											"value": "@concat('*',pipeline().parameters.tables,'_*',pipeline().parameters.DateToProcess,'*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": {
+										"value": "@concat('TRUNCATE TABLE d360.STG_EDS_',pipeline().parameters.tables)",
+										"type": "Expression"
+									},
+									"allowCopyCommand": true,
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									},
+									"path": "data360/dev/stg_synapse",
+									"enableCompression": true
+								},
+								"enableSkipIncompatibleRow": true,
+								"logSettings": {
+									"enableCopyActivityLog": true,
+									"copyActivityLogSettings": {
+										"logLevel": "Warning",
+										"enableReliableLogging": true
+									},
+									"logLocationSettings": {
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+											"type": "LinkedServiceReference"
+										},
+										"path": {
+											"value": "@concat('data360/dev/Logging/CCD/CCD_CBCEXSMTHP/',substring(replace(replace(replace(addHours(utcnow(),+8),'-',''),'T','_'),':',''),0,15))",
+											"type": "Expression"
+										}
+									}
+								},
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "H",
+												"type": "String"
+											},
+											"sink": {
+												"name": "H",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_BANK_NBR",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_BANK_NBR",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_PDT_NBR",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_PDT_NBR",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_ACCT_NBR",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_ACCT_NBR",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_STMT_DATE",
+												"type": "Date",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "SMTH_STMT_DATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_TXN_NBR",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_TXN_NBR",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CUST_NBR",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CUST_NBR",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CORPORATE_CUST_NBR",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CORPORATE_CUST_NBR",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_CRLIMIT",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_CRLIMIT",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CRLIMIT",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CRLIMIT",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_CASH_LIMIT",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_CASH_LIMIT",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CASH_LIMIT",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CASH_LIMIT",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_AVAIL_CREDIT",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_AVAIL_CREDIT",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_AVAIL_CREDIT",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_AVAIL_CREDIT",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_AVAIL_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_AVAIL_CASH",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_AVAIL_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_AVAIL_CASH",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_BLOCK_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_BLOCK_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_DTE_PYMT_DUE",
+												"type": "Date",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "SMTH_DTE_PYMT_DUE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_CURR_PYMT_DUE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_CURR_PYMT_DUE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CURR_PYMT_DUE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CURR_PYMT_DUE",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_AMT_PAST_DUE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_AMT_PAST_DUE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_AMT_PAST_DUE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_AMT_PAST_DUE",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_STATUS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_STATUS",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_ACCT_STATUS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_ACCT_STATUS",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_STMT_MESG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_STMT_MESG",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_STMT_BAL_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_STMT_BAL_RTL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_STMT_BAL_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_STMT_BAL_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_CURR_BAL_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_CURR_BAL_RTL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CURR_BAL_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CURR_BAL_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_ACCUM_RTL_BAL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_ACCUM_RTL_BAL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_ACCUM_RTL_BAL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_ACCUM_RTL_BAL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_ACCUM_RTL_DAYS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_ACCUM_RTL_DAYS",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_INT_RATE_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_INT_RATE_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_AMT_DB_PUR_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_AMT_DB_PUR_RTL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_AMT_DB_PUR_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_AMT_DB_PUR_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_NBR_DB_PUR_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_NBR_DB_PUR_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_AMT_CR_PUR_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_AMT_CR_PUR_RTL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_AMT_CR_PUR_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_AMT_CR_PUR_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_NBR_CR_PUR_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_NBR_CR_PUR_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_AMT_DB_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_AMT_DB_RTL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_AMT_DB_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_AMT_DB_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_NBR_DB_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_NBR_DB_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_AMT_CR_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_AMT_CR_RTL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_AMT_CR_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_AMT_CR_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_NBR_CR_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_NBR_CR_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_CTD_PYMT_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_CTD_PYMT_RTL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CTD_PYMT_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CTD_PYMT_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_CTD_PYMT_REV_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_CTD_PYMT_REV_RTL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CTD_PYMT_REV_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CTD_PYMT_REV_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_CTD_INT_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_CTD_INT_RTL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CTD_INT_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CTD_INT_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_CTD_SVC_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_CTD_SVC_RTL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CTD_SVC_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CTD_SVC_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_CTD_MSCF_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_CTD_MSCF_RTL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CTD_MSCF_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CTD_MSCF_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_CTD_INS_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_CTD_INS_RTL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CTD_INS_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CTD_INS_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_CTD_MEMBJOIN_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_CTD_MEMBJOIN_RTL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CTD_MEMBJOIN_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CTD_MEMBJOIN_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_STMT_INT_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_STMT_INT_RTL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_STMT_INT_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_STMT_INT_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_DISPUTE_BAL_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_DISPUTE_BAL_RTL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_DISPUTE_BAL_RTL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_DISPUTE_BAL_RTL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_STMT_BAL_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_STMT_BAL_CASH",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_STMT_BAL_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_STMT_BAL_CASH",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_CURR_BAL_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_CURR_BAL_CASH",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CURR_BAL_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CURR_BAL_CASH",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_ACCUM_CASH_BAL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_ACCUM_CASH_BAL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_ACCUM_CASH_BAL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_ACCUM_CASH_BAL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_ACCUM_CASH_DAYS",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_ACCUM_CASH_DAYS",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_INT_RATE_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_INT_RATE_CASH",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_AMT_DB_ADV_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_AMT_DB_ADV_CASH",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_AMT_DB_ADV_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_AMT_DB_ADV_CASH",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_NBR_DB_ADV_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_NBR_DB_ADV_CASH",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_AMT_CR_ADV_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_AMT_CR_ADV_CASH",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_AMT_CR_ADV_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_AMT_CR_ADV_CASH",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_NBR_CR_ADV_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_NBR_CR_ADV_CASH",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_AMT_DB_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_AMT_DB_CASH",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_AMT_DB_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_AMT_DB_CASH",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_NBR_DB_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_NBR_DB_CASH",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_AMT_CR_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_AMT_CR_CASH",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_AMT_CR_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_AMT_CR_CASH",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_NBR_CR_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_NBR_CR_CASH",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_CTD_PYMT_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_CTD_PYMT_CASH",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CTD_PYMT_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CTD_PYMT_CASH",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_CTD_PYMT_REV_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_CTD_PYMT_REV_CASH",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CTD_PYMT_REV_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CTD_PYMT_REV_CASH",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_CTD_INT_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_CTD_INT_CASH",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CTD_INT_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CTD_INT_CASH",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_CTD_SVC_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_CTD_SVC_CASH",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CTD_SVC_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CTD_SVC_CASH",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_STMT_INT_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_STMT_INT_CASH",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_STMT_INT_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_STMT_INT_CASH",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_DISPUTE_BAL_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_DISPUTE_BAL_CASH",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_DISPUTE_BAL_CASH",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_DISPUTE_BAL_CASH",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_FILE_BUFFER",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_FILE_BUFFER",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_TXN_FILE_DATE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_TXN_FILE_DATE",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_BONUS_PT_BEG_BAL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_BONUS_PT_BEG_BAL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_BONUS_PT_BEG_BAL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_BONUS_PT_BEG_BAL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_BONUS_PT_ADDED",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_BONUS_PT_ADDED",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_BONUS_PT_ADDED",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_BONUS_PT_ADDED",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_BONUS_PT_DEDUCTED",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_BONUS_PT_DEDUCTED",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_BONUS_PT_DEDUCTED",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_BONUS_PT_DEDUCTED",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_BONUS_PT_END_BAL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_BONUS_PT_END_BAL",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_BONUS_PT_END_BAL",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_BONUS_PT_END_BAL",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FLAG_SMTH_BONUS_PT_PRIOR_YR",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FLAG_SMTH_BONUS_PT_PRIOR_YR",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_BONUS_PT_PRIOR_YR",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_BONUS_PT_PRIOR_YR",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_DROP_STMT_FLAG",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_DROP_STMT_FLAG",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_GRP_STMT",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_GRP_STMT",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CURR_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CURR_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_AUTO_CONV_BP",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_AUTO_CONV_BP",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_DMS_RTL_INT_CASE_NBR",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_DMS_RTL_INT_CASE_NBR",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_DMS_CASH_INT_CASE_NBR",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_DMS_CASH_INT_CASE_NBR",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_NODE_ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_NODE_ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_ROOT_NODE_ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_ROOT_NODE_ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SMTH_CYC_DUE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SMTH_CYC_DUE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "LAST6_SMTH_ACCT_NBR",
+												"type": "String"
+											},
+											"sink": {
+												"name": "LAST6_SMTH_ACCT_NBR",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FILE_NAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm",
+												"type": "String"
+											},
+											"sink": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": " "
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": {
+											"value": "@concat('STG_EDS_',pipeline().parameters.tables)",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "SP_LOG_COPY_ACTIVITY_DTL",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "CCD_CBCEXSMTHP",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_LOG_COPY_ACTIVITY_DTL]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS_STG",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DatetoProcess",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"dataread": {
+										"value": {
+											"value": "@activity('CCD_CBCEXSMTHP').output.dataRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"datawritten": {
+										"value": {
+											"value": "@activity('CCD_CBCEXSMTHP').output.dataWritten",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"filesread": {
+										"value": {
+											"value": "@activity('CCD_CBCEXSMTHP').output.filesRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"sourcepeakconnections": {
+										"value": {
+											"value": "@activity('CCD_CBCEXSMTHP').output.sourcePeakConnections",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsread": {
+										"value": {
+											"value": "@activity('CCD_CBCEXSMTHP').output.rowsRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowscopied": {
+										"value": {
+											"value": "@activity('CCD_CBCEXSMTHP').output.rowsCopied",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsskipped": {
+										"value": {
+											"value": "@activity('CCD_CBCEXSMTHP').output.rowsSkipped",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"copyduration": {
+										"value": {
+											"value": "@activity('CCD_CBCEXSMTHP').output.copyDuration",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"throughput": {
+										"value": {
+											"value": "@activity('CCD_CBCEXSMTHP').output.throughput",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"redirectrowpath": {
+										"value": {
+											"value": "@activity('CCD_CBCEXSMTHP').output.redirectRowPath",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"logfilepath": {
+										"value": {
+											"value": "@activity('CCD_CBCEXSMTHP').output.logFilePath",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Set v_error_desc_get",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "CCD_CBCEXSMTHP",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "@activity('CCD_CBCEXSMTHP').Error.message",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Fail5",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "Set v_error_desc_get_nofile",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": {
+									"value": "File not found: CCD_CBCEXSMTHP",
+									"type": "Expression"
+								},
+								"errorCode": {
+									"value": "404",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "Set v_error_desc_get_nofile",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "File not found: CCD_CBCEXSMTHP",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_GET",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "If Condition5",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_STG_EDS_',replace(pipeline().parameters.tables,'''',''))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_STG",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@pipeline().parameters.DateToProcess",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_DectoStg",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "SP_LOG_TASK_ERROR_DTL_GET",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": {
+						"value": "@variables('v_error_desc')",
+						"type": "Expression"
+					},
+					"errorCode": "500"
+				}
+			}
+		],
+		"parameters": {
+			"DateToProcess": {
+				"type": "string"
+			},
+			"tables": {
+				"type": "string"
+			},
+			"Bank_id": {
+				"type": "string"
+			}
+		},
+		"variables": {
+			"v_error_desc": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-12-03T05:30:53Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

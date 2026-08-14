@@ -1,0 +1,20 @@
+{
+	"name": "bnkm_State_crm",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "CREATE PROCEDURE BNKM.SP_State_CRM\nAS\nBEGIN\n--------------GET DELTA FROM BUSC\nWITH TEMP_BNKM_State\nAS(\n    SELECT\n     BCC.[VALUE] AS StateId\n    ,BCC.DESCRIPTION  AS StateName\n    ,BCC.BANK_ID AS FinancialInstitutionId\n    ,BCC.CATEGORYID AS CategoryId\n    ,'CRM' AS SourceSystemCode\n    ,BCCD.RECORD_STATUS\n    ,BCC.INSERT_DTTM AS InsertDttm\nFROM BUSC.CRM_CATEGORIES_DELTA BCCD\nLEFT JOIN BUSC.CRM_CATEGORIES BCC ON BCCD.CATEGORYID = BCC.CATEGORYID AND BCCD.BANK_ID = BCC.BANK_ID AND BCC.ISLATEST = 1 AND CATEGORYTYPE = 'STATE'\nWHERE BCC.CATEGORYID IS NOT NULL\n)\n\nSELECT * INTO #TEMP_BNKM_State FROM TEMP_BNKM_State;\n\n-------------CHECK IF THERE IS DELTA \nWITH\nTEMP_BNKM_State_SRC\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nStateId\n,StateName\n,FinancialInstitutionId \n,CategoryId \n)) HASHROW, StateId,FinancialInstitutionId, RECORD_STATUS ,CATEGORYID\nFROM #TEMP_BNKM_State WHERE RECORD_STATUS = 'UPDATE'\n)\n,\nTEMP_BNKM_State_TGT\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nStateId\n,StateName\n,FinancialInstitutionId \n,CategoryId \n)) HASHROW, StateId, FinancialInstitutionId ,CATEGORYID\nFROM BNKM.State --WHERE SOURCE_CODE = 'CRM'\t\n)\n,\nTEMP_BNKM_State_DELTA\nAS\n(\nSELECT\t\n\tSRC.HASHROW AS SRC_HR\n\t,TGT.HASHROW AS TGT_HR\n\t,ISNULL(SRC.StateId,TGT.StateId) AS StateId\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\n    ,ISNULL(SRC.CATEGORYID,TGT.CATEGORYID) AS CATEGORYID\n\t,CASE\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n\tELSE NULL END AS RECORD_STATUS\n\t\nFROM TEMP_BNKM_State_SRC\tSRC\nFULL OUTER JOIN TEMP_BNKM_State_TGT\tTGT\nON\tSRC.StateId = TGT.StateId\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\nAND SRC.CATEGORYID = TGT.CATEGORYID\nWHERE SRC.HASHROW <> TGT.HASHROW \n)\n\nSELECT * INTO #TEMP_BNKM_State_DELTA FROM TEMP_BNKM_State_DELTA;\n\nUPDATE TGT \nSET\n StateId  = SRC.StateId \n,StateName  = SRC.StateName \n,CategoryId  = SRC.CategoryId \nFROM BNKM.[State] TGT\nJOIN #TEMP_BNKM_State_DELTA DELTA ON DELTA.StateId = TGT.StateId AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId AND DELTA.CATEGORYID = TGT.CATEGORYID AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_State SRC ON SRC.StateId = TGT.StateId AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId AND SRC.CATEGORYID = TGT.CATEGORYID ;\n \n\n----INSERT TO BNKM\nINSERT INTO BNKM.[State]\n([StateId]\n,[StateName]\n,[CensusDivisionId]\n,[FipsCode]\n,[StateUspsCode]\n,[FinancialInstitutionId]\n,[CategoryId]\n,[SourceSystemCode]\n,[WorkFlowId]\n,[TaskRunId]\n,[InsertDttm] )\n\nSELECT\n     StateId AS StateId\n    ,StateName AS StateName\n    ,NULL AS CensusDivisionId\n    ,NULL AS FipsCode\n    ,NULL AS StateUspsCode\n    ,FinancialInstitutionId AS FinancialInstitutionId\n    ,CategoryId AS CategoryId\n    ,SourceSystemCode AS SourceSystemCode\n    ,0 AS WorkFlowId\n    ,0 AS TaskRunId\n    ,InsertDttm AS InsertDttm\nFROM #TEMP_BNKM_State\nWHERE RECORD_STATUS = 'INSERT'\n\nDROP TABLE #TEMP_BNKM_State;\nDROP TABLE #TEMP_BNKM_State_DELTA;\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

@@ -1,0 +1,592 @@
+{
+	"name": "TXNFiles_Metadata",
+	"properties": {
+		"activities": [
+			{
+				"name": "Get TXN List",
+				"type": "Lookup",
+				"dependsOn": [
+					{
+						"activity": "Truncate ListTable",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "DelimitedTextSource",
+						"storeSettings": {
+							"type": "AzureBlobFSReadSettings",
+							"recursive": true,
+							"enablePartitionDiscovery": false
+						},
+						"formatSettings": {
+							"type": "DelimitedTextReadSettings"
+						}
+					},
+					"dataset": {
+						"referenceName": "DelimitedText3",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "Create ListTable",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "IF OBJECT_ID(N'd360.SFT_FileList', N'U') IS NULL\r\nCreate Table d360.SFT_FileList(\r\n    FileName nvarchar(50) NULL,\r\n    FileType nvarchar(20) NULL,\r\n    FileSize nvarchar(10) NULL,\r\n    LastModified nvarchar(30) NULL\r\n);"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Select",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ForEach Directory",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "Select * from d360.SFT_FileList;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ForEach Directory",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Get TXN List",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "ForEach BankCode",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"TXNFileNames": {
+							"value": "@activity('Get TXN List').output.value",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "ForEach CBC01 File",
+				"type": "ForEach",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Get TXN List').output.value",
+						"type": "Expression"
+					},
+					"isSequential": false,
+					"activities": [
+						{
+							"name": "Get File Names",
+							"type": "GetMetadata",
+							"dependsOn": [
+								{
+									"activity": "Set path 1",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "SFTP_OnPrem",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filepath": {
+											"value": "@variables('csvPath')",
+											"type": "Expression"
+										},
+										"Filename": {
+											"value": "@concat('*',item().File_Name,'*')",
+											"type": "Expression"
+										}
+									}
+								},
+								"fieldList": [
+									"childItems"
+								],
+								"storeSettings": {
+									"type": "SftpReadSettings",
+									"recursive": true,
+									"enablePartitionDiscovery": false,
+									"disableChunking": false
+								},
+								"formatSettings": {
+									"type": "BinaryReadSettings"
+								}
+							}
+						},
+						{
+							"name": "Get Existing",
+							"type": "Filter",
+							"dependsOn": [
+								{
+									"activity": "Get File Names",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"items": {
+									"value": "@activity('Get File Names').output.childItems",
+									"type": "Expression"
+								},
+								"condition": {
+									"value": "@not(equals(item(),''))",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "FileMetaData",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Get Existing",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "GetFile_MetaData",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"FilePaths": {
+										"value": "@variables('csvPath')",
+										"type": "Expression"
+									},
+									"FileNames": {
+										"value": "@activity('Get Existing').output.Value",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "Set path 1",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "csvPath",
+								"value": {
+									"value": "@concat('data360/uat/CBC01/',substring(item().File_Name,0,3),'/encrypt')",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "ForEach CBC02 File",
+				"type": "ForEach",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Get TXN List').output.value",
+						"type": "Expression"
+					},
+					"isSequential": false,
+					"activities": [
+						{
+							"name": "Get File Names 02",
+							"type": "GetMetadata",
+							"dependsOn": [
+								{
+									"activity": "Set path 2",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "SFTP_OnPrem",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filepath": {
+											"value": "@variables('csvPath')",
+											"type": "Expression"
+										},
+										"Filename": {
+											"value": "@concat('*',item().File_Name,'*')",
+											"type": "Expression"
+										}
+									}
+								},
+								"fieldList": [
+									"childItems"
+								],
+								"storeSettings": {
+									"type": "SftpReadSettings",
+									"recursive": true,
+									"enablePartitionDiscovery": false,
+									"disableChunking": false
+								},
+								"formatSettings": {
+									"type": "BinaryReadSettings"
+								}
+							}
+						},
+						{
+							"name": "Get Existing 02",
+							"type": "Filter",
+							"dependsOn": [
+								{
+									"activity": "Get File Names 02",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"items": {
+									"value": "@activity('Get File Names 02').output.childItems",
+									"type": "Expression"
+								},
+								"condition": {
+									"value": "@not(equals(item(),''))",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "FileMetaData 02",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Get Existing 02",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "GetFile_MetaData",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"FilePaths": {
+										"value": "@variables('csvPath')",
+										"type": "Expression"
+									},
+									"FileNames": {
+										"value": "@activity('Get Existing 02').output.Value",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "Set path 2",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "csvPath",
+								"value": {
+									"value": "@concat('data360/uat/CBC02/',substring(item().File_Name,0,3),'/encrypt')",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "ForEach CBC11 File",
+				"type": "ForEach",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Get TXN List').output.value",
+						"type": "Expression"
+					},
+					"isSequential": false,
+					"activities": [
+						{
+							"name": "Get File Names 11",
+							"type": "GetMetadata",
+							"dependsOn": [
+								{
+									"activity": "Set Path 11",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "SFTP_OnPrem",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filepath": {
+											"value": "@variables('csvPath')",
+											"type": "Expression"
+										},
+										"Filename": {
+											"value": "@concat('*',item().File_Name,'*')",
+											"type": "Expression"
+										}
+									}
+								},
+								"fieldList": [
+									"childItems"
+								],
+								"storeSettings": {
+									"type": "SftpReadSettings",
+									"recursive": true,
+									"enablePartitionDiscovery": false,
+									"disableChunking": false
+								},
+								"formatSettings": {
+									"type": "BinaryReadSettings"
+								}
+							}
+						},
+						{
+							"name": "Get Existing 11",
+							"type": "Filter",
+							"dependsOn": [
+								{
+									"activity": "Get File Names 11",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"items": {
+									"value": "@activity('Get File Names 11').output.childItems",
+									"type": "Expression"
+								},
+								"condition": {
+									"value": "@not(equals(item(),''))",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "FileMetaData 11",
+							"type": "ExecutePipeline",
+							"dependsOn": [
+								{
+									"activity": "Get Existing 11",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "GetFile_MetaData",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"FilePaths": {
+										"value": "@variables('csvPath')",
+										"type": "Expression"
+									},
+									"FileNames": {
+										"value": "@activity('Get Existing 11').output.Value",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "Set Path 11",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "csvPath",
+								"value": {
+									"value": "@concat('data360/uat/CBC11/',substring(item().File_Name,0,3),'/encrypt')",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Truncate ListTable",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Create ListTable",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "Truncate table d360.SFT_FileList;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-04-08T09:47:32Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

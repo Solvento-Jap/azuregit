@@ -1,0 +1,111 @@
+{
+	"name": "StgTo_EDS_BOB_TRANHIST",
+	"properties": {
+		"activities": [
+			{
+				"name": "BOB_TRANHIST_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": {
+							"value": "@concat('SELECT COUNT(1) CNT FROM D360.STG_EDS_',pipeline().parameters.tables,' WHERE H = ''D''')",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": {
+								"value": "@concat('STG_EDS_',pipeline().parameters.tables)",
+								"type": "Expression"
+							}
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "BOB_TRANHIST_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('BOB_TRANHIST_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "BOB_AUDITLOG",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"type": "NonQuery",
+										"text": "DELETE FROM EDS.BOB_TRANHIST WHERE AS_OF_DATE = (SELECT TOP 1 CONVERT(DATE,LEFT(RIGHT(FILE_NAME, 12), 8)) FROM D360.STG_EDS_BOB_TRANHIST);\n\nINSERT INTO EDS.BOB_TRANHIST\n(\n    AS_OF_DATE\n    ,ACCOUNT_NUMBER\n    ,AMOUNT\n    ,BRANCH\n    ,CHANNEL\n    ,CHECK_NUMBER\n    ,CREDIT_AMOUNT\n    ,CURRENCY\n    ,DEBIT_AMOUNT\n    ,ID\n    ,MODE_OF_PLACEMENT\n    ,PLACEMENT_STATUS\n    ,REFERENCE_NUMBER\n    ,RUNNING_BALANCE\n    ,TRANSACTION_DATE\n    ,TRANSACTION_DESCRIPTION\n    ,TRANSACTION_TYPE\n    ,VALUE_DATE\n    ,isActive\n    ,isLatest\n    ,BNK_CODE\n    ,SOURCE_CODE\n    ,FILE_NAME\n    ,insert_dttm\n)\n\nSELECT \nCONVERT(DATE,LEFT(RIGHT(FILE_NAME, 12), 8)) AS AS_OF_DATE\n    ,ACCOUNT_NUMBER\n    ,AMOUNT\n    ,BRANCH\n    ,CHANNEL\n    ,CHECK_NUMBER\n    ,CREDIT_AMOUNT\n    ,CURRENCY\n    ,DEBIT_AMOUNT\n    ,ID\n    ,MODE_OF_PLACEMENT\n    ,PLACEMENT_STATUS\n    ,REFERENCE_NUMBER\n    ,RUNNING_BALANCE\n    ,TRANSACTION_DATE\n    ,TRANSACTION_DESCRIPTION\n    ,TRANSACTION_TYPE\n    ,VALUE_DATE\n    ,1 as isActive\n    ,1 as isLatest\n    ,left(FILE_NAME, 5) as BNK_CODE\n    ,substring(FILE_NAME,7,3) as SOURCE_CODE\n    ,FILE_NAME\n    ,convert(datetime2,insert_dttm) as insert_dttm\nFROM D360.STG_EDS_BOB_TRANHIST\nWHERE H = 'D'\n\n"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"tables": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-06-06T06:51:29Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

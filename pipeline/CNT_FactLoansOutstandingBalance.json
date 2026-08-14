@@ -1,0 +1,888 @@
+{
+	"name": "CNT_FactLoansOutstandingBalance",
+	"properties": {
+		"activities": [
+			{
+				"name": "Script1",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "WITH  Cnt_DimCustomerAccount\nAS(\nselect Accountid,\ncount(shareindicator) as CNT\n from dw.dimcustomeraccount where shareindicator = 'y'\n group by accountid\n)\n,Balance AS (\n         SELECT\n         CONVERT(VARCHAR,BRPP.DemandEffectiveDate,112) AS BusinessDateSK\n        ,DDB.BranchSK AS BranchSK\n        ,DDBK.BankSK AS BankSK\n        ,DDA.AccountSK AS AccountSK\n        ,DDA.AccountId AS AccountId\n        ,0 AS WorkFlowId\n        ,0 AS TaskRunId\n        ,Getdate() AS InsertDttm\n        ,BRPP.IsoCurrencyCode\n        ,BRPP.FinancialInstitutionId\n        ,BRPP.DemandFlowId\n        ,BRPP.DemandAmount\n        ,CASE WHEN DemandFlowId = 'PRDEM' THEN BRPP.DemandAmount  ELSE 0 END AS AmortizationAmount\n        ,CASE WHEN BRPP.DemandFlowId = 'INDEM' THEN BRPP.DemandAmount  ELSE 0 END AS InterestAmount\n        ,CASE WHEN BRPP.DemandFlowId = 'APDEM' THEN BRPP.DemandAmount  ELSE 0 END AS PenaltyAmount\n        ,ISNULL(NULLIF(DCA.CNT,''),1) CNT\n        ,'LNS' AS SourceSystemCode\n        FROM \n        [BNKM].[RepaymentPlanPayment] BRPP\n        LEFT JOIN [BNKM].[CustomerAccount] BCA ON BRPP.CustomerAccountId = BCA.CustomerAccountId\n        LEFT JOIN [DW].[DimBranch] DDB ON BCA.BranchId = DDB.BranchID AND DDB.CurrentIndicator = 1\n        LEFT JOIN [DW].[DimBank] DDBK ON BRPP.FinancialInstitutionId = DDBK.BankID\n        LEFT JOIN [DW].[DimAccount] DDA ON BRPP.CustomerAccountId = DDA.AccountID AND DDA.CurrentIndicator = 1\n        LEFT JOIN Cnt_DimCustomerAccount DCA ON DCA.AccountId = BRPP.CustomerAccountId\n    \n\n)\nselect * into dw.factlnsoutstdbal_Balance from Balance;\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "joinbalance_Script3",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "distinct_balance",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "with GetMinMaxDate AS ( -- 0 \nSELECT \n    BranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n    ,SourceSystemCode\n    ,convert(DATE, MIN(BusinessDateSK)) AS min_date\n    ,CONVERT(DATE, MAX(BusinessDateSK)) AS max_date \n    ,DemandFlowId\n  FROM \n     dw.factlnsoutstdbal_Balance\nWHERE (BranchSK IS NOT NULL\n    AND BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL) AND BusinessDateSK between '2023-06-26' and '2023-07-03' \n\tGROUP BY BranchSK ,BankSK ,AccountSK ,AccountID ,SourceSystemCode,DemandFlowId\n)\n\n,FullDateBalance AS ( -- 0\nSELECT \n\tBranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n\t,SourceSystemCode\n    ,CONVERT(VARCHAR,fulldate,112) AS fulldate2\n    ,a.FullDate\n    ,b.min_date \n    ,b.max_date\n    ,DemandFlowId\n  FROM \n    dw.dimdate a \n    LEFT JOIN GetMinMaxDate b\n\tON a.FullDate >= b.min_date \n    AND a.FullDate <= b.max_date \nWHERE (BranchSK IS NOT NULL\n    AND BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL)\n)\n,distinct_balance AS ( -- 4496726\nSELECT DISTINCT \n    BranchSK, BankSK, AccountSK, AccountId, BusinessDateSK, SourceSystemCode, WorkFlowId, TaskRunId, InsertDttm ,CNT  ,DemandFlowId ,DemandAmount, IsoCurrencyCode, FinancialInstitutionId, AmortizationAmount, InterestAmount, PenaltyAmount\nFROM  dw.factlnsoutstdbal_Balance b\nWHERE (BranchSK IS NOT NULL\n    AND BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL)\n)\n, join_balance as (\nselect \n CONVERT(VARCHAR,CONVERT(DATE,ISNULL(b.BusinessDateSK, a.FullDate)),112)  AS BusinessDateSK\n,ISNULL(b.BranchSK,a.BranchSK) AS BranchSK\n,ISNULL(b.BankSK,a.BankSK) AS BankSK\n,ISNULL(b.AccountSK,a.AccountSK) AS AccountSK\n,ISNULL(b.AccountId,a.AccountId) AS AccountId\n,ISNULL(b.SourceSystemCode,a.SourceSystemCode) AS SourceSystemCode\n,ISNULL(b.WorkFlowId,0) AS WorkFlowId\n,ISNULL(b.TaskRunId,0) AS TaskRunId\n,ISNULL(b.InsertDttm,getdate()) AS InsertDttm                           \n,IsoCurrencyCode\n,FinancialInstitutionId\n,DemandAmount\n,ISNULL(b.DemandFlowId,a.DemandFlowId) AS DemandFlowId    \n,AmortizationAmount\n,InterestAmount\n,PenaltyAmount\n,CNT\n,ROW_NUMBER() OVER (PARTITION BY a.BankSK,a.AccountId,A.DemandFlowId ORDER BY a.FullDate ) AS Row#\n, case when [DemandAmount] is null OR [DemandAmount] = 0 then 0 else 1 end as ChangeIndicator\nFROM FullDateBalance a\nLEFT JOIN DISTINCT_BALANCE b\n    ON a.BranchSK = b.BranchSK\n    AND a.BankSK = b.BankSK\n    AND a.AccountSK = b.AccountSK\n    AND a.AccountID = b.AccountID\n    AND a.fulldate2 = b.BusinessDateSK\n    AND a.SourceSystemCode = b.SourceSystemCode\n    AND a.DemandFlowId = b.DemandFlowId\n\n)\nselect * into dw.factlnsoutstdbal_join_balance from join_balance;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script5",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Script4",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "select *, Sum(ChangeIndicator) over (PARTITION BY BankSK, AccountId,DemandFlowId ORDER BY Row#) RowGroup into dw.factlnsoutstdbal_rowgrp from dw.factlnsoutstdbal_join_balance;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script7",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Script6",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "with final_balance as (\nselect \nBusinessDateSK\n,BranchSK\n,BankSK\n,AccountSK\n,AccountId\n,case when IsoCurrencyCode is not null then IsoCurrencyCode else first_value(IsoCurrencyCode) over (partition by RowGroup,AccountId,BankSK,DemandFlowId ORDER BY Row#) end IsoCurrencyCode\n,case when FinancialInstitutionId is not null then FinancialInstitutionId else first_value(FinancialInstitutionId) over (partition by RowGroup,AccountId,BankSK,DemandFlowId ORDER BY Row#) end FinancialInstitutionId\n,case when [DemandAmount] is not null then DemandAmount else first_value(DemandAmount) over (partition by RowGroup,AccountId,BankSK,DemandFlowId ORDER BY Row#) end DemandAmount\n,case when [CNT] is not null then CNT else first_value(CNT) over (partition by RowGroup,AccountId,BankSK,DemandFlowId ORDER BY Row#) end CNT\n,case when [AmortizationAmount] is not null then AmortizationAmount else first_value(AmortizationAmount) over (partition by RowGroup,AccountId,BankSK,DemandFlowId ORDER BY Row#) end AmortizationAmount\n,case when [PenaltyAmount] is not null then PenaltyAmount else first_value(PenaltyAmount) over (partition by RowGroup,AccountId,BankSK,DemandFlowId ORDER BY Row#) end PenaltyAmount\n,case when [InterestAmount] is not null then InterestAmount else first_value(InterestAmount) over (partition by RowGroup,AccountId,BankSK,DemandFlowId ORDER BY Row#) end InterestAmount\n,SourceSystemCode\n,WorkFlowId\n,TaskRunId\n,InsertDttm                           \nfrom dw.factlnsoutstdbal_rowgrp) \n\nselect * into dw.factlnsoutstdbal_final_balance from final_balance;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Scrip9",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Script8",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "with CurrencyConversion\nAS(\n    SELECT * FROM BNKM.CurrencyConversion_FillGapDates WHERE ConvertToCurrencyId = 'PHP' AND RateId = 'REV'\n)\n,Cnt_DimCustomerAccount\nAS(\nselect Accountid,\ncount(shareindicator) as CNT\n from dw.dimcustomeraccount where shareindicator = 'y'\n group by accountid\n)\n--INSERT INTO  DW.FactLoansOutstandingBalance\n--(\n--     BusinessDateSK\n--    ,BranchSK\n--    ,BankSK\n--    ,AccountSK\n--    ,AccountID\n--    ,AmortizationAmount\n--    ,InterestAmount\n--    ,PenaltyAmount\n--    ,OutstandingBalanceFull\n--    ,OutstandingBalanceProrated\n--    ,SourceSystemCode\n--    ,WorkFlowId\n--    ,TaskRunId\n--    ,InsertDttm\n--)\n, FINALTBL AS (\nSELECT \n CONVERT(VARCHAR,CONVERT(DATE,BRPP.BusinessDateSK),112) AS BusinessDateSK\n,BranchSK\n,BankSK\n,AccountSK\n,BRPP.AccountId\n,SUM(AmortizationAmount) AS AmortizationAmount\n,SUM(InterestAmount) AS InterestAmount\n,SUM(PenaltyAmount) AS PenaltyAmount\n,SUM(AmortizationAmount) + SUM(InterestAmount) + SUM(PenaltyAmount) AS OutstandingBalanceFull\n,(SUM(AmortizationAmount) + SUM(InterestAmount) + SUM(PenaltyAmount) ) / ISNULL(NULLIF(DCA.CNT,''),1)  AS OutstandingBalanceProrated\n,'LNS' AS SourceSystemCode\n,0 AS WorkFlowId\n,0 AS TaskRunId\n,Getdate() AS InsertDttm\nFROM (\nselect\n BusinessDateSK\n,BranchSK\n,BankSK\n,AccountSK\n,AccountId\n,CASE WHEN BRPP.IsoCurrencyCode <> 'PHP' THEN BRPP.AmortizationAmount * CC.ConversionRate ELSE BRPP.AmortizationAmount END AS AmortizationAmount\n,CASE WHEN BRPP.IsoCurrencyCode <> 'PHP' THEN BRPP.InterestAmount * CC.ConversionRate ELSE BRPP.InterestAmount END AS InterestAmount\n,CASE WHEN BRPP.IsoCurrencyCode <> 'PHP' THEN BRPP.PenaltyAmount * CC.ConversionRate ELSE BRPP.PenaltyAmount END AS PenaltyAmount\nFROM dw.factlnsoutstdbal_final_balance   BRPP\nLEFT JOIN CurrencyConversion CC ON  BRPP.IsoCurrencyCode  = CC.ConvertFromCurrencyId AND BRPP.FinancialInstitutionId = CC.FinancialInstitutionId AND CONVERT(VARCHAR,BRPP.BusinessDateSK) = CC.CurrencyConversionTimestamp\n) BRPP\nLEFT JOIN Cnt_DimCustomerAccount DCA ON DCA.AccountId = BRPP.AccountId\nGROUP BY \nBusinessDateSK\n,BranchSK\n,BankSK\n,AccountSK\n,BRPP.AccountId\n,DCA.CNT\n)\nSELECT COUNT(*) CNT FROM FINALTBL"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script10",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Scrip9",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "drop table dw.factlnsoutstdbal_Balance\ndrop table dw.factlnsoutstdbal_join_balance\ndrop table dw.factlnsoutstdbal_rowgrp\ndrop table dw.factlnsoutstdbal_final_balance"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script2",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "IsNull",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(*) CNT FROM dw.factlnsoutstdbal_Balance"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script4",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "joinbalance_Script3",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(*) CNT FROM dw.factlnsoutstdbal_join_balance"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script6",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Script5",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(*) CNT FROM dw.factlnsoutstdbal_rowgrp"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script8",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Script7",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(*) CNT FROM dw.factlnsoutstdbal_final_balance"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "GetMinMaxDate",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Script2",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "with GetMinMaxDate AS (\nSELECT \n    BranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n    ,SourceSystemCode\n    ,convert(DATE, MIN(BusinessDateSK)) AS min_date\n    ,CONVERT(DATE, MAX(BusinessDateSK)) AS max_date \n    ,DemandFlowId\n  FROM \n     dw.factlnsoutstdbal_Balance\nWHERE (BranchSK IS NOT NULL\n    AND BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL) AND BusinessDateSK between '2023-06-26' and '2023-07-03' \n\tGROUP BY BranchSK ,BankSK ,AccountSK ,AccountID ,SourceSystemCode,DemandFlowId\n)\nSELECT COUNT(*) CNT FROM GetMinMaxDate"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "FullDateBalance",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "GetMinMaxDate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "with GetMinMaxDate AS (\nSELECT \n    BranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n    ,SourceSystemCode\n    ,convert(DATE, MIN(BusinessDateSK)) AS min_date\n    ,CONVERT(DATE, MAX(BusinessDateSK)) AS max_date \n    ,DemandFlowId\n  FROM \n     dw.factlnsoutstdbal_Balance\nWHERE (BranchSK IS NOT NULL\n    AND BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL) AND BusinessDateSK between '2023-06-26' and '2023-07-03' \n\tGROUP BY BranchSK ,BankSK ,AccountSK ,AccountID ,SourceSystemCode,DemandFlowId\n)\n,FullDateBalance AS (\nSELECT \n\tBranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n\t,SourceSystemCode\n    ,CONVERT(VARCHAR,fulldate,112) AS fulldate2\n    ,a.FullDate\n    ,b.min_date \n    ,b.max_date\n    ,DemandFlowId\n  FROM \n    dw.dimdate a \n    LEFT JOIN GetMinMaxDate b\n\tON a.FullDate >= b.min_date \n    AND a.FullDate <= b.max_date \nWHERE (BranchSK IS NOT NULL\n    AND BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL)\n)\nSELECT COUNT(*) CNT FROM FullDateBalance"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "distinct_balance",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "FullDateBalance",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "with GetMinMaxDate AS (\nSELECT \n    BranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n    ,SourceSystemCode\n    ,convert(DATE, MIN(BusinessDateSK)) AS min_date\n    ,CONVERT(DATE, MAX(BusinessDateSK)) AS max_date \n    ,DemandFlowId\n  FROM \n     dw.factlnsoutstdbal_Balance\nWHERE (BranchSK IS NOT NULL\n    AND BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL) AND BusinessDateSK between '2023-06-26' and '2023-07-03' \n\tGROUP BY BranchSK ,BankSK ,AccountSK ,AccountID ,SourceSystemCode,DemandFlowId\n)\n,FullDateBalance AS (\nSELECT \n\tBranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n\t,SourceSystemCode\n    ,CONVERT(VARCHAR,fulldate,112) AS fulldate2\n    ,a.FullDate\n    ,b.min_date \n    ,b.max_date\n    ,DemandFlowId\n  FROM \n    dw.dimdate a \n    LEFT JOIN GetMinMaxDate b\n\tON a.FullDate >= b.min_date \n    AND a.FullDate <= b.max_date \nWHERE (BranchSK IS NOT NULL\n    AND BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL)\n)\n,distinct_balance AS (\nSELECT DISTINCT \n    BranchSK, BankSK, AccountSK, AccountId, BusinessDateSK, SourceSystemCode, WorkFlowId, TaskRunId, InsertDttm ,CNT  ,DemandFlowId ,DemandAmount, IsoCurrencyCode, FinancialInstitutionId, AmortizationAmount, InterestAmount, PenaltyAmount\nFROM  dw.factlnsoutstdbal_Balance b\nWHERE (BranchSK IS NOT NULL\n    AND BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL)\n)\nSELECT COUNT(*) CNT FROM distinct_balance"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "IsNull",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "Script1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "SELECT COUNT(*) CNT, 'BusinessDateSK' FLDNAME FROM dw.factlnsoutstdbal_Balance WHERE BusinessDateSK IS NULL UNION ALL\nSELECT COUNT(*) CNT, 'BranchSK' FLDNAME FROM dw.factlnsoutstdbal_Balance WHERE BranchSK IS NULL UNION ALL\nSELECT COUNT(*) CNT, 'BankSK' FLDNAME FROM dw.factlnsoutstdbal_Balance WHERE BankSK IS NULL UNION ALL\nSELECT COUNT(*) CNT, 'AccountSK' FLDNAME FROM dw.factlnsoutstdbal_Balance WHERE AccountSK IS NULL UNION ALL\nSELECT COUNT(*) CNT, 'AccountId' FLDNAME FROM dw.factlnsoutstdbal_Balance WHERE AccountId IS NULL UNION ALL\nSELECT COUNT(*) CNT, 'SourceSystemCode' FLDNAME FROM dw.factlnsoutstdbal_Balance WHERE SourceSystemCode IS NULL"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ALL",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DimAccount_LNS",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH ACCOUNT_SK\nAS(\nSELECT ISNULL(MAX(AccountSk),0) RN FROM DW.DIMACCOUNT \n\n)\n, CustomerAccountBalance_LNS AS (\nSELECT \n\n\tMAX(Timestamp) AS Timestamp\n\t,CustomerAccountId\n\t,FinancialInstitutionId\n    ,BalancetypeId\n\tFROM BNKM.CustomerAccountBalance\n\tWHERE BalancetypeId = 'Clear Balance Amount'\n    GROUP BY CustomerAccountId, FinancialInstitutionId, BalancetypeId\n)\n, CoreCustomerAccountProfitCostCenter \nAS(\n    SELECT A.* FROM BNKM.CoreCustomerAccountProfitCostCenter A\n\tJOIN (SELECT CustomerAccountId, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CoreCustomerAccountProfitCostCenter GROUP BY CustomerAccountId, FinancialInstitutionId ) B\n\tON A.CustomerAccountId = B.CustomerAccountId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n    WHERE A.ProfitCostCenterTypeId = 'Account PCC Code 1'\n)\n, CORECUSTOMERACCOUNTPAYROLL\nAS(\n    SELECT A.* FROM BNKM.CORECUSTOMERACCOUNTPAYROLL A\n\tJOIN (SELECT CUSTOMERACCOUNTID, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CORECUSTOMERACCOUNTPAYROLL GROUP BY CUSTOMERACCOUNTID, FinancialInstitutionId ) B\n\tON A.CUSTOMERACCOUNTID = B.CUSTOMERACCOUNTID AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n)\n,\nTEMP_DW_DIMACCOUNT\nAS (\nSELECT\nROW_NUMBER() OVER(ORDER BY (SELECT NULL)) + (SELECT RN FROM ACCOUNT_SK) AS AccountSK\n,* from ( \n\n-- FOR LNS RECORDS FILTER\nSELECT DISTINCT\n\tBCA.CustomerAccountId AS AccountID\n\t,BCA.CustomerAccountName AS AccountName\n\t,BCA.CustomerAccountOpenedDate AS AccountOpenedDate\n\t,CASE\n\t\tWHEN BCCA.ClosedAccountIndicator = 'Y' AND BCAF.FcbsApplication IN ('LAA', 'CLA') AND BCAB.BalanceAmount = 0 \n\t\tTHEN 'Closed' ELSE 'Active' END AS AccountStatus\n\t,CASE \n\t\t WHEN BCAF.FINANCIALPRODUCTID IN ('00013','01013') OR BCCAP.EmployeePayrollAccountIndicator = 'Y' \n\t\t THEN 'Y' ELSE 'N' END AS PayrollIndicator\n\t,BCA.IsoCurrencyCode AS CurrencyCode\n\t,BCCC.ProfitCostCenterId AS ProfitCostCode\n\t,DDB.BankSK AS BankSK\n\t,DDBRAN.BranchSK AS BranchSK\n\t,BCA.SourceSystemCode AS SourceSystemCode\n\t,1 AS CurrentIndicator\n\t,GETDATE() AS ValidStartDate\n\t,'9999-12-31' AS ValidEndDate\n\t,0 AS WorkFlowId\n\t,0 AS TaskRunId\n    ,GETDATE() AS InsertDttm\nFROM (SELECT DISTINCT CustomerAccountId,CustomerAccountName,CustomerAccountOpenedDate,IsoCurrencyCode,SourceSystemCode,FINANCIALINSTITUTIONID,BRANCHID FROM BNKM.CustomerAccount) BCA \nLEFT JOIN BNKM.CoreCustomerAccount BCCA ON BCA.CustomerAccountId = BCCA.CustomerAccountId AND BCA.FinancialInstitutionId = BCCA.FinancialInstitutionId AND BCA.SourceSystemCode = BCCA.SourceSystemCode\nLEFT JOIN (SELECT BCAB.* FROM BNKM.CustomerAccountBalance BCAB\nLEFT JOIN CustomerAccountBalance_LNS BCABL ON BCAB.Timestamp = BCABL.Timestamp AND BCAB.CustomerAccountId = BCABL.CustomerAccountId AND BCAB.FinancialInstitutionId = BCABL.FinancialInstitutionId AND BCAB.BalancetypeId = BCABL.BalancetypeId\nWHERE BCAB.BalancetypeId = 'Clear Balance Amount' ) BCAB ON BCA.CustomerAccountId = BCAB.CustomerAccountId AND BCA.FinancialInstitutionId = BCAB.FinancialInstitutionId\nLEFT JOIN BNKM.CustomerAccountFinancialProduct BCAF ON BCA.CUSTOMERACCOUNTID = convert(varchar,BCAF.CUSTOMERACCOUNTID) AND BCAF.SourceSystemCode = BCA.SourceSystemCode  AND BCA.FinancialInstitutionId = BCAF.FinancialInstitutionId AND (BCAF.PERIODENDDATE IS NULL OR BCAF.PERIODENDDATE = '1900-01-01' )\nLEFT JOIN CORECUSTOMERACCOUNTPAYROLL BCCAP ON BCA.CUSTOMERACCOUNTID = BCCAP.CUSTOMERACCOUNTID AND BCA.FINANCIALINSTITUTIONID = BCCAP.FINANCIALINSTITUTIONID AND BCA.SourceSystemCode = BCCAP.SourceSystemCode\nLEFT JOIN DW.DimBank DDB ON BCA.FINANCIALINSTITUTIONID = DDB.BANKID\nLEFT JOIN DW.DimBranch DDBRAN ON BCA.BRANCHID = DDBRAN.BRANCHID \nLEFT JOIN CoreCustomerAccountProfitCostCenter BCCC ON BCA.CustomerAccountId = BCCC.CustomerAccountId AND BCA.FinancialInstitutionId = BCCC.FinancialInstitutionId AND BCA.SourceSystemCode = BCCC.SourceSystemCode AND BCCC.ProfitCostCenterTypeId = 'Account PCC Code 1'\nWHERE BCA.SourceSystemCode = 'LNS'\n\n) A\n)\n\nSELECT COUNT(*) CNT FROM TEMP_DW_DIMACCOUNT;\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DimAccount_LNS",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(*) CNT FROM DW.DIMACCOUNT WHERE SOURCESYSTEMCODE = 'LNS' UNION ALL\r\nSELECT COUNT(*) CNT , 'AccountSk' FLDNAME FROM DW.DIMACCOUNT WHERE SOURCESYSTEMCODE = 'LNS' AND AccountSk IS NULL UNION ALL"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CustomerAccount",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ALL",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH ACCOUNT_SK\nAS(\nSELECT ISNULL(MAX(AccountSk),0) RN FROM DW.DIMACCOUNT \n\n)\n, CustomerAccountBalance_LNS AS (\nSELECT \n\n\tMAX(Timestamp) AS Timestamp\n\t,CustomerAccountId\n\t,FinancialInstitutionId\n    ,BalancetypeId\n\tFROM BNKM.CustomerAccountBalance\n\tWHERE BalancetypeId = 'Clear Balance Amount'\n    GROUP BY CustomerAccountId, FinancialInstitutionId, BalancetypeId\n)\n, CoreCustomerAccountProfitCostCenter \nAS(\n    SELECT A.* FROM BNKM.CoreCustomerAccountProfitCostCenter A\n\tJOIN (SELECT CustomerAccountId, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CoreCustomerAccountProfitCostCenter GROUP BY CustomerAccountId, FinancialInstitutionId ) B\n\tON A.CustomerAccountId = B.CustomerAccountId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n    WHERE A.ProfitCostCenterTypeId = 'Account PCC Code 1'\n)\n, CORECUSTOMERACCOUNTPAYROLL\nAS(\n    SELECT A.* FROM BNKM.CORECUSTOMERACCOUNTPAYROLL A\n\tJOIN (SELECT CUSTOMERACCOUNTID, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CORECUSTOMERACCOUNTPAYROLL GROUP BY CUSTOMERACCOUNTID, FinancialInstitutionId ) B\n\tON A.CUSTOMERACCOUNTID = B.CUSTOMERACCOUNTID AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n)\n\n-- FOR LNS RECORDS FILTER\nSELECT COUNT(*) CNT\nFROM (SELECT DISTINCT CustomerAccountId,CustomerAccountName,CustomerAccountOpenedDate,IsoCurrencyCode,SourceSystemCode,FINANCIALINSTITUTIONID,BRANCHID FROM BNKM.CustomerAccount) BCA \n--LEFT JOIN BNKM.CoreCustomerAccount BCCA ON BCA.CustomerAccountId = BCCA.CustomerAccountId AND BCA.FinancialInstitutionId = BCCA.FinancialInstitutionId AND BCA.SourceSystemCode = BCCA.SourceSystemCode\n--LEFT JOIN (SELECT BCAB.* FROM BNKM.CustomerAccountBalance BCAB\n--LEFT JOIN CustomerAccountBalance_LNS BCABL ON BCAB.Timestamp = BCABL.Timestamp AND BCAB.CustomerAccountId = BCABL.CustomerAccountId AND BCAB.FinancialInstitutionId = BCABL.FinancialInstitutionId AND BCAB.BalancetypeId = BCABL.BalancetypeId\n--WHERE BCAB.BalancetypeId = 'Clear Balance Amount' ) BCAB ON BCA.CustomerAccountId = BCAB.CustomerAccountId AND BCA.FinancialInstitutionId = BCAB.FinancialInstitutionId\n--LEFT JOIN BNKM.CustomerAccountFinancialProduct BCAF ON BCA.CUSTOMERACCOUNTID = convert(varchar,BCAF.CUSTOMERACCOUNTID) AND BCAF.SourceSystemCode = BCA.SourceSystemCode  AND BCA.FinancialInstitutionId = BCAF.FinancialInstitutionId AND (BCAF.PERIODENDDATE IS NULL OR BCAF.PERIODENDDATE = '1900-01-01' )\n--LEFT JOIN CORECUSTOMERACCOUNTPAYROLL BCCAP ON BCA.CUSTOMERACCOUNTID = BCCAP.CUSTOMERACCOUNTID AND BCA.FINANCIALINSTITUTIONID = BCCAP.FINANCIALINSTITUTIONID AND BCA.SourceSystemCode = BCCAP.SourceSystemCode\n--LEFT JOIN DW.DimBank DDB ON BCA.FINANCIALINSTITUTIONID = DDB.BANKID\n--LEFT JOIN DW.DimBranch DDBRAN ON BCA.BRANCHID = DDBRAN.BRANCHID \n--LEFT JOIN CoreCustomerAccountProfitCostCenter BCCC ON BCA.CustomerAccountId = BCCC.CustomerAccountId AND BCA.FinancialInstitutionId = BCCC.FinancialInstitutionId AND BCA.SourceSystemCode = BCCC.SourceSystemCode AND BCCC.ProfitCostCenterTypeId = 'Account PCC Code 1'\nWHERE BCA.SourceSystemCode = 'LNS'\n\n\n\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CoreCustomerAccount",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CustomerAccount",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH ACCOUNT_SK\nAS(\nSELECT ISNULL(MAX(AccountSk),0) RN FROM DW.DIMACCOUNT \n\n)\n, CustomerAccountBalance_LNS AS (\nSELECT \n\n\tMAX(Timestamp) AS Timestamp\n\t,CustomerAccountId\n\t,FinancialInstitutionId\n    ,BalancetypeId\n\tFROM BNKM.CustomerAccountBalance\n\tWHERE BalancetypeId = 'Clear Balance Amount'\n    GROUP BY CustomerAccountId, FinancialInstitutionId, BalancetypeId\n)\n, CoreCustomerAccountProfitCostCenter \nAS(\n    SELECT A.* FROM BNKM.CoreCustomerAccountProfitCostCenter A\n\tJOIN (SELECT CustomerAccountId, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CoreCustomerAccountProfitCostCenter GROUP BY CustomerAccountId, FinancialInstitutionId ) B\n\tON A.CustomerAccountId = B.CustomerAccountId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n    WHERE A.ProfitCostCenterTypeId = 'Account PCC Code 1'\n)\n, CORECUSTOMERACCOUNTPAYROLL\nAS(\n    SELECT A.* FROM BNKM.CORECUSTOMERACCOUNTPAYROLL A\n\tJOIN (SELECT CUSTOMERACCOUNTID, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CORECUSTOMERACCOUNTPAYROLL GROUP BY CUSTOMERACCOUNTID, FinancialInstitutionId ) B\n\tON A.CUSTOMERACCOUNTID = B.CUSTOMERACCOUNTID AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n)\n\n-- FOR LNS RECORDS FILTER\nSELECT COUNT(*) CNT\nFROM (SELECT DISTINCT CustomerAccountId,CustomerAccountName,CustomerAccountOpenedDate,IsoCurrencyCode,SourceSystemCode,FINANCIALINSTITUTIONID,BRANCHID FROM BNKM.CustomerAccount) BCA \nLEFT JOIN BNKM.CoreCustomerAccount BCCA ON BCA.CustomerAccountId = BCCA.CustomerAccountId AND BCA.FinancialInstitutionId = BCCA.FinancialInstitutionId AND BCA.SourceSystemCode = BCCA.SourceSystemCode\n--LEFT JOIN (SELECT BCAB.* FROM BNKM.CustomerAccountBalance BCAB\n--LEFT JOIN CustomerAccountBalance_LNS BCABL ON BCAB.Timestamp = BCABL.Timestamp AND BCAB.CustomerAccountId = BCABL.CustomerAccountId AND BCAB.FinancialInstitutionId = BCABL.FinancialInstitutionId AND BCAB.BalancetypeId = BCABL.BalancetypeId\n--WHERE BCAB.BalancetypeId = 'Clear Balance Amount' ) BCAB ON BCA.CustomerAccountId = BCAB.CustomerAccountId AND BCA.FinancialInstitutionId = BCAB.FinancialInstitutionId\n--LEFT JOIN BNKM.CustomerAccountFinancialProduct BCAF ON BCA.CUSTOMERACCOUNTID = convert(varchar,BCAF.CUSTOMERACCOUNTID) AND BCAF.SourceSystemCode = BCA.SourceSystemCode  AND BCA.FinancialInstitutionId = BCAF.FinancialInstitutionId AND (BCAF.PERIODENDDATE IS NULL OR BCAF.PERIODENDDATE = '1900-01-01' )\n--LEFT JOIN CORECUSTOMERACCOUNTPAYROLL BCCAP ON BCA.CUSTOMERACCOUNTID = BCCAP.CUSTOMERACCOUNTID AND BCA.FINANCIALINSTITUTIONID = BCCAP.FINANCIALINSTITUTIONID AND BCA.SourceSystemCode = BCCAP.SourceSystemCode\n--LEFT JOIN DW.DimBank DDB ON BCA.FINANCIALINSTITUTIONID = DDB.BANKID\n--LEFT JOIN DW.DimBranch DDBRAN ON BCA.BRANCHID = DDBRAN.BRANCHID \n--LEFT JOIN CoreCustomerAccountProfitCostCenter BCCC ON BCA.CustomerAccountId = BCCC.CustomerAccountId AND BCA.FinancialInstitutionId = BCCC.FinancialInstitutionId AND BCA.SourceSystemCode = BCCC.SourceSystemCode AND BCCC.ProfitCostCenterTypeId = 'Account PCC Code 1'\nWHERE BCA.SourceSystemCode = 'LNS'\n\n\n\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CustomerAccountBalance",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CoreCustomerAccount",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH ACCOUNT_SK\nAS(\nSELECT ISNULL(MAX(AccountSk),0) RN FROM DW.DIMACCOUNT \n\n)\n, CustomerAccountBalance_LNS AS (\nSELECT \n\n\tMAX(Timestamp) AS Timestamp\n\t,CustomerAccountId\n\t,FinancialInstitutionId\n    ,BalancetypeId\n\tFROM BNKM.CustomerAccountBalance\n\tWHERE BalancetypeId = 'Clear Balance Amount'\n    GROUP BY CustomerAccountId, FinancialInstitutionId, BalancetypeId\n)\n, CoreCustomerAccountProfitCostCenter \nAS(\n    SELECT A.* FROM BNKM.CoreCustomerAccountProfitCostCenter A\n\tJOIN (SELECT CustomerAccountId, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CoreCustomerAccountProfitCostCenter GROUP BY CustomerAccountId, FinancialInstitutionId ) B\n\tON A.CustomerAccountId = B.CustomerAccountId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n    WHERE A.ProfitCostCenterTypeId = 'Account PCC Code 1'\n)\n, CORECUSTOMERACCOUNTPAYROLL\nAS(\n    SELECT A.* FROM BNKM.CORECUSTOMERACCOUNTPAYROLL A\n\tJOIN (SELECT CUSTOMERACCOUNTID, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CORECUSTOMERACCOUNTPAYROLL GROUP BY CUSTOMERACCOUNTID, FinancialInstitutionId ) B\n\tON A.CUSTOMERACCOUNTID = B.CUSTOMERACCOUNTID AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n)\n\n-- FOR LNS RECORDS FILTER\nSELECT COUNT(*) CNT\nFROM (SELECT DISTINCT CustomerAccountId,CustomerAccountName,CustomerAccountOpenedDate,IsoCurrencyCode,SourceSystemCode,FINANCIALINSTITUTIONID,BRANCHID FROM BNKM.CustomerAccount) BCA \nLEFT JOIN BNKM.CoreCustomerAccount BCCA ON BCA.CustomerAccountId = BCCA.CustomerAccountId AND BCA.FinancialInstitutionId = BCCA.FinancialInstitutionId AND BCA.SourceSystemCode = BCCA.SourceSystemCode\nLEFT JOIN (SELECT BCAB.* FROM BNKM.CustomerAccountBalance BCAB\nLEFT JOIN CustomerAccountBalance_LNS BCABL ON BCAB.Timestamp = BCABL.Timestamp AND BCAB.CustomerAccountId = BCABL.CustomerAccountId AND BCAB.FinancialInstitutionId = BCABL.FinancialInstitutionId AND BCAB.BalancetypeId = BCABL.BalancetypeId\nWHERE BCAB.BalancetypeId = 'Clear Balance Amount' ) BCAB ON BCA.CustomerAccountId = BCAB.CustomerAccountId AND BCA.FinancialInstitutionId = BCAB.FinancialInstitutionId\n--LEFT JOIN BNKM.CustomerAccountFinancialProduct BCAF ON BCA.CUSTOMERACCOUNTID = convert(varchar,BCAF.CUSTOMERACCOUNTID) AND BCAF.SourceSystemCode = BCA.SourceSystemCode  AND BCA.FinancialInstitutionId = BCAF.FinancialInstitutionId AND (BCAF.PERIODENDDATE IS NULL OR BCAF.PERIODENDDATE = '1900-01-01' )\n--LEFT JOIN CORECUSTOMERACCOUNTPAYROLL BCCAP ON BCA.CUSTOMERACCOUNTID = BCCAP.CUSTOMERACCOUNTID AND BCA.FINANCIALINSTITUTIONID = BCCAP.FINANCIALINSTITUTIONID AND BCA.SourceSystemCode = BCCAP.SourceSystemCode\n--LEFT JOIN DW.DimBank DDB ON BCA.FINANCIALINSTITUTIONID = DDB.BANKID\n--LEFT JOIN DW.DimBranch DDBRAN ON BCA.BRANCHID = DDBRAN.BRANCHID \n--LEFT JOIN CoreCustomerAccountProfitCostCenter BCCC ON BCA.CustomerAccountId = BCCC.CustomerAccountId AND BCA.FinancialInstitutionId = BCCC.FinancialInstitutionId AND BCA.SourceSystemCode = BCCC.SourceSystemCode AND BCCC.ProfitCostCenterTypeId = 'Account PCC Code 1'\nWHERE BCA.SourceSystemCode = 'LNS'\n\n\n\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CustomerAccountFinancialProduct",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CustomerAccountBalance",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH ACCOUNT_SK\nAS(\nSELECT ISNULL(MAX(AccountSk),0) RN FROM DW.DIMACCOUNT \n\n)\n, CustomerAccountBalance_LNS AS (\nSELECT \n\n\tMAX(Timestamp) AS Timestamp\n\t,CustomerAccountId\n\t,FinancialInstitutionId\n    ,BalancetypeId\n\tFROM BNKM.CustomerAccountBalance\n\tWHERE BalancetypeId = 'Clear Balance Amount'\n    GROUP BY CustomerAccountId, FinancialInstitutionId, BalancetypeId\n)\n, CoreCustomerAccountProfitCostCenter \nAS(\n    SELECT A.* FROM BNKM.CoreCustomerAccountProfitCostCenter A\n\tJOIN (SELECT CustomerAccountId, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CoreCustomerAccountProfitCostCenter GROUP BY CustomerAccountId, FinancialInstitutionId ) B\n\tON A.CustomerAccountId = B.CustomerAccountId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n    WHERE A.ProfitCostCenterTypeId = 'Account PCC Code 1'\n)\n, CORECUSTOMERACCOUNTPAYROLL\nAS(\n    SELECT A.* FROM BNKM.CORECUSTOMERACCOUNTPAYROLL A\n\tJOIN (SELECT CUSTOMERACCOUNTID, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CORECUSTOMERACCOUNTPAYROLL GROUP BY CUSTOMERACCOUNTID, FinancialInstitutionId ) B\n\tON A.CUSTOMERACCOUNTID = B.CUSTOMERACCOUNTID AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n)\n\n-- FOR LNS RECORDS FILTER\nSELECT COUNT(*) CNT\nFROM (SELECT DISTINCT CustomerAccountId,CustomerAccountName,CustomerAccountOpenedDate,IsoCurrencyCode,SourceSystemCode,FINANCIALINSTITUTIONID,BRANCHID FROM BNKM.CustomerAccount) BCA \nLEFT JOIN BNKM.CoreCustomerAccount BCCA ON BCA.CustomerAccountId = BCCA.CustomerAccountId AND BCA.FinancialInstitutionId = BCCA.FinancialInstitutionId AND BCA.SourceSystemCode = BCCA.SourceSystemCode\nLEFT JOIN (SELECT BCAB.* FROM BNKM.CustomerAccountBalance BCAB\nLEFT JOIN CustomerAccountBalance_LNS BCABL ON BCAB.Timestamp = BCABL.Timestamp AND BCAB.CustomerAccountId = BCABL.CustomerAccountId AND BCAB.FinancialInstitutionId = BCABL.FinancialInstitutionId AND BCAB.BalancetypeId = BCABL.BalancetypeId\nWHERE BCAB.BalancetypeId = 'Clear Balance Amount' ) BCAB ON BCA.CustomerAccountId = BCAB.CustomerAccountId AND BCA.FinancialInstitutionId = BCAB.FinancialInstitutionId\nLEFT JOIN BNKM.CustomerAccountFinancialProduct BCAF ON BCA.CUSTOMERACCOUNTID = convert(varchar,BCAF.CUSTOMERACCOUNTID) AND BCAF.SourceSystemCode = BCA.SourceSystemCode  AND BCA.FinancialInstitutionId = BCAF.FinancialInstitutionId AND (BCAF.PERIODENDDATE IS NULL OR BCAF.PERIODENDDATE = '1900-01-01' )\n--LEFT JOIN CORECUSTOMERACCOUNTPAYROLL BCCAP ON BCA.CUSTOMERACCOUNTID = BCCAP.CUSTOMERACCOUNTID AND BCA.FINANCIALINSTITUTIONID = BCCAP.FINANCIALINSTITUTIONID AND BCA.SourceSystemCode = BCCAP.SourceSystemCode\n--LEFT JOIN DW.DimBank DDB ON BCA.FINANCIALINSTITUTIONID = DDB.BANKID\n--LEFT JOIN DW.DimBranch DDBRAN ON BCA.BRANCHID = DDBRAN.BRANCHID \n--LEFT JOIN CoreCustomerAccountProfitCostCenter BCCC ON BCA.CustomerAccountId = BCCC.CustomerAccountId AND BCA.FinancialInstitutionId = BCCC.FinancialInstitutionId AND BCA.SourceSystemCode = BCCC.SourceSystemCode AND BCCC.ProfitCostCenterTypeId = 'Account PCC Code 1'\nWHERE BCA.SourceSystemCode = 'LNS'\n\n\n\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CoreCustomerAccountPayroll",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CustomerAccountFinancialProduct",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH ACCOUNT_SK\nAS(\nSELECT ISNULL(MAX(AccountSk),0) RN FROM DW.DIMACCOUNT \n\n)\n, CustomerAccountBalance_LNS AS (\nSELECT \n\n\tMAX(Timestamp) AS Timestamp\n\t,CustomerAccountId\n\t,FinancialInstitutionId\n    ,BalancetypeId\n\tFROM BNKM.CustomerAccountBalance\n\tWHERE BalancetypeId = 'Clear Balance Amount'\n    GROUP BY CustomerAccountId, FinancialInstitutionId, BalancetypeId\n)\n, CoreCustomerAccountProfitCostCenter \nAS(\n    SELECT A.* FROM BNKM.CoreCustomerAccountProfitCostCenter A\n\tJOIN (SELECT CustomerAccountId, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CoreCustomerAccountProfitCostCenter GROUP BY CustomerAccountId, FinancialInstitutionId ) B\n\tON A.CustomerAccountId = B.CustomerAccountId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n    WHERE A.ProfitCostCenterTypeId = 'Account PCC Code 1'\n)\n, CORECUSTOMERACCOUNTPAYROLL\nAS(\n    SELECT A.* FROM BNKM.CORECUSTOMERACCOUNTPAYROLL A\n\tJOIN (SELECT CUSTOMERACCOUNTID, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CORECUSTOMERACCOUNTPAYROLL GROUP BY CUSTOMERACCOUNTID, FinancialInstitutionId ) B\n\tON A.CUSTOMERACCOUNTID = B.CUSTOMERACCOUNTID AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n)\n\n-- FOR LNS RECORDS FILTER\nSELECT COUNT(*) CNT\nFROM (SELECT DISTINCT CustomerAccountId,CustomerAccountName,CustomerAccountOpenedDate,IsoCurrencyCode,SourceSystemCode,FINANCIALINSTITUTIONID,BRANCHID FROM BNKM.CustomerAccount) BCA \nLEFT JOIN BNKM.CoreCustomerAccount BCCA ON BCA.CustomerAccountId = BCCA.CustomerAccountId AND BCA.FinancialInstitutionId = BCCA.FinancialInstitutionId AND BCA.SourceSystemCode = BCCA.SourceSystemCode\nLEFT JOIN (SELECT BCAB.* FROM BNKM.CustomerAccountBalance BCAB\nLEFT JOIN CustomerAccountBalance_LNS BCABL ON BCAB.Timestamp = BCABL.Timestamp AND BCAB.CustomerAccountId = BCABL.CustomerAccountId AND BCAB.FinancialInstitutionId = BCABL.FinancialInstitutionId AND BCAB.BalancetypeId = BCABL.BalancetypeId\nWHERE BCAB.BalancetypeId = 'Clear Balance Amount' ) BCAB ON BCA.CustomerAccountId = BCAB.CustomerAccountId AND BCA.FinancialInstitutionId = BCAB.FinancialInstitutionId\nLEFT JOIN BNKM.CustomerAccountFinancialProduct BCAF ON BCA.CUSTOMERACCOUNTID = convert(varchar,BCAF.CUSTOMERACCOUNTID) AND BCAF.SourceSystemCode = BCA.SourceSystemCode  AND BCA.FinancialInstitutionId = BCAF.FinancialInstitutionId AND (BCAF.PERIODENDDATE IS NULL OR BCAF.PERIODENDDATE = '1900-01-01' )\nLEFT JOIN CORECUSTOMERACCOUNTPAYROLL BCCAP ON BCA.CUSTOMERACCOUNTID = BCCAP.CUSTOMERACCOUNTID AND BCA.FINANCIALINSTITUTIONID = BCCAP.FINANCIALINSTITUTIONID AND BCA.SourceSystemCode = BCCAP.SourceSystemCode\n--LEFT JOIN DW.DimBank DDB ON BCA.FINANCIALINSTITUTIONID = DDB.BANKID\n--LEFT JOIN DW.DimBranch DDBRAN ON BCA.BRANCHID = DDBRAN.BRANCHID \n--LEFT JOIN CoreCustomerAccountProfitCostCenter BCCC ON BCA.CustomerAccountId = BCCC.CustomerAccountId AND BCA.FinancialInstitutionId = BCCC.FinancialInstitutionId AND BCA.SourceSystemCode = BCCC.SourceSystemCode AND BCCC.ProfitCostCenterTypeId = 'Account PCC Code 1'\nWHERE BCA.SourceSystemCode = 'LNS'\n\n\n\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DimBank",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CoreCustomerAccountPayroll",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH ACCOUNT_SK\nAS(\nSELECT ISNULL(MAX(AccountSk),0) RN FROM DW.DIMACCOUNT \n\n)\n, CustomerAccountBalance_LNS AS (\nSELECT \n\n\tMAX(Timestamp) AS Timestamp\n\t,CustomerAccountId\n\t,FinancialInstitutionId\n    ,BalancetypeId\n\tFROM BNKM.CustomerAccountBalance\n\tWHERE BalancetypeId = 'Clear Balance Amount'\n    GROUP BY CustomerAccountId, FinancialInstitutionId, BalancetypeId\n)\n, CoreCustomerAccountProfitCostCenter \nAS(\n    SELECT A.* FROM BNKM.CoreCustomerAccountProfitCostCenter A\n\tJOIN (SELECT CustomerAccountId, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CoreCustomerAccountProfitCostCenter GROUP BY CustomerAccountId, FinancialInstitutionId ) B\n\tON A.CustomerAccountId = B.CustomerAccountId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n    WHERE A.ProfitCostCenterTypeId = 'Account PCC Code 1'\n)\n, CORECUSTOMERACCOUNTPAYROLL\nAS(\n    SELECT A.* FROM BNKM.CORECUSTOMERACCOUNTPAYROLL A\n\tJOIN (SELECT CUSTOMERACCOUNTID, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CORECUSTOMERACCOUNTPAYROLL GROUP BY CUSTOMERACCOUNTID, FinancialInstitutionId ) B\n\tON A.CUSTOMERACCOUNTID = B.CUSTOMERACCOUNTID AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n)\n\n-- FOR LNS RECORDS FILTER\nSELECT COUNT(*) CNT\nFROM (SELECT DISTINCT CustomerAccountId,CustomerAccountName,CustomerAccountOpenedDate,IsoCurrencyCode,SourceSystemCode,FINANCIALINSTITUTIONID,BRANCHID FROM BNKM.CustomerAccount) BCA \nLEFT JOIN BNKM.CoreCustomerAccount BCCA ON BCA.CustomerAccountId = BCCA.CustomerAccountId AND BCA.FinancialInstitutionId = BCCA.FinancialInstitutionId AND BCA.SourceSystemCode = BCCA.SourceSystemCode\nLEFT JOIN (SELECT BCAB.* FROM BNKM.CustomerAccountBalance BCAB\nLEFT JOIN CustomerAccountBalance_LNS BCABL ON BCAB.Timestamp = BCABL.Timestamp AND BCAB.CustomerAccountId = BCABL.CustomerAccountId AND BCAB.FinancialInstitutionId = BCABL.FinancialInstitutionId AND BCAB.BalancetypeId = BCABL.BalancetypeId\nWHERE BCAB.BalancetypeId = 'Clear Balance Amount' ) BCAB ON BCA.CustomerAccountId = BCAB.CustomerAccountId AND BCA.FinancialInstitutionId = BCAB.FinancialInstitutionId\nLEFT JOIN BNKM.CustomerAccountFinancialProduct BCAF ON BCA.CUSTOMERACCOUNTID = convert(varchar,BCAF.CUSTOMERACCOUNTID) AND BCAF.SourceSystemCode = BCA.SourceSystemCode  AND BCA.FinancialInstitutionId = BCAF.FinancialInstitutionId AND (BCAF.PERIODENDDATE IS NULL OR BCAF.PERIODENDDATE = '1900-01-01' )\nLEFT JOIN CORECUSTOMERACCOUNTPAYROLL BCCAP ON BCA.CUSTOMERACCOUNTID = BCCAP.CUSTOMERACCOUNTID AND BCA.FINANCIALINSTITUTIONID = BCCAP.FINANCIALINSTITUTIONID AND BCA.SourceSystemCode = BCCAP.SourceSystemCode\nLEFT JOIN DW.DimBank DDB ON BCA.FINANCIALINSTITUTIONID = DDB.BANKID\n--LEFT JOIN DW.DimBranch DDBRAN ON BCA.BRANCHID = DDBRAN.BRANCHID \n--LEFT JOIN CoreCustomerAccountProfitCostCenter BCCC ON BCA.CustomerAccountId = BCCC.CustomerAccountId AND BCA.FinancialInstitutionId = BCCC.FinancialInstitutionId AND BCA.SourceSystemCode = BCCC.SourceSystemCode AND BCCC.ProfitCostCenterTypeId = 'Account PCC Code 1'\nWHERE BCA.SourceSystemCode = 'LNS'\n\n\n\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DimBranch",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DimBank",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH ACCOUNT_SK\nAS(\nSELECT ISNULL(MAX(AccountSk),0) RN FROM DW.DIMACCOUNT \n\n)\n, CustomerAccountBalance_LNS AS (\nSELECT \n\n\tMAX(Timestamp) AS Timestamp\n\t,CustomerAccountId\n\t,FinancialInstitutionId\n    ,BalancetypeId\n\tFROM BNKM.CustomerAccountBalance\n\tWHERE BalancetypeId = 'Clear Balance Amount'\n    GROUP BY CustomerAccountId, FinancialInstitutionId, BalancetypeId\n)\n, CoreCustomerAccountProfitCostCenter \nAS(\n    SELECT A.* FROM BNKM.CoreCustomerAccountProfitCostCenter A\n\tJOIN (SELECT CustomerAccountId, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CoreCustomerAccountProfitCostCenter GROUP BY CustomerAccountId, FinancialInstitutionId ) B\n\tON A.CustomerAccountId = B.CustomerAccountId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n    WHERE A.ProfitCostCenterTypeId = 'Account PCC Code 1'\n)\n, CORECUSTOMERACCOUNTPAYROLL\nAS(\n    SELECT A.* FROM BNKM.CORECUSTOMERACCOUNTPAYROLL A\n\tJOIN (SELECT CUSTOMERACCOUNTID, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CORECUSTOMERACCOUNTPAYROLL GROUP BY CUSTOMERACCOUNTID, FinancialInstitutionId ) B\n\tON A.CUSTOMERACCOUNTID = B.CUSTOMERACCOUNTID AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n)\n\n-- FOR LNS RECORDS FILTER\nSELECT COUNT(*) CNT\nFROM (SELECT DISTINCT CustomerAccountId,CustomerAccountName,CustomerAccountOpenedDate,IsoCurrencyCode,SourceSystemCode,FINANCIALINSTITUTIONID,BRANCHID FROM BNKM.CustomerAccount) BCA \nLEFT JOIN BNKM.CoreCustomerAccount BCCA ON BCA.CustomerAccountId = BCCA.CustomerAccountId AND BCA.FinancialInstitutionId = BCCA.FinancialInstitutionId AND BCA.SourceSystemCode = BCCA.SourceSystemCode\nLEFT JOIN (SELECT BCAB.* FROM BNKM.CustomerAccountBalance BCAB\nLEFT JOIN CustomerAccountBalance_LNS BCABL ON BCAB.Timestamp = BCABL.Timestamp AND BCAB.CustomerAccountId = BCABL.CustomerAccountId AND BCAB.FinancialInstitutionId = BCABL.FinancialInstitutionId AND BCAB.BalancetypeId = BCABL.BalancetypeId\nWHERE BCAB.BalancetypeId = 'Clear Balance Amount' ) BCAB ON BCA.CustomerAccountId = BCAB.CustomerAccountId AND BCA.FinancialInstitutionId = BCAB.FinancialInstitutionId\nLEFT JOIN BNKM.CustomerAccountFinancialProduct BCAF ON BCA.CUSTOMERACCOUNTID = convert(varchar,BCAF.CUSTOMERACCOUNTID) AND BCAF.SourceSystemCode = BCA.SourceSystemCode  AND BCA.FinancialInstitutionId = BCAF.FinancialInstitutionId AND (BCAF.PERIODENDDATE IS NULL OR BCAF.PERIODENDDATE = '1900-01-01' )\nLEFT JOIN CORECUSTOMERACCOUNTPAYROLL BCCAP ON BCA.CUSTOMERACCOUNTID = BCCAP.CUSTOMERACCOUNTID AND BCA.FINANCIALINSTITUTIONID = BCCAP.FINANCIALINSTITUTIONID AND BCA.SourceSystemCode = BCCAP.SourceSystemCode\nLEFT JOIN DW.DimBank DDB ON BCA.FINANCIALINSTITUTIONID = DDB.BANKID\nLEFT JOIN DW.DimBranch DDBRAN ON BCA.BRANCHID = DDBRAN.BRANCHID \n--LEFT JOIN CoreCustomerAccountProfitCostCenter BCCC ON BCA.CustomerAccountId = BCCC.CustomerAccountId AND BCA.FinancialInstitutionId = BCCC.FinancialInstitutionId AND BCA.SourceSystemCode = BCCC.SourceSystemCode AND BCCC.ProfitCostCenterTypeId = 'Account PCC Code 1'\nWHERE BCA.SourceSystemCode = 'LNS'\n\n\n\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CoreCustomerAccountProfitCostCenter",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DimBranch",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH ACCOUNT_SK\nAS(\nSELECT ISNULL(MAX(AccountSk),0) RN FROM DW.DIMACCOUNT \n\n)\n, CustomerAccountBalance_LNS AS (\nSELECT \n\n\tMAX(Timestamp) AS Timestamp\n\t,CustomerAccountId\n\t,FinancialInstitutionId\n    ,BalancetypeId\n\tFROM BNKM.CustomerAccountBalance\n\tWHERE BalancetypeId = 'Clear Balance Amount'\n    GROUP BY CustomerAccountId, FinancialInstitutionId, BalancetypeId\n)\n, CoreCustomerAccountProfitCostCenter \nAS(\n    SELECT A.* FROM BNKM.CoreCustomerAccountProfitCostCenter A\n\tJOIN (SELECT CustomerAccountId, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CoreCustomerAccountProfitCostCenter GROUP BY CustomerAccountId, FinancialInstitutionId ) B\n\tON A.CustomerAccountId = B.CustomerAccountId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n    WHERE A.ProfitCostCenterTypeId = 'Account PCC Code 1'\n)\n, CORECUSTOMERACCOUNTPAYROLL\nAS(\n    SELECT A.* FROM BNKM.CORECUSTOMERACCOUNTPAYROLL A\n\tJOIN (SELECT CUSTOMERACCOUNTID, FinancialInstitutionId, MAX(Timestamp) Timestamp FROM BNKM.CORECUSTOMERACCOUNTPAYROLL GROUP BY CUSTOMERACCOUNTID, FinancialInstitutionId ) B\n\tON A.CUSTOMERACCOUNTID = B.CUSTOMERACCOUNTID AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp\n)\n\n-- FOR LNS RECORDS FILTER\nSELECT COUNT(*) CNT\nFROM (SELECT DISTINCT CustomerAccountId,CustomerAccountName,CustomerAccountOpenedDate,IsoCurrencyCode,SourceSystemCode,FINANCIALINSTITUTIONID,BRANCHID FROM BNKM.CustomerAccount) BCA \nLEFT JOIN BNKM.CoreCustomerAccount BCCA ON BCA.CustomerAccountId = BCCA.CustomerAccountId AND BCA.FinancialInstitutionId = BCCA.FinancialInstitutionId AND BCA.SourceSystemCode = BCCA.SourceSystemCode\nLEFT JOIN (SELECT BCAB.* FROM BNKM.CustomerAccountBalance BCAB\nLEFT JOIN CustomerAccountBalance_LNS BCABL ON BCAB.Timestamp = BCABL.Timestamp AND BCAB.CustomerAccountId = BCABL.CustomerAccountId AND BCAB.FinancialInstitutionId = BCABL.FinancialInstitutionId AND BCAB.BalancetypeId = BCABL.BalancetypeId\nWHERE BCAB.BalancetypeId = 'Clear Balance Amount' ) BCAB ON BCA.CustomerAccountId = BCAB.CustomerAccountId AND BCA.FinancialInstitutionId = BCAB.FinancialInstitutionId\nLEFT JOIN BNKM.CustomerAccountFinancialProduct BCAF ON BCA.CUSTOMERACCOUNTID = convert(varchar,BCAF.CUSTOMERACCOUNTID) AND BCAF.SourceSystemCode = BCA.SourceSystemCode  AND BCA.FinancialInstitutionId = BCAF.FinancialInstitutionId AND (BCAF.PERIODENDDATE IS NULL OR BCAF.PERIODENDDATE = '1900-01-01' )\nLEFT JOIN CORECUSTOMERACCOUNTPAYROLL BCCAP ON BCA.CUSTOMERACCOUNTID = BCCAP.CUSTOMERACCOUNTID AND BCA.FINANCIALINSTITUTIONID = BCCAP.FINANCIALINSTITUTIONID AND BCA.SourceSystemCode = BCCAP.SourceSystemCode\nLEFT JOIN DW.DimBank DDB ON BCA.FINANCIALINSTITUTIONID = DDB.BANKID\nLEFT JOIN DW.DimBranch DDBRAN ON BCA.BRANCHID = DDBRAN.BRANCHID \nLEFT JOIN CoreCustomerAccountProfitCostCenter BCCC ON BCA.CustomerAccountId = BCCC.CustomerAccountId AND BCA.FinancialInstitutionId = BCCC.FinancialInstitutionId AND BCA.SourceSystemCode = BCCC.SourceSystemCode AND BCCC.ProfitCostCenterTypeId = 'Account PCC Code 1'\nWHERE BCA.SourceSystemCode = 'LNS'\n\n\n\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-08-09T05:19:27Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

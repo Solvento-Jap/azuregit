@@ -1,0 +1,217 @@
+{
+	"name": "Workflow_EDS_TRU_AMORTSCHED",
+	"properties": {
+		"activities": [
+			{
+				"name": "wf_EDS",
+				"type": "ExecutePipeline",
+				"dependsOn": [],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "wf_EDS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"startDate": {
+							"value": "@pipeline().parameters.startDate",
+							"type": "Expression"
+						},
+						"endDate": {
+							"value": "@pipeline().parameters.endDate",
+							"type": "Expression"
+						},
+						"tables": {
+							"value": "@pipeline().parameters.tables",
+							"type": "Expression"
+						},
+						"src_sys": {
+							"value": "@pipeline().parameters.src_sys",
+							"type": "Expression"
+						},
+						"Bank_Id": {
+							"value": "@pipeline().parameters.Bank_Id",
+							"type": "Expression"
+						},
+						"ColumnSchema": {
+							"value": "@pipeline().parameters.ColumnSchema",
+							"type": "Expression"
+						},
+						"HashLog_SQL": {
+							"value": "@pipeline().parameters.HashLog_SQL",
+							"type": "Expression"
+						},
+						"EDS_SQL": {
+							"value": "@pipeline().parameters.EDS_SQL",
+							"type": "Expression"
+						},
+						"UseManifest": {
+							"value": "@pipeline().parameters.UseManifest",
+							"type": "Expression"
+						}
+					}
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"ctl_date": {
+				"type": "string",
+				"defaultValue": "TRU_DATE"
+			},
+			"tables": {
+				"type": "string",
+				"defaultValue": "TRU_AMORTSCHED"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "TRU"
+			},
+			"Bank_Id": {
+				"type": "string",
+				"defaultValue": "CBC01"
+			},
+			"ColumnSchema": {
+				"type": "string",
+				"defaultValue": {
+					"type": "TabularTranslator",
+					"mappings": [
+						{
+							"source": {
+								"name": "H",
+								"type": "String"
+							},
+							"sink": {
+								"name": "H",
+								"type": "String"
+							}
+						},
+						{
+							"source": {
+								"name": "AMORTISATION_DATE",
+								"type": "DATE",
+								"format": "yyyyMMdd"
+							},
+							"sink": {
+								"name": "AMORTISATION_DATE",
+								"type": "DATE"
+							}
+						},
+						{
+							"source": {
+								"name": "AMORTISATION_PER",
+								"type": "String"
+							},
+							"sink": {
+								"name": "AMORTISATION_PER",
+								"type": "String"
+							}
+						},
+						{
+							"source": {
+								"name": "BR_CD",
+								"type": "String"
+							},
+							"sink": {
+								"name": "BR_CD",
+								"type": "String"
+							}
+						},
+						{
+							"source": {
+								"name": "CASHFLOW_TYPE",
+								"type": "String"
+							},
+							"sink": {
+								"name": "CASHFLOW_TYPE",
+								"type": "String"
+							}
+						},
+						{
+							"source": {
+								"name": "FROMDATE",
+								"type": "DATE",
+								"format": "yyyyMMdd"
+							},
+							"sink": {
+								"name": "FROMDATE",
+								"type": "DATE"
+							}
+						},
+						{
+							"source": {
+								"name": "SEC_IDENTIFIER",
+								"type": "String"
+							},
+							"sink": {
+								"name": "SEC_IDENTIFIER",
+								"type": "String"
+							}
+						},
+						{
+							"source": {
+								"name": "TODATE",
+								"type": "DATE",
+								"format": "yyyyMMdd"
+							},
+							"sink": {
+								"name": "TODATE",
+								"type": "DATE"
+							}
+						},
+						{
+							"source": {
+								"name": "FILE_NAME",
+								"type": "String"
+							},
+							"sink": {
+								"name": "FILE_NAME",
+								"type": "String"
+							}
+						},
+						{
+							"source": {
+								"name": "insert_dttm",
+								"type": "DateTime"
+							},
+							"sink": {
+								"name": "insert_dttm",
+								"type": "DateTime"
+							}
+						}
+					]
+				}
+			},
+			"HashLog_SQL": {
+				"type": "string",
+				"defaultValue": "WITH [METRIC_BASE] AS (     SELECT         [FILE_NAME],         [INSERT_DTTM],         TRY_CAST(LEFT(RIGHT(FILE_NAME,12),8) AS DATE) AS [DATE],         TRY_CAST(SUM(CASE WHEN H = 'D' THEN 1 ELSE 0 END) AS NUMERIC(25,5)) AS TGT_COUNT,         MAX(CASE WHEN H <> 'D' THEN TRY_CAST(REPLACE(H,'F-','') AS NUMERIC(25,5)) END) AS SRC_COUNT     FROM [D360].[STG_EDS_TRU_AMORTSCHED]     GROUP BY [FILE_NAME], [INSERT_DTTM] )  INSERT INTO [EDS].[EDS_HASH_LOG_TBL] SELECT     [FILE_NAME],     [DATE],     [INSERT_DTTM],     [METRIC_NAME],     [SRC_VALUE],     [TGT_VALUE] FROM [METRIC_BASE] CROSS APPLY (     SELECT 'COUNT' AS [METRIC_NAME], [SRC_COUNT] AS [SRC_VALUE], [TGT_COUNT] AS [TGT_VALUE] ) M"
+			},
+			"EDS_SQL": {
+				"type": "string",
+				"defaultValue": "DELETE FROM EDS.TRU_AMORTSCHED WHERE AS_OF_DATE IN (SELECT TOP 1 CAST(LEFT(RIGHT(FILE_NAME,12),8) AS DATE) FROM D360.STG_EDS_TRU_AMORTSCHED)  INSERT INTO [EDS].[TRU_AMORTSCHED] (     [AMORTISATION_DATE],     [AMORTISATION_PER],     [BR_CD],     [CASHFLOW_TYPE],     [FROMDATE],     [SEC_IDENTIFIER],     [TODATE],     [AS_OF_DATE],     [BNK_CODE],     [SOURCE_CODE],     [FILE_NAME],     [insert_dttm] )  SELECT     [AMORTISATION_DATE],     [AMORTISATION_PER],     [BR_CD],     [CASHFLOW_TYPE],     [FROMDATE],     [SEC_IDENTIFIER],     [TODATE],     CAST(LEFT(RIGHT(FILE_NAME,12),8) AS DATE) AS [AS_OF_DATE],     LEFT(FILE_NAME,5) AS [BNK_CODE],     'TRU' AS [SOURCE_CODE],     [FILE_NAME],     [insert_dttm] FROM [D360].[STG_EDS_TRU_AMORTSCHED] WHERE [H] = 'D'"
+			},
+			"UseManifest": {
+				"type": "int",
+				"defaultValue": 0
+			},
+			"Manifest_Endtime": {
+				"type": "string",
+				"defaultValue": "6:00"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-05-19T09:04:57Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,507 @@
+{
+	"name": "FACT_DEBUG_20231204",
+	"properties": {
+		"activities": [
+			{
+				"name": "FactCardsCreditLimit",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH \r\nCustomerAccountLimit\r\nAS(\r\n      SELECT * FROM [BNKM].[CustomerAccountLimit] A\r\n      --JOIN (SELECT CUSTOMERACCOUNTID,LIMITTYPEID, MAX(TIMESTAMP) TIMESTAMP, FINANCIALINSTITUTIONID,SOURCESYSTEMCODE FROM [BNKM].[CustomerAccountLimit] WHERE SourceSystemCode = 'CCD' GROUP BY CUSTOMERACCOUNTID,LIMITTYPEID, FINANCIALINSTITUTIONID,SOURCESYSTEMCODE) B\r\n      --  ON A.CUSTOMERACCOUNTID = B.CUSTOMERACCOUNTID AND A.LIMITTYPEID = B.LIMITTYPEID AND A.TIMESTAMP = B.TIMESTAMP AND A.FINANCIALINSTITUTIONID = B.FINANCIALINSTITUTIONID AND A.SOURCESYSTEMCODE = B.SOURCESYSTEMCODE\r\n      WHERE CONVERT(VARCHAR,A.TIMESTAMP,112) = '20231204'\r\n      AND A.SourceSystemCode = 'CCD'  \r\n)\r\n\r\nINSERT INTO DW.FactCardsCreditLimit\r\n(\r\nBusinessDateSK\r\n,BranchSK\r\n,BankSK\r\n,AccountSK\r\n,AccountId\r\n,PermanentCreditLimit\r\n,CurrentCreditLimit\r\n,SourceSystemCode\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\n\r\nSELECT\r\n BusinessDateSK\r\n,BranchSK\r\n,BankSK\r\n,AccountSK\r\n,AccountId\r\n,SUM(PermanentCreditLimit) PermanentCreditLimit\r\n,SUM(CurrentCreditLimit) CurrentCreditLimit\r\n,SourceSystemCode\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\nFROM (\r\nSELECT \r\n  CONVERT(VARCHAR,BCL.TIMESTAMP,112) AS BusinessDateSK\r\n,DDB.BranchSK AS BranchSK\r\n,DDBK.BankSK AS BankSK\r\n,DDA.AccountSK AS AccountSK\r\n,DDA.AccountId AS AccountId\r\n,CASE WHEN BCL.LimitTypeId = 'Permanent Credit Limit' THEN ISNULL(LimitAmount,0)  ELSE NULL END AS PermanentCreditLimit\r\n,CASE WHEN BCL.LimitTypeId = 'Credit Limit' THEN ISNULL(LimitAmount,0)  ELSE NULL END AS CurrentCreditLimit\r\n,BCL.SourceSystemCode AS SourceSystemCode\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,Getdate() AS InsertDttm                                                                                          \r\nFROM \r\nCustomerAccountLimit BCL\r\nLEFT JOIN [BNKM].[CustomerAccount] BCA ON BCL.CustomerAccountId = BCA.CustomerAccountId\r\nLEFT JOIN [DW].[DimBranch] DDB ON BCA.BranchId = DDB.BranchID AND DDB.CurrentIndicator = 1\r\nLEFT JOIN [DW].[DimBank] DDBK ON BCL.FinancialInstitutionId = DDBK.BankID\r\nLEFT JOIN [DW].[DimAccount] DDA ON BCL.CustomerAccountId = DDA.AccountID AND DDA.CurrentIndicator = 1\r\nLEFT JOIN [BNKM].[CustomerAccountPaymentCard] BCP ON BCL.CustomerAccountId = BCP.CustomerAccountId\r\nLEFT JOIN [BNKM].[PaymentCard] BPC ON BPC.PaymentCardId = BCP.PaymentCardId\r\nWHERE DDA.AccountId IS NOT NULL\r\n\r\n) A\r\nGROUP BY\r\nBusinessDateSK\r\n,BranchSK\r\n,BankSK\r\n,AccountSK\r\n,AccountId\r\n,SourceSystemCode\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "FactCardsOutstandingBalance",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "FactCardsCreditLimit",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH \r\nPaymentCardStatementSummary\r\nAS(\r\n      SELECT * FROM [BNKM].[PaymentCardStatementSummary] A\r\n      WHERE convert(varchar,a.PeriodStartDate,112) = '20231204'\r\n      AND A.SourceSystemCode = 'CCD'  \r\n)\r\n\r\nINSERT INTO DW.FactCardsOutstandingBalance\r\n(\r\nBusinessDateSK\r\n,BranchSK\r\n,BankSK\r\n,AccountSK\r\n,AccountID\r\n,StatementBalanceRetailAmount\r\n,StatementBalanceCashAmount\r\n,StatementBalance\r\n,SourceSystemCode\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\n\r\nSELECT \r\n convert(varchar,BPCS.PeriodStartDate,112) AS BusinessDateSK\r\n,DDB.BranchSK AS BranchSK\r\n,DDBK.BankSK AS BankSK\r\n,DDA.AccountSK AS AccountSK\r\n,DDA.AccountID AS AccountID\r\n,BPCS.RetailStatementBalanceAmount AS StatementBalanceRetailAmount\r\n,BPCS.CashStatementBalanceAmount AS StatementBalanceCashAmount\r\n,BPCS.RetailStatementBalanceAmount + BPCS.CashStatementBalanceAmount AS StatementBalance\r\n,BPCS.SourceSystemCode AS SourceSystemCode\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,Getdate() AS InsertDttm\r\nFROM \r\nPaymentCardStatementSummary BPCS\r\nLEFT JOIN [BNKM].[CustomerAccount] BCA ON BPCS.CustomerAccountId = BCA.CustomerAccountId\r\nLEFT JOIN [DW].[DimBranch] DDB ON BCA.BranchId = DDB.BranchID AND DDB.CurrentIndicator = 1\r\nLEFT JOIN [DW].[DimBank] DDBK ON BPCS.FinancialInstitutionId = DDBK.BankID\r\nLEFT JOIN [DW].[DimAccount] DDA ON BPCS.CustomerAccountId = DDA.AccountID AND DDA.CurrentIndicator = 1\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "FactCardsRelationshipExposure",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "FactCardsOutstandingBalance",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "INSERT INTO DW.FactCardsRelationshipExposure\r\n(\r\nBusinessDateSK\r\n,BranchSK\r\n,BankSK\r\n,AccountSK\r\n,AccountID\r\n,OutstandingBalanceAmount\r\n,OutstandingInstallmentAmount\r\n,RelationshipExposure\r\n,SourceSystemCode\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\n\r\n\r\n\r\nSELECT \r\nconvert(varchar,BPCS.PeriodStartDate,112) AS BusinessDateSK\r\n,DDB.BranchSK AS BranchSK\r\n,DDBK.BankSK AS BankSK\r\n,DDA.AccountSK AS AccountSK\r\n,DDA.AccountId AS AccountID\r\n,BPCS.TotalOutstandingBalanceAmount AS OutstandingBalanceAmount\r\n,BPCS.OutstandingInstallmentAmount AS OutstandingInstallmentAmount\r\n,SUM(Case WHEN TotalOutstandingBalanceAmount > 0 THEN TotalOutstandingBalanceAmount ELSE 0 END + \r\n    CASE WHEN OutstandingInstallmentAmount > 0 THEN OutstandingInstallmentAmount ELSE 0 END ) RelationshipExposure\r\n,BPCS.SourceSystemCode AS SourceSystemCode\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,Getdate() AS InsertDttm\r\nFROM \r\n[BNKM].[PaymentCardStatementSummary]  BPCS\r\nLEFT JOIN [BNKM].[CustomerAccount] BCA ON BPCS.CustomerAccountId = BCA.CustomerAccountId\r\nLEFT JOIN [DW].[DimBranch] DDB ON BCA.BranchId = DDB.BranchID AND DDB.CurrentIndicator = 1\r\nLEFT JOIN [DW].[DimBank] DDBK ON BPCS.FinancialInstitutionId = DDBK.BankID\r\nLEFT JOIN [DW].[DimAccount] DDA ON BPCS.CustomerAccountId = DDA.AccountID AND DDA.CurrentIndicator = 1\r\nWHERE convert(varchar,BPCS.PeriodStartDate,112) = '20231204'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "FactLoansCreditLimit",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "FactCardsRelationshipExposure",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "--GET LNS_Sanction_Limit_Amount FROM CustomerAccountLimit--\r\nWITH \r\nCustomerAccountLimit\r\nAS(\r\n      SELECT * FROM BNKM.CustomerAccountLimit\r\n      WHERE LimitTypeId = 'Sanction Limit Amount' \r\n      AND SourceSystemCode = 'LNS'\r\n      AND convert(varchar,Timestamp,112) = '20231204'\r\n)\r\n,\r\n--GET ShareIndicator FROM DimCustomerAccount--\r\nCNT_DCA AS (\r\nSELECT AccountID,\r\nCASE \r\n    WHEN COUNT(ShareIndicator) = NULL THEN 1\r\n    WHEN COUNT(ShareIndicator) = 0 THEN 1\r\n    ELSE COUNT(ShareIndicator)\r\n    END AS CNT\r\nFROM DW.DimCustomerAccount \r\nWHERE ShareIndicator = 'Y'\r\nGROUP BY AccountID\r\n)\r\n\r\n--INSERT--\r\nINSERT INTO DW.FactLoansCreditLimit (\r\nBusinessDateSK\r\n,BranchSK\r\n,BankSK\r\n,AccountSK\r\n,AccountID\r\n,CreditLimitAmountFull_Original\r\n,CreditLimitAmountProrated_Original\r\n,Currency_Original\r\n,Currency_Target\r\n,PesoConversionRate\r\n,CreditLimitAmountFull\r\n,CreditLimitAmountProrated\r\n,SourceSystemCode\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\n\r\n--SELECT--\r\nSELECT\r\nCONVERT(VARCHAR, BCAL.Timestamp,112) AS BusinessDateSK\r\n,DDB.BranchSK AS BranchSK\r\n,DDBK.BankSK AS BankSK\r\n,DDA.AccountSK AS AccountSK\r\n,DDA.AccountID AS AccountID\r\n,BCAL.LimitAmount AS CreditLimitAmountFull_Original\r\n,CONVERT(numeric(18,5), BCAL.LimitAmount / DCA.CNT) AS CreditLimitAmountProrated_Original\r\n,BCAL.IsoCurrencyCode AS Currency_Original\r\n,'PHP' AS Currency_Target\r\n,BCC.ConversionRate AS PesoConversionRate\r\n,CASE \r\n    WHEN BCAL.IsoCurrencyCode != 'PHP' \r\n    THEN BCAL.LimitAmount * BCC.ConversionRate\r\n    ELSE BCAL.LimitAmount\r\nEND AS CreditLimitAmountFull\r\n,CASE \r\n    WHEN BCAL.IsoCurrencyCode != 'PHP' \r\n    THEN BCAL.LimitAmount * BCC.ConversionRate\r\n    ELSE CONVERT(numeric(18,5), BCAL.LimitAmount / DCA.CNT)\r\nEND AS CreditLimitAmountProrated\r\n,BCAL.SourceSystemCode AS SourceSystemCode\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,Getdate() AS InsertDttm\r\nFROM CustomerAccountLimit BCAL\r\nLEFT JOIN BNKM.CustomerAccount BCA ON BCA.CustomerAccountId = BCAL.CustomerAccountId\r\nLEFT JOIN DW.DimBranch DDB ON DDB.BranchID = BCA.BranchId \r\nLEFT JOIN DW.DimBank DDBK ON DDBK.BankID = BCAL.FinancialInstitutionId\r\nLEFT JOIN DW.DimAccount DDA ON DDA.AccountID = BCAL.CustomerAccountId\r\nLEFT JOIN CNT_DCA DCA ON DCA.AccountId = BCAL.CustomerAccountId\r\nLEFT JOIN BNKM.CurrencyConversion_FillGapDates BCC ON BCC.ConvertFromCurrencyId = BCAL.IsoCurrencyCode\r\nAND BCC.FinancialInstitutionId = BCAL.FinancialInstitutionId\r\nAND BCC.CurrencyConversionTimestamp = CONVERT(DATE, BCAL.Timestamp,112)\r\nWHERE DDB.BranchSK IS NOT NULL\r\nAND DDBK.BankSK IS NOT NULL\r\nAND DDA.AccountSK IS NOT NULL\r\nAND DDA.AccountID IS NOT NULL\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "FactLoansOutstandingBalance",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "FactLoansCreditLimit",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH CurrencyConversion\r\nAS(\r\n    SELECT * FROM BNKM.CurrencyConversion_FillGapDates WHERE ConvertToCurrencyId = 'PHP' AND RateId = 'REV'\r\n)\r\n,CNT_DCA\r\nAS\r\n(\r\nselect Accountid,\r\ncount(shareindicator) as CNT\r\n from dw.dimcustomeraccount where shareindicator = 'y'\r\n group by accountid\r\n\r\n)\r\n\r\nINSERT INTO  DW.FactLoansOutstandingBalance\r\n(\r\n     BusinessDateSK\r\n    ,BranchSK\r\n    ,BankSK\r\n    ,AccountSK\r\n    ,AccountID\r\n    ,AmortizationAmount\r\n    ,InterestAmount\r\n    ,PenaltyAmount\r\n    ,OutstandingBalanceFull\r\n    ,OutstandingBalanceProrated\r\n    ,SourceSystemCode\r\n    ,WorkFlowId\r\n    ,TaskRunId\r\n    ,InsertDttm\r\n)\r\nSELECT\r\n BusinessDateSK\r\n,BranchSK\r\n,BankSK\r\n,AccountSK\r\n,BRPP.AccountId\r\n,SUM(AmortizationAmount) AS AmortizationAmount\r\n,SUM(InterestAmount) AS InterestAmount\r\n,SUM(PenaltyAmount) AS PenaltyAmount\r\n,SUM(AmortizationAmount) + SUM(InterestAmount) + SUM(PenaltyAmount) AS OutstandingBalanceFull\r\n,(SUM(AmortizationAmount) + SUM(InterestAmount) + SUM(PenaltyAmount) ) / DCA.CNT  AS OutstandingBalanceProrated\r\n,'LNS' AS SourceSystemCode\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,Getdate() AS InsertDttm\r\nFROM (\r\n         SELECT\r\n         CONVERT(VARCHAR,BRPP.DemandEffectiveDate,112) AS BusinessDateSK\r\n        ,DDB.BranchSK AS BranchSK\r\n        ,DDBK.BankSK AS BankSK\r\n        ,DDA.AccountSK AS AccountSK\r\n        ,DDA.AccountId AS AccountId\r\n        ,CASE WHEN BRPP.DemandFlowId = 'PRDEM' THEN \r\n              CASE WHEN BRPP.IsoCurrencyCode <> 'PHP' THEN BRPP.DemandAmount * CC.ConversionRate ELSE BRPP.DemandAmount END\r\n         ELSE 0 END AS AmortizationAmount\r\n        ,CASE WHEN BRPP.DemandFlowId = 'INDEM' THEN \r\n              CASE WHEN BRPP.IsoCurrencyCode <> 'PHP' THEN BRPP.DemandAmount * CC.ConversionRate ELSE BRPP.DemandAmount END  \r\n         ELSE 0 END AS InterestAmount\r\n        ,CASE WHEN BRPP.DemandFlowId = 'APDEM' THEN \r\n              CASE WHEN BRPP.IsoCurrencyCode <> 'PHP' THEN BRPP.DemandAmount * CC.ConversionRate ELSE BRPP.DemandAmount END\r\n         ELSE 0 END AS PenaltyAmount\r\n        FROM \r\n        [BNKM].[RepaymentPlanPayment] BRPP\r\n        LEFT JOIN [BNKM].[CustomerAccount] BCA ON BRPP.CustomerAccountId = BCA.CustomerAccountId\r\n        LEFT JOIN [DW].[DimBranch] DDB ON BCA.BranchId = DDB.BranchID AND DDB.CurrentIndicator = 1\r\n        LEFT JOIN [DW].[DimBank] DDBK ON BRPP.FinancialInstitutionId = DDBK.BankID\r\n        LEFT JOIN [DW].[DimAccount] DDA ON BRPP.CustomerAccountId = DDA.AccountID AND DDA.CurrentIndicator = 1\r\n        LEFT JOIN CurrencyConversion CC ON BRPP.IsoCurrencyCode = CC.ConvertFromCurrencyId AND BRPP.FinancialInstitutionId = CC.FinancialInstitutionId AND BRPP.DemandDate = CC.CurrencyConversionTimestamp\r\n        where CONVERT(VARCHAR,BRPP.DemandEffectiveDate,112) = '20231204'\r\n) BRPP\r\nLEFT JOIN CNT_DCA DCA ON DCA.AccountId = BRPP.AccountId \r\n\r\nGROUP BY \r\nBusinessDateSK\r\n,BranchSK\r\n,BankSK\r\n,AccountSK\r\n,BRPP.AccountId\r\n,DCA.CNT "
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "FactLoansRelationshipExposure",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "FactLoansOutstandingBalance",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH CustomerAccountPeriodBalance\r\nAS(\r\n    SELECT CustomerAccountId,PeriodEndDate,BalanceAmount,IsoCurrencyCode,FinancialInstitutionId,PeriodStartDate,SourceSystemCode\r\n    FROM BNKM.CustomerAccountPeriodBalance  WHERE SourceSystemCode = 'LNS' AND PeriodBalanceTypeId = 'EOD Running Balance of Value Date'  AND '20231204' BETWEEN CONVERT(VARCHAR,PERIODSTARTDATE,112) AND ISNULL(CONVERT(VARCHAR,PERIODENDDATE,112),'20991231')\r\n    GROUP BY CustomerAccountId,PeriodEndDate,BalanceAmount,IsoCurrencyCode,FinancialInstitutionId,PeriodStartDate,SourceSystemCode\r\n)\r\n, CurrencyConversion\r\nAS(\r\n    SELECT * FROM BNKM.CurrencyConversion WHERE ConvertToCurrencyId = 'PHP' AND RateId = 'REV'\r\n)\r\n, CNT_CustomerAccountParticipationAuthorizedSignatory\r\nAS\r\n(\r\nselect Accountid,\r\ncount(shareindicator) as CNT\r\n from dw.dimcustomeraccount where shareindicator = 'y'\r\n group by accountid\r\n\r\n\r\n)\r\n\r\nINSERT INTO DW.FactLoansRelationshipExposure (\r\n    BusinessDateSK\r\n    ,BranchSK\r\n    ,BankSK\r\n    ,AccountSK\r\n    ,AccountID\r\n    ,BalanceAmount\r\n    ,TotalRelationshipExposureFull\r\n    ,TotalRelationshipExposureProrated\r\n    ,SourceSystemCode\r\n    ,WorkFlowId\r\n    ,TaskRunId\r\n    ,InsertDttm\r\n)\r\n\r\n SELECT\r\n '20231204' AS BusinessDateSK\r\n ,DDB.BranchSK AS BranchSK\r\n ,DDBK.BankSK AS BankSK\r\n ,DDA.AccountSK AS AccountSK\r\n ,DDA.AccountId AS AccountId\r\n ,BCAB.BalanceAmount AS BalanceAmount\r\n ,CASE WHEN BCAB.IsoCurrencyCode <> 'PHP' THEN BCAB.BalanceAmount * CC.ConversionRate ELSE BCAB.BalanceAmount End AS TotalRelationshipExposureFull\r\n ,CASE WHEN BCAB.IsoCurrencyCode <> 'PHP' THEN (BCAB.BalanceAmount * CC.ConversionRate) / DCA.CNT ELSE BCAB.BalanceAmount / DCA.CNT END AS TotalRelationshipExposureProrated\r\n ,BCAB.SourceSystemCode AS SourceSystemCode\r\n ,0 AS WorkFlowId\r\n ,0 AS TaskRunId\r\n ,Getdate() AS InsertDttm\r\n FROM \r\n CustomerAccountPeriodBalance BCAB\r\n LEFT JOIN BNKM.CustomerAccount BCA ON CONVERT(VARCHAR,BCAB.CustomerAccountId) = CONVERT(VARCHAR,BCA.CustomerAccountId)\r\n LEFT JOIN DW.DimBranch DDB ON BCA.BranchId = DDB.BranchID AND DDB.CurrentIndicator = 1 \r\n LEFT JOIN DW.DimBank DDBK ON BCAB.FinancialInstitutionId = DDBK.BankID\r\n LEFT JOIN DW.DimAccount DDA ON BCAB.CustomerAccountId = DDA.AccountID  AND DDA.CurrentIndicator = 1\r\n LEFT JOIN CurrencyConversion CC ON BCAB.IsoCurrencyCode = CC.ConvertFromCurrencyId AND BCAB.FinancialInstitutionId = CC.FinancialInstitutionId AND '20231204' = CC.CurrencyConversionTimestamp\r\n LEFT JOIN CNT_CustomerAccountParticipationAuthorizedSignatory DCA ON DCA.AccountId = BCAB.CustomerAccountId\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "FactSecurityPortfolio",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "FactLoansRelationshipExposure",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH Cnt_DimCustomerAccount\r\nAS(\r\n    select AccountID,\r\n    count(ShareIndicator) as CNT\r\n    from DW.DimCustomerAccount where ShareIndicator = 'Y' \r\n    group by AccountID\r\n)\r\n\r\nINSERT INTO  DW.FactSecurityPortfolio\r\n(\r\n BusinessDateSK\r\n,BranchSK\r\n,BankSK\r\n,AccountSk\r\n,AccountID\r\n,PortfolioEndValueFull\r\n,PortfolioEndValueProrated\r\n,SourceSystemCode\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n\r\n)\r\n\r\nSELECT \r\nconvert(varchar,BCASP.[DATESTAMP],112) AS BusinessDateSK\r\n,DDB.BRANCHSK AS BranchSK\r\n,DDBANK.BANKSK AS BankSK\r\n,DDA.AccountSK AS AccountSk\r\n,DDA.AccountID AS AccountID\r\n,SUM(BCASP.EndValue) AS PortfolioEndValueFull\r\n,SUM(BCASP.EndValue)/ DCA.CNT AS PortfolioEndValueProrated\r\n,BCASP.SourceSystemCode AS SourceSystemCode\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,GETDATE() AS InsertDttm\r\n\r\nFROM BNKM.CustomerAccountSecuritiesPortfolio BCASP\r\nLEFT JOIN BNKM.CUSTOMERACCOUNT BCA ON BCA.CUSTOMERACCOUNTID = BCASP.CUSTOMERACCOUNTID\r\nLEFT JOIN DW.DIMBRANCH DDB ON BCA.BRANCHID = DDB.BRANCHID AND DDB.CurrentIndicator = 1\r\nLEFT JOIN DW.DIMBANK DDBANK ON BCASP.FinancialInstitutionId = DDBANK.BankId\r\nLEFT JOIN DW.DimAccount DDA ON BCASP.CUSTOMERACCOUNTID = DDA.ACCOUNTID AND DDA.CurrentIndicator = 1\r\nLEFT JOIN Cnt_DimCustomerAccount DCA ON DCA.AccountId = BCASP.CustomerAccountId\r\nWHERE convert(varchar,BCASP.[DATESTAMP],112) = '20231204'\r\nGROUP BY \r\n convert(varchar,BCASP.[DATESTAMP],112)\r\n,DDB.BRANCHSK\r\n,DDBANK.BANKSK\r\n,DDA.AccountSK\r\n,DDA.AccountID\r\n,BCASP.SourceSystemCode\r\n,DCA.CNT"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "FactTreasuryOutstandingInvestment",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "FactSecurityPortfolio",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH CustomerAccountBalance\r\nAS(\r\n\r\nSELECT * FROM BNKM.CustomerAccountBalance WHERE BalanceTypeId IN ('Fixed Income Product Outstanding', \r\n'Money Market Product Outstanding', 'Structured Product PYA Outstanding', 'Structured Product Asset Swap')\r\nAND SourceSystemCode = 'TRY' AND IsoCurrencyCode = 'PHP'\r\n\r\n)\r\n, CNT_CustomerAccountParticipation\r\nAS(\r\n    select AccountID,\r\n    count(ShareIndicator) as CNT\r\n    from DW.DimCustomerAccount where ShareIndicator = 'Y'\r\n    group by AccountID\r\n)\r\n\r\nINSERT INTO DW.FactTreasuryOutstandingInvestment\r\n( \r\n BusinessDateSK \r\n,BranchSK \r\n,BankSK \r\n,AccountSK \r\n,AccountID \r\n,OutstandingInvestmentFull \r\n,OutstandingInvestmentProrated \r\n,Currency \r\n,SourceSystemCode \r\n,WorkFlowId \r\n,TaskRunId \r\n,InsertDttm                                           \r\n)\r\n\r\n\r\nSELECT\r\nconvert(varchar,BCAB.[Timestamp],112) AS BusinessDateSK\r\n,DDB.BranchSK AS BranchSK\r\n,DDBANK.BankSK AS BankSK\r\n,DDA.AccountSK AS AccountSK\r\n,DDA.AccountId AS AccountID\r\n,SUM(BCAB.BalanceAmount) AS OutstandingInvestmentFull\r\n,SUM(BCAB.BalanceAmount / CNT) AS OutstandingInvestmentProrated\r\n,BCAB.IsoCurrencyCode AS Currency\r\n,BCAB.SourceSystemCode AS SourceSystemCode\r\n,0 AS WorkFlowId \r\n,0 AS TaskRunId\r\n,GETDATE() AS InsertDttm\r\nFROM CustomerAccountBalance BCAB\r\nLEFT JOIN BNKM.CUSTOMERACCOUNT BCA ON BCAB.CUSTOMERACCOUNTID = BCA.CUSTOMERACCOUNTID AND BCAB.SourceSystemCode = BCA.SourceSystemCode\r\nLEFT JOIN DW.DimBranch DDB ON BCA.BRANCHID = DDB.BRANCHID aND DDB.CurrentIndicator = 1\r\nLEFT JOIN DW.DIMBANK DDBANK ON BCAB.FINANCIALINSTITUTIONID = DDBANK.BANKID\r\nLEFT JOIN CNT_CustomerAccountParticipation BCAP ON BCAB.CustomerAccountId = BCAP.AccountId --join for count\r\nLEFT JOIN DW.DimAccount DDA ON BCAB.CUSTOMERACCOUNTID = DDA.ACCOUNTID AND BCAB.SOURCESYSTEMCODE = DDA.SOURCESYSTEMCODE AND DDA.CurrentIndicator = 1\r\nWHERE convert(varchar,BCAB.[Timestamp],112) = '20231204'\r\nGROUP BY \r\nBCAB.[Timestamp]\r\n,DDB.BranchSK\r\n,DDBANK.BankSK\r\n,DDA.AccountSK\r\n,DDA.AccountId\r\n,BCAB.IsoCurrencyCode\r\n,BCAB.SourceSystemCode"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "FactTrustFundValue",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "FactTreasuryOutstandingInvestment",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH CNT_CustomerAccountParticipation\r\nAS(\r\nSELECT BUB.CustomerAccountId,  COUNT(InternalCustomerId) CNT FROM [BNKM].[UITFAUMBalance] BUB\r\nLEFT JOIN (SELECT InternalCustomerId,BaseAccountId FROM BNKM.CustomerRelatedBaseAccount) BCRB ON BUB.BaseAccountId = BCRB.BaseAccountId\r\nGROUP BY BUB.CustomerAccountId \r\n)\r\n\r\n, DW_FACTTRUSTFUNDVALUE AS (\r\n\r\n-- UITF --\r\nSELECT DISTINCT\r\n CONVERT(VARCHAR,BUB.BalanceTimestamp,112) AS BusinessDateSK\r\n ,-1 AS BranchSK\r\n ,DDK.BankSK AS BankSK\r\n ,DDA.AccountSK AS AccountSK\r\n ,DDA.AccountId AS AccountId\r\n ,BUB.TotalBalanceAmount AS AUMAmountFull\r\n ,BUB.TotalBalanceAmount/ISNULL(NULLIF(CAP.CNT,''),1)   AS AUMAmountProrated\r\n ,BUB.SourceSystemCode AS SourceSystemCode\r\n ,0 AS WorkFlowId\r\n ,0 AS TaskRunId\r\n ,Getdate() AS InsertDttm\r\nfrom [BNKM].[UITFAUMBalance] BUB\r\nLEFT JOIN [BNKM].[CustomerAccount] BCA\tON BUB.CustomerAccountId = BCA.CustomerAccountId \r\nLEFT JOIN [DW].[DimBank] DDK \tON BUB.FinancialInstitutionId = DDK.BankID\r\nLEFT JOIN [DW].[DimAccount] DDA\t\tON BUB.CustomerAccountId = DDA.AccountID AND DDA.CurrentIndicator = 1\r\nLEFT JOIN CNT_CustomerAccountParticipation CAP ON BUB.CustomerAccountId = CAP.CustomerAccountId\r\nWHERE DDA.AccountSK IS NOT NULL \r\nGROUP BY \r\nBUB.BalanceTimestamp\r\n,DDK.BankSK\r\n,DDA.AccountSK\r\n,DDA.AccountId\r\n,BUB.TotalBalanceAmount\r\n,CAP.CNT\r\n,BUB.SourceSystemCode\r\n\r\n\r\nUNION ALL\r\n\r\n\r\n-- NonUITF --\r\nSELECT DISTINCT\r\n CONVERT(VARCHAR,BUB.BalanceTimestamp,112) AS BusinessDateSK\r\n ,-1 AS BranchSK\r\n ,DDK.BankSK AS BankSK\r\n ,DDA.AccountSK AS AccountSK\r\n ,DDA.AccountId AS AccountId\r\n ,BUB.BalanceAmount AS AUMAmountFull\r\n ,BUB.BalanceAmount/ISNULL(NULLIF(CAP.CNT,''),1)  AS AUMAmountProrated\r\n ,BUB.SourceSystemCode AS SourceSystemCode\r\n ,0 AS WorkFlowId\r\n ,0 AS TaskRunId\r\n ,Getdate() AS InsertDttm\r\nFROM [BNKM].[NonUITFAUMBalance] BUB\r\nLEFT JOIN [BNKM].[CustomerAccount] BCA\tON BUB.CustomerAccountId = BCA.CustomerAccountId\r\nLEFT JOIN [DW].[DimBank] DDK \tON BUB.FinancialInstitutionId = DDK.BankID\r\nLEFT JOIN [DW].[DimAccount] DDA\t\tON BUB.CustomerAccountId = DDA.AccountID AND DDA.CurrentIndicator = 1\r\nLEFT JOIN CNT_CustomerAccountParticipation CAP ON BUB.CustomerAccountId = CAP.CustomerAccountId\r\nWHERE DDA.AccountSK IS NOT NULL \r\nGROUP BY \r\n BUB.BalanceTimestamp\r\n,DDK.BankSK\r\n,DDA.AccountSK\r\n,DDA.AccountId\r\n,BUB.BalanceAmount\r\n,CAP.CNT\r\n,BUB.SourceSystemCode\r\n)\r\n\r\nINSERT INTO [DW].[FactTrustFundValue]\r\n\r\nSELECT DISTINCT\r\n BusinessDateSK\r\n ,BranchSK\r\n ,BankSK\r\n ,AccountSK\r\n ,AccountId\r\n ,SUM(AUMAmountFull) AUMAmountFull\r\n ,SUM(AUMAmountProrated) AUMAmountProrated\r\n ,SourceSystemCode\r\n ,WorkFlowId\r\n ,TaskRunId\r\n ,InsertDttm\r\nFROM DW_FACTTRUSTFUNDVALUE a\r\nwhere BusinessDateSK = '20231204'\r\nGROUP BY\r\n BusinessDateSK\r\n ,BranchSK\r\n ,BankSK\r\n ,AccountSK\r\n ,AccountId\r\n ,SourceSystemCode\r\n ,WorkFlowId\r\n ,TaskRunId\r\n ,InsertDttm"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "FactTotalRelationshipBalance",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "FactTotalRelationshipExposure",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH TRB AS (\r\n\r\nSELECT [BusinessDateSK], DFAD.[BranchSK], DFAD.[BankSK], DFAD.[AccountSK], DFAD.[AccountID], [AverageDailBalanceAmountYTDFull], [AverageDailBalanceAmountYTDProrated] \r\nFROM DW.FactAverageDailyBalanceYTD DFAD\r\nJOIN DW.DimAccount DDA ON DFAD.AccountSK = DDA.AccountSK\r\nWHERE DDA.AccountStatus not in ('Closed') WHERE BusinessDateSK = '20231204'\r\n\r\nUNION ALL\r\n\r\nSELECT [BusinessDateSK], [BranchSK], [BankSK], [AccountSK], [AccountID], [AUMAmountFull], [AUMAmountProrated] \r\nFROM DW.FactTrustFundValue WHERE BusinessDateSK = '20231204'\r\n\r\nUNION ALL\r\n\r\nSELECT [BusinessDateSK], [BranchSK], [BankSK], [AccountSK], [AccountID], [OutstandingInvestmentFull], [OutstandingInvestmentProrated] \r\nFROM DW.FactTreasuryOutstandingInvestment WHERE BusinessDateSK = '20231204' ) \r\n\r\nINSERT INTO DW.FactTotalRelationshipBalance\r\n(\r\n [BusinessDateSK]\r\n,[BranchSK]\r\n,[BankSK]\r\n,[CustomerSK]\r\n,[CustomerID]\r\n,[FullMarketSegmentSK]\r\n,[ProratedMarketSegmentSK]\r\n,[TotalRelationshipBalanceFull]\r\n,[TotalRelationshipBalanceProrated]\r\n,[SourceSystemCode]\r\n,[WorkFlowId]\r\n,[TaskRunId]\r\n,[InsertDttm]\r\n)\r\nSELECT \r\n TRB.[BusinessDateSK]\r\n,TRB.[BranchSK]\r\n,TRB.[BankSK]\r\n,TRB.CustomerSK\r\n,TRB.CustomerID\r\n,CASE WHEN DMSF.MarketSegmentSK IS NULL AND TRB.TRBAmountFull >= 10000000 THEN 7     \r\n      WHEN DMSF.MarketSegmentSK IS NULL AND TRB.TRBAmountFull < 1 THEN 1 ELSE DMSF.MarketSegmentSK END AS FullMarketSegmentSK\r\n,CASE WHEN DMSP.MarketSegmentSK IS NULL AND TRB.TRBAmountProrated >= 10000000 THEN 7 \r\n      WHEN DMSP.MarketSegmentSK IS NULL AND TRB.TRBAmountProrated < 1 THEN 1 ELSE DMSP.MarketSegmentSK END AS ProratedMarketSegmentSK\r\n,TRB.TRBAmountFull\r\n,TRB.TRBAmountProrated \r\n,TRB.SourceSystemCode\r\n,TRB.WorkFlowId\r\n,TRB.TaskRunId\r\n,TRB.InsertDttm\r\nFROM\r\n (\r\n        SELECT \r\n          TRB.[BusinessDateSK]\r\n        , NULL [BranchSK]\r\n        , TRB.[BankSK]\r\n        , DCA.CustomerSK AS CustomerSK\r\n        , DCA.CustomerID AS CustomerID\r\n        , SUM([AverageDailBalanceAmountYTDFull]) AS TRBAmountFull\r\n        , SUM([AverageDailBalanceAmountYTDProrated]) AS TRBAmountProrated \r\n        , DC.SourceSystemCode AS SourceSystemCode\r\n        , 0 AS WorkFlowId\r\n        , 0 AS TaskRunId\r\n        , Getdate() AS InsertDttm\r\n        FROM TRB\r\n        LEFT JOIN DW.DimCustomerAccount DCA ON TRB.AccountSK = DCA.AccountSK\r\n        LEFT JOIN DW.DimCustomer DC ON DCA.CustomerSK = DC.CustomerSK\r\n        WHERE DCA.ShareIndicator = 'Y'\r\n        GROUP BY \r\n         TRB.[BusinessDateSK]\r\n        ,TRB.[BankSK]\r\n        ,DCA.CustomerSK\r\n        ,DCA.CustomerID\r\n        ,DC.SourceSystemCode\r\n) TRB\r\nLEFT JOIN DW.DimMarketSegment DMSF ON ISNULL(TRB.TRBAmountFull,0) >= DMSF.LowerLimit AND ISNULL(TRB.TRBAmountFull,0) < DMSF.UpperLimit\r\nLEFT JOIN DW.DimMarketSegment DMSP ON ISNULL(TRB.TRBAmountProrated,0) >= DMSP.LowerLimit AND ISNULL(TRB.TRBAmountProrated,0) < DMSP.UpperLimit\r\nWHERE TRB.CustomerSK IS NOT NULL \r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "FactAverageDailyBalanceMTD",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "FactDepositsOutstandingBalance",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH CustomerAccountPeriodBalance\r\nAS(\r\n    SELECT * FROM BNKM.CustomerAccountPeriodBalance \r\n    WHERE PeriodBalanceTypeId = 'Average Current Balance'\r\n    AND SourceSystemCode = 'DEP' AND '20231204' BETWEEN CONVERT(VARCHAR,PERIODSTARTDATE,112) AND ISNULL(CONVERT(VARCHAR,PERIODENDDATE,112),'20991231')\r\n)\r\n, CurrencyConversion\r\nAS(\r\n    SELECT * FROM BNKM.CurrencyConversion_FillGapDates WHERE ConvertToCurrencyId = 'PHP' AND RateId = 'REV'\r\n)\r\n,\r\nCnt_DimCustomerAccount\r\nAS(\r\n    SELECT BCB.CustomerAccountId, COUNT(1) CNT FROM CustomerAccountPeriodBalance BCB\r\n    LEFT JOIN DW.DimCustomerAccount DCA ON BCB.CustomerAccountId = DCA.AccountID \r\n    and DCA.ShareIndicator = 'Y' \r\n    GROUP BY BCB.CustomerAccountId\r\n\r\n)\r\n\r\nINSERT INTO DW.FactAverageDailyBalanceMTD\r\n(\r\n     BusinessDateSK\r\n    ,BranchSK\r\n    ,BankSK\r\n    ,AccountSK\r\n    ,AccountID\r\n    ,AverageDailBalanceAmountMTDFull\r\n    ,AverageDailBalanceAmountMTDProrated\r\n    ,SourceSystemCode\r\n    ,WorkFlowId\r\n    ,TaskRunId\r\n    ,InsertDttm\r\n)\r\n\r\nSELECT \r\n@Businessdate AS BusinessDateSK\r\n,DDB.BranchSK AS BranchSK\r\n,DDBK.BankSK AS BankSK\r\n,DDA.AccountSK AS AccountSK\r\n,DDA.AccountId AS AccountId\r\n,CASE WHEN BCA.IsoCurrencyCode <> 'PHP' THEN BCPB.BalanceAmount * CC.ConversionRate\r\n    ELSE BCPB.BalanceAmount END  AS AverageDailBalanceAmountMTDFull\r\n,CASE WHEN BCA.IsoCurrencyCode <> 'PHP' THEN (BCPB.BalanceAmount * CC.ConversionRate )/ ISNULL(NULLIF(DCA.CNT,''),1)  \r\n    ELSE BCPB.BalanceAmount / ISNULL(NULLIF(DCA.CNT,''),1)  \r\n    END AS AverageDailBalanceAmountMTDProrated\r\n,BCPB.SourceSystemCode AS SourceSystemCode\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,Getdate() AS InsertDttm\r\nFROM \r\nCustomerAccountPeriodBalance BCPB\r\nJOIN BNKM.CustomerAccountFinancialProduct CAFP ON BCPB.CustomerAccountId = CAFP.CustomerAccountId AND BCPB.FinancialInstitutionId = CAFP.FinancialInstitutionId\r\nJOIN BNKM.FinancialProductApplication FPA ON CAFP.ProductId = FPA.FinancialProductId AND CAFP.FinancialInstitutionId = FPA.FinancialInstitutionId\r\nLEFT JOIN BNKM.CustomerAccount  BCA ON BCPB.CustomerAccountId = BCA.CustomerAccountId\r\nLEFT JOIN DW.DimBranch DDB ON BCA.BranchId = DDB.BranchID AND DDB.CurrentIndicator = 1 \r\nLEFT JOIN DW.DimBank DDBK ON BCPB.FinancialInstitutionId = DDBK.BankID\r\nLEFT JOIN DW.DimAccount DDA ON BCPB.CustomerAccountId = DDA.AccountID AND DDA.CurrentIndicator = 1\r\nLEFT JOIN CurrencyConversion CC ON BCPB.IsoCurrencyCode = CC.ConvertFromCurrencyId AND BCPB.FinancialInstitutionId = CC.FinancialInstitutionId AND '20231204' = CC.CurrencyConversionTimestamp\r\nLEFT JOIN Cnt_DimCustomerAccount DCA ON BCPB.CustomerAccountId = DCA.CustomerAccountId \r\nWHERE CAFP.ProductId NOT LIKE ('09%')\r\n AND FPA.FcbsApplicationId IN ('CAA', 'SBA', 'TDA')\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "FactAverageDailyBalanceYTD",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "FactAverageDailyBalanceMTD",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH CurrencyConversion\r\nAS(\r\n    SELECT * FROM BNKM.CurrencyConversion_FillGapDates WHERE ConvertToCurrencyId = 'PHP' AND RateId = 'REV' \r\n),\r\n CasaTdAggregateBalance\r\nAS(\r\n    SELECT * FROM [BNKM].[CasaTdAggregateBalance] WHERE AggregateBalanceType = 'Year-to-Date Average Daily Balance' AND CONVERT(VARCHAR,PERIODENDDATE,112) = '20231204'\r\n    \r\n)\r\n,\r\nCnt_DimCustomerAccount\r\nAS(\r\n    SELECT BCB.CustomerAccountId, COUNT(1) CNT FROM CasaTdAggregateBalance BCB\r\n    LEFT JOIN DW.DimCustomerAccount DCA ON BCB.CustomerAccountId = DCA.AccountID \r\n    and DCA.ShareIndicator = 'Y' \r\n    GROUP BY BCB.CustomerAccountId\r\n\r\n)\r\n\r\nINSERT INTO DW.FactAverageDailyBalanceYTD\r\n(\r\nBusinessDateSK\r\n,BranchSK\r\n,BankSK\r\n,AccountSK\r\n,AccountID\r\n,AverageDailBalanceAmountYTDFull\r\n,AverageDailBalanceAmountYTDProrated\r\n,SourceSystemCode\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm)\r\nSELECT \r\nCONVERT(VARCHAR,PERIODENDDATE,112) AS BusinessDateSK\r\n,DDB.BranchSK AS BranchSK\r\n,DDBK.BankSK AS BankSK\r\n,DDA.AccountSK AS AccountSK\r\n,DDA.AccountId AS AccountId\r\n,CASE WHEN BCA.IsoCurrencyCode <> 'PHP' THEN (BCB.AccumulatedCurrentBalance * BCC.ConversionRate) / DDD.DayOfYear\r\n    ELSE BCB.AccumulatedCurrentBalance / DDD.DayOfYear END  AS AverageDailBalanceAmountYTDFull\r\n\r\n,CASE WHEN BCA.IsoCurrencyCode <> 'PHP' THEN ( (BCB.ACCUMULATEDCURRENTBALANCE * BCC.ConversionRate )/ ISNULL(NULLIF(DCA.CNT,''),1)  ) / DDD.DayOfYear\r\n    ELSE (BCB.ACCUMULATEDCURRENTBALANCE / ISNULL(NULLIF(DCA.CNT,''),1)  ) / DDD.DayOfYear\r\n    END AS AverageDailBalanceAmountYTDProrated\r\n,BCB.SourceSystemCode AS SourceSystemCode\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,Getdate() AS InsertDttm\r\nFROM \r\nCasaTdAggregateBalance BCB\r\nJOIN BNKM.CustomerAccountFinancialProduct CAFP ON BCB.CustomerAccountid = CAFP.CustomerAccountId AND BCB.FinancialInstitutionId = CAFP.FinancialInstitutionId\r\nJOIN BNKM.FinancialProductApplication FPA ON CAFP.ProductId = FPA.FinancialproductId AND CAFP.FinancialInstitutionId = FPA.FinancialInstitutionId\r\nLEFT JOIN [BNKM].[CustomerAccount] BCA ON BCB.CustomerAccountId = BCA.CustomerAccountId \r\nLEFT JOIN CurrencyConversion BCC ON BCA.IsoCurrencyCode = BCC.ConvertFromCurrencyId AND BCB.FinancialInstitutionId = BCC.FinancialInstitutionId AND  CONVERT(VARCHAR,PERIODENDDATE,112) = BCC.CurrencyConversionTimestamp\r\nLEFT JOIN [DW].[DimBranch] DDB ON convert(varchar,BCA.BranchId) = DDB.BranchID  AND DDB.CurrentIndicator = 1 \r\nLEFT JOIN [DW].[DimBank] DDBK ON convert(varchar,BCB.FinancialInstitutionId) = convert(varchar,DDBK.BankID)\r\nLEFT JOIN Cnt_DimCustomerAccount DCA ON BCB.CustomerAccountId = DCA.CustomerAccountId \r\nLEFT JOIN [DW].[DimAccount] DDA ON convert(varchar,BCB.CustomerAccountId) = convert(varchar,DDA.AccountID) AND DDA.CurrentIndicator = 1\r\nLEFT JOIN DW.DIMDATE DDD ON  CONVERT(VARCHAR,BCB.PERIODENDDATE,112) = DDD.DateSK\r\nWHERE CAFP.ProductId NOT LIKE ('09%')\r\nAND FPA.FcbsApplicationId IN ('CAA','SBA','TDA')\r\nAND CONVERT(VARCHAR,PERIODENDDATE,112) = '20231204'"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "FactDepositsOutstandingBalance",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "FactTrustFundValue",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH CustomerAccountPeriodBalance\r\nAS(\r\n    SELECT * FROM BNKM.CustomerAccountPeriodBalance \r\n    WHERE PeriodBalanceTypeId = 'EOD Running Balance of Transaction Date'\r\n    AND SourceSystemCode = 'DEP' AND '20231204' BETWEEN CONVERT(VARCHAR,PERIODSTARTDATE,112) AND ISNULL(CONVERT(VARCHAR,PERIODENDDATE,112),'20991231')\r\n)\r\n, CurrencyConversion\r\nAS(\r\n    SELECT * FROM BNKM.CurrencyConversion_FillGapDates WHERE ConvertToCurrencyId = 'PHP' AND RateId = 'REV'\r\n)\r\n,\r\nCNT_DCA\r\nAS\r\n(\r\nselect Accountid,\r\ncount(shareindicator) as CNT\r\n from dw.dimcustomeraccount where shareindicator = 'y'\r\n group by accountid\r\n\r\n)\r\n\r\nINSERT INTO DW.FactDepositsOutstandingBalance\r\n(\r\n     BusinessDateSK\r\n    ,BranchSK\r\n    ,BankSK\r\n    ,AccountSK\r\n    ,AccountID\r\n    ,BalanceAmountFull\r\n    ,BalanceAmountProrated\r\n    ,SourceSystemCode\r\n    ,WorkFlowId\r\n    ,TaskRunId\r\n    ,InsertDttm\r\n)\r\n\r\nSELECT \r\n'20231204' AS BusinessDateSK\r\n,DDB.BranchSK AS BranchSK\r\n,DDBK.BankSK AS BankSK\r\n,DDA.AccountSK AS AccountSK\r\n,DDA.AccountId AS AccountId\r\n,CASE WHEN BCA.IsoCurrencyCode <> 'PHP' THEN BCPB.BalanceAmount * CC.ConversionRate\r\n    ELSE BCPB.BalanceAmount END  AS BalanceAmountFull\r\n,CASE WHEN BCA.IsoCurrencyCode <> 'PHP' THEN (BCPB.BalanceAmount * CC.ConversionRate )/ ISNULL(NULLIF(DCA.CNT,''),1)  \r\n    ELSE BCPB.BalanceAmount / ISNULL(NULLIF(DCA.CNT,''),1)  \r\n    END AS BalanceAmountProrated\r\n,BCPB.SourceSystemCode AS SourceSystemCode\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,Getdate() AS InsertDttm\r\nFROM \r\nCustomerAccountPeriodBalance BCPB\r\nJOIN BNKM.CustomerAccountFinancialProduct CAFP ON BCPB.CustomerAccountId = CAFP.CustomerAccountId AND BCPB.FinancialInstitutionId = CAFP.FinancialInstitutionId\r\nJOIN BNKM.FinancialProductApplication FPA ON CAFP.ProductId = FPA.FinancialProductId AND CAFP.FinancialInstitutionId = FPA.FinancialInstitutionId\r\nLEFT JOIN BNKM.CustomerAccount BCA ON BCPB.CustomerAccountId = BCA.CustomerAccountId\r\nLEFT JOIN DW.DimBranch DDB ON BCA.BranchId = DDB.BranchID AND DDB.CurrentIndicator = 1\r\nLEFT JOIN DW.DimBank DDBK ON BCPB.FinancialInstitutionId = DDBK.BankID\r\nLEFT JOIN DW.DimAccount DDA ON BCPB.CustomerAccountId = DDA.AccountID AND DDA.CurrentIndicator = 1\r\nLEFT JOIN CurrencyConversion CC ON BCPB.IsoCurrencyCode = CC.ConvertFromCurrencyId AND BCPB.FinancialInstitutionId = CC.FinancialInstitutionId AND '20231204' = CC.CurrencyConversionTimestamp\r\nLEFT JOIN CNT_DCA DCA ON BCPB.CustomerAccountId = DCA.AccountId\r\nWHERE CAFP.ProductId NOT LIKE ('09%') \r\nAND FPA.FcbsApplicationId IN ('CAA', 'SBA', 'TDA') \r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "FactTotalRelationshipExposure",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "FactAverageDailyBalanceYTD",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH TRE AS (\r\nSELECT [BusinessDateSK], DFLR.[BranchSK], DFLR.[BankSK], DFLR.[AccountSK], DFLR.[AccountID], ABS([TotalRelationshipExposureFull]) as TotalRelationshipExposureFull, ABS([TotalRelationshipExposureProrated]) as TotalRelationshipExposureProrated\r\nFROM dw.FactLoansRelationshipExposure DFLR\r\nJOIN DW.DimAccount DDA ON DFLR.AccountSK = DDA.AccountSK AND DDA.SOURCESYSTEMCODE = 'LNS'\r\nWHERE DDA.AccountStatus not in ('Closed') AND DFLR.[BusinessDateSK] = '20231204'\r\n\r\nUNION ALL\r\n\r\nSELECT [BusinessDateSK], DFCR.[BranchSK], DFCR.[BankSK], DFCR.[AccountSK], DFCR.[AccountID], [RelationshipExposure], [RelationshipExposure] \r\nFROM dw.FactCardsRelationshipExposure DFCR\r\nJOIN DW.DimAccount DDA ON DFCR.AccountSK = DDA.AccountSK AND DDA.SOURCESYSTEMCODE = 'CCD'\r\nWHERE DDA.AccountStatus not in ('8') AND DFCR.[BusinessDateSK] = '20231204'\r\n)\r\n\r\nINSERT INTO DW.FactTotalRelationshipExposure\r\n(\r\n BusinessDateSK\r\n,BranchSK\r\n,BankSK\r\n,CustomerSK\r\n,CustomerID\r\n,TotalRelationshipExposureFull\r\n,TotalRelationshipExposureProrated\r\n,SourceSystemCode\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\n\r\nSELECT \r\n  TRE.[BusinessDateSK]\r\n, NULL [BranchSK]\r\n, TRE.[BankSK]\r\n, DCA.CustomerSK AS CustomerSK\r\n, DCA.CustomerID AS CustomerID\r\n, SUM([TotalRelationshipExposureFull]) AS TotalRelationshipExposureFull\r\n, SUM([TotalRelationshipExposureProrated]) AS TotalRelationshipExposureProrated \r\n, DC.SourceSystemCode AS SourceSystemCode\r\n, 0 AS WorkFlowId\r\n, 0 AS TaskRunId\r\n, Getdate() AS InsertDttm\r\nFROM TRE\r\nLEFT JOIN DW.DimCustomerAccount DCA ON TRE.AccountSK = DCA.AccountSK AND  DCA.CurrentIndicator = 1\r\nLEFT JOIN DW.DimCustomer DC ON  DCA.CustomerSK = DC.CustomerSK AND DC.CurrentIndicator = 1\r\nWHERE DC.CUSTOMERSK IS NOT NULL\r\nAND DCA.ShareIndicator = 'Y'\r\n\r\nGROUP BY \r\n TRE.[BusinessDateSK]\r\n,TRE.[BankSK]\r\n,DCA.CustomerSK\r\n,DCA.CustomerID\r\n,DC.SourceSystemCode"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-01-05T14:29:25Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

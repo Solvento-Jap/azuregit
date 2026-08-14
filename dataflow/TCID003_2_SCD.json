@@ -1,0 +1,291 @@
+{
+	"name": "TCID003_2_SCD",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "stg_dimCustomer",
+						"type": "DatasetReference"
+					},
+					"name": "csvdimCustomer"
+				},
+				{
+					"dataset": {
+						"referenceName": "tgt_dimCustomer",
+						"type": "DatasetReference"
+					},
+					"name": "tbldimCustomer"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "tgt_dimCustomer",
+						"type": "DatasetReference"
+					},
+					"name": "tgtnewrecord"
+				},
+				{
+					"dataset": {
+						"referenceName": "tgt_dimCustomer",
+						"type": "DatasetReference"
+					},
+					"name": "sink1"
+				},
+				{
+					"dataset": {
+						"referenceName": "tgt_dimCustomer",
+						"type": "DatasetReference"
+					},
+					"name": "tgtupdaterecord"
+				},
+				{
+					"dataset": {
+						"referenceName": "tgt_dimCustomer",
+						"type": "DatasetReference"
+					},
+					"name": "tgthistrecord"
+				}
+			],
+			"transformations": [
+				{
+					"name": "renametgt"
+				},
+				{
+					"name": "lookuptarget"
+				},
+				{
+					"name": "ExistCheck1"
+				},
+				{
+					"name": "checkUpdate"
+				},
+				{
+					"name": "addColumns"
+				},
+				{
+					"name": "SCDType"
+				},
+				{
+					"name": "ARUpdate"
+				},
+				{
+					"name": "addColumnsUR"
+				},
+				{
+					"name": "updActive"
+				},
+				{
+					"name": "alterActive"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          empid as integer,",
+				"          empname as string,",
+				"          gender as string,",
+				"          country as string,",
+				"          remarks as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table',",
+				"     staged: true,",
+				"     partitionBy('hash', 1)) ~> csvdimCustomer",
+				"source(output(",
+				"          surrKey as integer,",
+				"          empid as integer,",
+				"          empname as string,",
+				"          gender as string,",
+				"          country as string,",
+				"          remarks as string,",
+				"          isActive as integer,",
+				"          fromDate as date,",
+				"          toDate as date",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     query: 'select * from dbo.CBC_CCD_DimCustomer where isActive = 1',",
+				"     format: 'query',",
+				"     staged: true,",
+				"     partitionBy('hash', 1)) ~> tbldimCustomer",
+				"tbldimCustomer select(mapColumn(",
+				"          tgt_surrKey = surrKey,",
+				"          tgt_empid = empid,",
+				"          tgt_empname = empname,",
+				"          tgt_gender = gender,",
+				"          tgt_country = country,",
+				"          tgt_remarks = remarks,",
+				"          tgt_isActive = isActive,",
+				"          tgt_fromDate = fromDate,",
+				"          tgt_toDate = toDate",
+				"     ),",
+				"     partitionBy('hash', 1),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> renametgt",
+				"csvdimCustomer, renametgt lookup(empid == tgt_empid,",
+				"     multiple: false,",
+				"     pickup: 'any',",
+				"     partitionBy('hash', 1),",
+				"     broadcast: 'auto')~> lookuptarget",
+				"lookuptarget split(!isNull(tgt_empid),",
+				"     disjoint: false,",
+				"     partitionBy('hash', 1)) ~> ExistCheck1@(ifExist, ifNotExist)",
+				"ExistCheck1@ifExist split(country!=tgt_country,",
+				"     disjoint: false,",
+				"     partitionBy('hash', 1)) ~> checkUpdate@(withUpdate, withoutUpdate)",
+				"ExistCheck1@ifNotExist derive(ad_fromDate = toDate('1900/01/01', 'yyyy/MM/dd'),",
+				"          ad_toDate = toDate('9999/12/31', 'yyyy/MM/dd'),",
+				"          ad_isActive = 1,",
+				"     partitionBy('hash', 1)) ~> addColumns",
+				"checkUpdate@withoutUpdate split(empname != tgt_empname,",
+				"     disjoint: false,",
+				"     partitionBy('hash', 1)) ~> SCDType@(Type1, Type0)",
+				"SCDType@Type1 alterRow(updateIf(1==1),",
+				"     partitionBy('hash', 1)) ~> ARUpdate",
+				"checkUpdate@withUpdate derive(acur_fromDate = currentDate(),",
+				"          acur_toDate = toDate('9999/12/31', 'yyyy/MM/dd'),",
+				"          acur_isActive = 1,",
+				"     partitionBy('hash', 1)) ~> addColumnsUR",
+				"checkUpdate@withUpdate derive(upd_toDate = currentDate(),",
+				"          upd_isActive = 0,",
+				"     partitionBy('hash', 1)) ~> updActive",
+				"updActive alterRow(updateIf(1==1),",
+				"     partitionBy('hash', 1)) ~> alterActive",
+				"addColumns sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          surrKey as integer,",
+				"          empid as integer,",
+				"          empname as string,",
+				"          gender as string,",
+				"          country as string,",
+				"          remarks as string,",
+				"          isActive as integer,",
+				"          fromDate as date,",
+				"          toDate as date",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     staged: true,",
+				"     allowCopyCommand: true,",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          empid,",
+				"          empname,",
+				"          gender,",
+				"          country,",
+				"          remarks,",
+				"          isActive = ad_isActive,",
+				"          fromDate = ad_fromDate,",
+				"          toDate = ad_toDate",
+				"     ),",
+				"     partitionBy('hash', 1)) ~> tgtnewrecord",
+				"ARUpdate sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          surrKey as integer,",
+				"          empid as integer,",
+				"          empname as string,",
+				"          gender as string,",
+				"          country as string,",
+				"          remarks as string,",
+				"          isActive as integer,",
+				"          fromDate as date,",
+				"          toDate as date",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     staged: true,",
+				"     allowCopyCommand: true,",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          empid = tgt_empid,",
+				"          empname,",
+				"          gender = tgt_gender,",
+				"          country = tgt_country,",
+				"          remarks = tgt_remarks",
+				"     ),",
+				"     partitionBy('hash', 1)) ~> sink1",
+				"addColumnsUR sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          surrKey as integer,",
+				"          empid as integer,",
+				"          empname as string,",
+				"          gender as string,",
+				"          country as string,",
+				"          remarks as string,",
+				"          isActive as integer,",
+				"          fromDate as date,",
+				"          toDate as date",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     staged: true,",
+				"     allowCopyCommand: true,",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          empid,",
+				"          empname,",
+				"          gender,",
+				"          country,",
+				"          remarks,",
+				"          isActive = acur_isActive,",
+				"          fromDate = acur_fromDate,",
+				"          toDate = acur_toDate",
+				"     ),",
+				"     partitionBy('hash', 1)) ~> tgtupdaterecord",
+				"alterActive sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          surrKey as integer,",
+				"          empid as integer,",
+				"          empname as string,",
+				"          gender as string,",
+				"          country as string,",
+				"          remarks as string,",
+				"          isActive as integer,",
+				"          fromDate as date,",
+				"          toDate as date",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:false,",
+				"     updateable:true,",
+				"     upsertable:false,",
+				"     keys:['surrKey'],",
+				"     format: 'table',",
+				"     staged: true,",
+				"     allowCopyCommand: true,",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          surrKey = tgt_surrKey,",
+				"          isActive = upd_isActive,",
+				"          toDate = upd_toDate",
+				"     ),",
+				"     partitionBy('hash', 1)) ~> tgthistrecord"
+			]
+		}
+	}
+}

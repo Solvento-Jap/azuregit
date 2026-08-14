@@ -1,0 +1,409 @@
+{
+	"name": "dev_BUSCtoBNKM",
+	"properties": {
+		"activities": [
+			{
+				"name": "dev_BUSCtoBNKM_Country",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "START_STREAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "dev_BUSCtoBNKM_Country",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "START_STREAM",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "pipeline_runid",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().RunId",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "stream_name",
+									"type": "String",
+									"value": {
+										"value": "@variables('vSTREAM_NAME')",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "SET IDENTITY_INSERT  [OM].[OM_STREAM_QUEUE] ON;\nINSERT INTO [OM].[OM_STREAM_QUEUE] (STREAM_QUEUE_ID,STREAM_ID,PIPELINE_RUNID,DATA_LAYER,STATUS_ID,STREAM_DTTM,INSERT_DTTM,END_DTTM)\nSELECT  ROW_NUMBER() OVER(ORDER BY (SELECT NULL))+ (SELECT ISNULL(MAX(STREAM_ID),0) FROM [OM].[OM_STREAM_QUEUE]),(SELECT STREAM_ID FROM OM.OM_STREAMS WHERE STREAM_NAME=@stream_name ) ,@pipeline_runid,(SELECT DATA_LAYER FROM OM.OM_STREAMS WHERE STREAM_NAME=@stream_name ),(SELECT STATUS_ID FROM OM.OM_STATUS WHERE STATUS = 'RUNNING'), NULL,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime),NULL\nSET IDENTITY_INSERT  [OM].[OM_STREAM_QUEUE] OFF;"
+						}
+					]
+				}
+			},
+			{
+				"name": "END_STREAM",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "dev_BUSCtoBNKM_RelatedPartyType",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "pipeline_runid",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().RunId",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "Query",
+							"text": "UPDATE [OM].[OM_STREAM_QUEUE]  SET STATUS_ID = (SELECT STATUS_ID FROM OM.OM_STATUS WHERE STATUS = 'SUCCESSFUL'), END_DTTM = CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) WHERE PIPELINE_RUNID = @pipeline_runid"
+						}
+					]
+				}
+			},
+			{
+				"name": "dev_BUSCtoBNKM_Branch",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "dev_BUSCtoBNKM_Country",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "dev_BUSCtoBNKM_Branch",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "dev_BUSCtoBNKM_Customer",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "dev_BUSCtoBNKM_Branch",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "dev_BUSCtoBNKM_Customer",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "dev_BUSCtoBNKM_Customer_delta",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "dev_BUSCtoBNKM_Customer",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "dev_BUSCtoBNKM_Customer_delta",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "dev_BUSCtoBNKM_CustomerCreationMode",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "dev_BUSCtoBNKM_Customer_delta",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "dev_BUSCtoBNKM_CustomerCreationMode",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "dev_BUSCtoBNKM_CustomerType",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "dev_BUSCtoBNKM_CustomerCreationMode",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "dev_BUSCtoBNKM_CustomerType",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "dev_BUSCtoBNKM_DosriType",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "dev_BUSCtoBNKM_CustomerType",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "dev_BUSCtoBNKM_DosriType",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "dev_BUSCtoBNKM_EthnicCategory",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "dev_BUSCtoBNKM_DosriType",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "dev_BUSCtoBNKM_EthnicCategory",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "dev_BUSCtoBNKM_FatcaType",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "dev_BUSCtoBNKM_EthnicCategory",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "dev_BUSCtoBNKM_FatcaType",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "dev_BUSCtoBNKM_Gender",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "dev_BUSCtoBNKM_FatcaType",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "dev_BUSCtoBNKM_Gender",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "dev_BUSCtoBNKM_IndividualCustomer",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "dev_BUSCtoBNKM_Gender",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "dev_BUSCtoBNKM_IndividualCustomer",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "dev_BUSCtoBNKM_LegalEntityForm",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "dev_BUSCtoBNKM_IndividualCustomer",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "dev_BUSCtoBNKM_LegalEntityForm",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			},
+			{
+				"name": "dev_BUSCtoBNKM_RelatedPartyType",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "dev_BUSCtoBNKM_LegalEntityForm",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "dev_BUSCtoBNKM_RelatedPartyType",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true
+				}
+			}
+		],
+		"variables": {
+			"vSTREAM_NAME": {
+				"type": "String",
+				"defaultValue": "dev_BuscToBnkm"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2022-11-03T05:43:59Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

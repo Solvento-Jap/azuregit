@@ -1,0 +1,451 @@
+{
+	"name": "CASA",
+	"properties": {
+		"activities": [
+			{
+				"name": "CASATD",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "--SELECT BDG.ACID, BDG.FORACID, BDT.[FILE_NAME], BDT.insert_dttm,'DEP_TBLDEPAGGRBALANCES' TBLNAME FROM BUSC.DEP_TBLDEPAGGRBALANCES BDT\n--LEFT JOIN BUSC.DEP_GENERALACCOUNTMASTER BDG ON BDG.ACID = BDT.ACID\n--WHERE BDG.FORACID LIKE '%ea09ab187e011e2bf5a5a48%' AND BDG.ISLATEST = '1' AND BDG.ISACTIVE = '1'\n\n--SELECT ACID, BANK_ID, CURRENT_EOD_DATE, COUNT(*) CNT FROM BUSC.DEP_TBLDEPAGGRBALANCES\n--WHERE ISLATEST = 1 AND ISACTIVE = 1\n--GROUP BY ACID, BANK_ID, CURRENT_EOD_DATE\n--HAVING COUNT(*) > 1\n\n\nSELECT CustomerAccountId, AggregateBalanceType, PeriodEndDate, FinancialInstitutionId, SourceSystemCode ,COUNT(1) CNT \nFROM BNKM.CasaTdAggregateBalance\nGROUP BY CustomerAccountId, AggregateBalanceType, PeriodEndDate, FinancialInstitutionId, SourceSystemCode\nHAVING COUNT(1) > 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "SP",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CasaTdAggregateBalance_DEP_MTD] AS \nBEGIN\n\n--GET DELTA FROM BUSC\nWITH TEMP_BNKM_CasaTdAggregateBalance\nAS\n(\nSELECT\nBDG.FORACID AS CustomerAccountId\n,'Month-to-Date Average Daily Balance' AS AggregateBalanceType\n,BDT.CURRENT_EOD_DATE AS PeriodEndDate\n,BDT.PREVIOUS_CURRBAL AS PreviousCurrentBalance\n,BDT.PREVIOUS_CLEARBAL AS PreviousClearBalance\n,BDT.ACCUMULATED_CURRBAL AS AccumulatedCurrentBalance\n,BDT.ACCUMULATED_CLEARBAL AS AccumulatedClearBalance\n,BDT.BANK_ID AS FinancialInstitutionId\n,'DEP' AS SOURCESYSTEMCODE\n,BDT.INSERT_DTTM AS INSERTDTTM\nFROM   BUSC.DEP_TBLDEPAGGRBALANCES BDT\nLEFT JOIN BUSC.DEP_GENERALACCOUNTMASTER BDG ON BDG.ACID = BDT.ACID AND BDG.ISLATEST = '1'\nWHERE BDG.FORACID IS NOT NULL AND BDT.ISLATEST = '1'\n\n)\n\nSELECT * INTO #TEMP_BNKM_CasaTdAggregateBalance FROM TEMP_BNKM_CasaTdAggregateBalance;\n\n\nWITH TEMP_BNKM_CasaTdAggregateBalance_SRC\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerAccountId)\n,convert(varchar,AggregateBalanceType)\n,convert(numeric,PreviousCurrentBalance)\n,convert(numeric,PreviousClearBalance)\n,convert(numeric,AccumulatedCurrentBalance)\n,convert(numeric,AccumulatedClearBalance)\n,convert(varchar,FinancialInstitutionId)\n))HASHROW, CustomerAccountId, AggregateBalanceType,FinancialInstitutionId,SourceSystemCode,PeriodEndDate\nFROM #TEMP_BNKM_CasaTdAggregateBalance \n),\n\n\nTEMP_BNKM_CasaTdAggregateBalance_TGT\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,A.CustomerAccountId)\n,convert(varchar,A.AggregateBalanceType)\n,convert(numeric,A.PreviousCurrentBalance)\n,convert(numeric,A.PreviousClearBalance)\n,convert(numeric,A.AccumulatedCurrentBalance)\n,convert(numeric,A.AccumulatedClearBalance)\n,convert(varchar,A.FinancialInstitutionId)\n))HASHROW, A.CustomerAccountId, A.AggregateBalanceType,A.FinancialInstitutionId,A.SourceSystemCode, A.PeriodEndDate\nFROM BNKM.CasaTdAggregateBalance A\nJOIN (SELECT CustomerAccountId,AggregateBalanceType,FinancialInstitutionId,SourceSystemCode,\nMAX(PeriodEndDate) PeriodEndDate FROM BNKM.CasaTdAggregateBalance\nGROUP BY CustomerAccountId,AggregateBalanceType,FinancialInstitutionId,SourceSystemCode ) B\nON A.CustomerAccountId = B.CustomerAccountId AND A.AggregateBalanceType = B.AggregateBalanceType AND A.FinancialInstitutionId = B.FinancialInstitutionId\nAND A.SourceSystemCode = B.SourceSystemCode AND A.PeriodEndDate = B.PeriodEndDate\nWHERE A.SOURCESYSTEMCODE = 'DEP' and A.AggregateBalanceType = 'Month-to-Date Average Daily Balance'\n),\n\nTEMP_BNKM_CasaTdAggregateBalance_DELTA\nAS\n(\nSELECT\nSRC.HASHROW AS SRC_HR\n,TGT.HASHROW AS TGT_HR\n,ISNULL(SRC.CustomerAccountId, TGT.CustomerAccountId) AS CustomerAccountId\n,ISNULL(SRC.AggregateBalanceType, TGT.AggregateBalanceType) AS AggregateBalanceType\n,ISNULL(SRC.FinancialInstitutionId, TGT.FinancialInstitutionId) AS FinancialInstitutionId\n,ISNULL(SRC.PeriodEndDate, TGT.PeriodEndDate) AS PeriodEndDate\n,ISNULL(SRC.SourceSystemCode, TGT.SourceSystemCode) AS SourceSystemCode\n,CASE\n\tWHEN TGT.HASHROW IS NULL THEN 'INSERT' \n    WHEN SRC.HASHROW <> TGT.HASHROW THEN 'INSERT'\n    ELSE NULL END AS RECORD_STATUS\n\nFROM TEMP_BNKM_CasaTdAggregateBalance_SRC SRC\nLEFT JOIN TEMP_BNKM_CasaTdAggregateBalance_TGT TGT\nON SRC.CustomerAccountId = TGT.CustomerAccountId\nAND SRC.AggregateBalanceType = TGT.AggregateBalanceType\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\n)\n\nSELECT * INTO #TEMP_BNKM_CasaTdAggregateBalance_DELTA FROM TEMP_BNKM_CasaTdAggregateBalance_DELTA;\n\n\n--INSERT TO BNKM\nINSERT INTO  BNKM.CasaTdAggregateBalance\n(\nCustomerAccountId\n,AggregateBalanceType\n,PeriodEndDate\n,PreviousCurrentBalance\n,PreviousClearBalance\n,AccumulatedCurrentBalance\n,AccumulatedClearBalance\n,FinancialInstitutionId\n,SOURCESYSTEMCODE\n,WORKFLOWID\n,TASKRUNID\n,INSERTDTTM\n)\n\nSELECT DISTINCT\nSRC.CustomerAccountId\n,SRC.AggregateBalanceType\n,SRC.PeriodEndDate\n,SRC.PreviousCurrentBalance\n,SRC.PreviousClearBalance\n,SRC.AccumulatedCurrentBalance\n,SRC.AccumulatedClearBalance\n,SRC.FinancialInstitutionId\n,'DEP' AS SOURCESYSTEMCODE\n,0 AS WORKFLOWID\n,0 AS TASKRUNID\n,SRC.INSERTDTTM\nFROM #TEMP_BNKM_CasaTdAggregateBalance SRC\nJOIN #TEMP_BNKM_CasaTdAggregateBalance_DELTA DELTA ON DELTA.CustomerAccountId = SRC.CustomerAccountId \nAND DELTA.AggregateBalanceType = SRC.AggregateBalanceType\nAND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\nAND DELTA.SourceSystemCode = SRC.SourceSystemCode\nWHERE RECORD_STATUS = 'INSERT'\n\nDROP TABLE #TEMP_BNKM_CasaTdAggregateBalance;\nDROP TABLE #TEMP_BNKM_CasaTdAggregateBalance_DELTA;\n\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "GAM",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "CASATD",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT ACID, BANK_ID, COUNT(*) CNT FROM BUSC.DEP_GENERALACCOUNTMASTER\nWHERE ISLATEST = 1 \nGROUP BY ACID, BANK_ID\nHAVING COUNT(*) > 1\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "TBL",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "GAM",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT ACID, BANK_ID, CURRENT_EOD_DATE, COUNT(*) CNT FROM BUSC.DEP_TBLDEPAGGRBALANCES\nWHERE ISLATEST = 1 \nGROUP BY ACID, BANK_ID, CURRENT_EOD_DATE\nHAVING COUNT(*) > 1\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "YTD",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "TBL",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT ACID, BANK_ID, CURRENT_EOD_DATE, COUNT(*) CNT FROM BUSC.DEP_YTDDEPAGGRBALANCES\nWHERE ISLATEST = 1\nGROUP BY ACID, BANK_ID, CURRENT_EOD_DATE\nHAVING COUNT(*) > 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CASA",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT COUNT(1) CNT, 'SRC' TBLNAME  FROM BNKM.CasaTdAggregateBalance_DEP_YTD_SRC UNION ALL\r\nSELECT COUNT(1) CNT, 'TGT' TBLNAME  FROM BNKM.CasaTdAggregateBalance_DEP_YTD_TGT\r\n\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "SP_copy1",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER PROC [BNKM].[SP_CasaTdAggregateBalance_DEP_MTD] AS \nBEGIN\n\n--GET DELTA FROM BUSC\nWITH TEMP_BNKM_CasaTdAggregateBalance\nAS\n(\nSELECT\nBDG.FORACID AS CustomerAccountId\n,'Month-to-Date Average Daily Balance' AS AggregateBalanceType\n,BDT.CURRENT_EOD_DATE AS PeriodEndDate\n,BDT.PREVIOUS_CURRBAL AS PreviousCurrentBalance\n,BDT.PREVIOUS_CLEARBAL AS PreviousClearBalance\n,BDT.ACCUMULATED_CURRBAL AS AccumulatedCurrentBalance\n,BDT.ACCUMULATED_CLEARBAL AS AccumulatedClearBalance\n,BDT.BANK_ID AS FinancialInstitutionId\n,'DEP' AS SOURCESYSTEMCODE\n,BDT.INSERT_DTTM AS INSERTDTTM\nFROM   BUSC.DEP_TBLDEPAGGRBALANCES BDT\nLEFT JOIN BUSC.DEP_GENERALACCOUNTMASTER BDG ON BDG.ACID = BDT.ACID AND BDG.ISLATEST = '1'\nWHERE BDG.FORACID IS NOT NULL AND BDT.ISLATEST = '1'\n\n)\n\nSELECT * INTO #TEMP_BNKM_CasaTdAggregateBalance FROM TEMP_BNKM_CasaTdAggregateBalance;\n\n\nWITH TEMP_BNKM_CasaTdAggregateBalance_SRC\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,CustomerAccountId)\n,convert(varchar,AggregateBalanceType)\n,convert(numeric,PreviousCurrentBalance)\n,convert(numeric,PreviousClearBalance)\n,convert(numeric,AccumulatedCurrentBalance)\n,convert(numeric,AccumulatedClearBalance)\n,convert(varchar,FinancialInstitutionId)\n))HASHROW, CustomerAccountId, AggregateBalanceType,FinancialInstitutionId,SourceSystemCode,PeriodEndDate\nFROM #TEMP_BNKM_CasaTdAggregateBalance \n),\n\n\nTEMP_BNKM_CasaTdAggregateBalance_TGT\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nconvert(varchar,A.CustomerAccountId)\n,convert(varchar,A.AggregateBalanceType)\n,convert(numeric,A.PreviousCurrentBalance)\n,convert(numeric,A.PreviousClearBalance)\n,convert(numeric,A.AccumulatedCurrentBalance)\n,convert(numeric,A.AccumulatedClearBalance)\n,convert(varchar,A.FinancialInstitutionId)\n))HASHROW, A.CustomerAccountId, A.AggregateBalanceType,A.FinancialInstitutionId,A.SourceSystemCode, A.PeriodEndDate\nFROM BNKM.CasaTdAggregateBalance A\nJOIN (SELECT CustomerAccountId,AggregateBalanceType,FinancialInstitutionId,SourceSystemCode,\nMAX(PeriodEndDate) PeriodEndDate FROM BNKM.CasaTdAggregateBalance\nGROUP BY CustomerAccountId,AggregateBalanceType,FinancialInstitutionId,SourceSystemCode ) B\nON A.CustomerAccountId = B.CustomerAccountId AND A.AggregateBalanceType = B.AggregateBalanceType AND A.FinancialInstitutionId = B.FinancialInstitutionId\nAND A.SourceSystemCode = B.SourceSystemCode AND A.PeriodEndDate = B.PeriodEndDate\nWHERE A.SOURCESYSTEMCODE = 'DEP' and A.AggregateBalanceType = 'Month-to-Date Average Daily Balance'\n),\n\nTEMP_BNKM_CasaTdAggregateBalance_DELTA\nAS\n(\nSELECT\nSRC.HASHROW AS SRC_HR\n,TGT.HASHROW AS TGT_HR\n,ISNULL(SRC.CustomerAccountId, TGT.CustomerAccountId) AS CustomerAccountId\n,ISNULL(SRC.AggregateBalanceType, TGT.AggregateBalanceType) AS AggregateBalanceType\n,ISNULL(SRC.FinancialInstitutionId, TGT.FinancialInstitutionId) AS FinancialInstitutionId\n,ISNULL(SRC.PeriodEndDate, TGT.PeriodEndDate) AS PeriodEndDate\n,ISNULL(SRC.SourceSystemCode, TGT.SourceSystemCode) AS SourceSystemCode\n,CASE\n\tWHEN TGT.HASHROW IS NULL THEN 'INSERT' \n    WHEN SRC.HASHROW <> TGT.HASHROW THEN 'INSERT'\n    ELSE NULL END AS RECORD_STATUS\n\nFROM TEMP_BNKM_CasaTdAggregateBalance_SRC SRC\nLEFT JOIN TEMP_BNKM_CasaTdAggregateBalance_TGT TGT\nON SRC.CustomerAccountId = TGT.CustomerAccountId\nAND SRC.AggregateBalanceType = TGT.AggregateBalanceType\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\nWHERE SRC.HASHROW <> TGT.HASHROW OR TGT.HASHROW IS NULL\n)\n\nSELECT * INTO #TEMP_BNKM_CasaTdAggregateBalance_DELTA FROM TEMP_BNKM_CasaTdAggregateBalance_DELTA;\n\n\n--INSERT TO BNKM\nINSERT INTO  BNKM.CasaTdAggregateBalance\n(\nCustomerAccountId\n,AggregateBalanceType\n,PeriodEndDate\n,PreviousCurrentBalance\n,PreviousClearBalance\n,AccumulatedCurrentBalance\n,AccumulatedClearBalance\n,FinancialInstitutionId\n,SOURCESYSTEMCODE\n,WORKFLOWID\n,TASKRUNID\n,INSERTDTTM\n)\n\nSELECT DISTINCT\nSRC.CustomerAccountId\n,SRC.AggregateBalanceType\n,SRC.PeriodEndDate\n,SRC.PreviousCurrentBalance\n,SRC.PreviousClearBalance\n,SRC.AccumulatedCurrentBalance\n,SRC.AccumulatedClearBalance\n,SRC.FinancialInstitutionId\n,'DEP' AS SOURCESYSTEMCODE\n,0 AS WORKFLOWID\n,0 AS TASKRUNID\n,SRC.INSERTDTTM\nFROM #TEMP_BNKM_CasaTdAggregateBalance SRC\nJOIN #TEMP_BNKM_CasaTdAggregateBalance_DELTA DELTA ON DELTA.CustomerAccountId = SRC.CustomerAccountId \nAND DELTA.AggregateBalanceType = SRC.AggregateBalanceType\nAND DELTA.FinancialInstitutionId = SRC.FinancialInstitutionId\nAND DELTA.SourceSystemCode = SRC.SourceSystemCode\nWHERE RECORD_STATUS = 'INSERT'\n\nDROP TABLE #TEMP_BNKM_CasaTdAggregateBalance;\nDROP TABLE #TEMP_BNKM_CasaTdAggregateBalance_DELTA;\n\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CASA2",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "CASA",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH TEMP_TABLE_SRC AS (\n    SELECT CustomerAccountId, MAX(PeriodEndDate) AS PeriodEndDate FROM BNKM.CasaTdAggregateBalance_DEP_YTD_SRC\n    GROUP BY CustomerAccountId\n)\nSELECT COUNT(1) CNT, 'SRC_MAX' TBLNAME  FROM TEMP_TABLE_SRC"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "1",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "select count(1) SOURCE_NOT_IN_TARGET from BNKM.CasaTdAggregateBalance_DEP_YTD_SRC A\nWHERE NOT EXISTS (SELECT * FROM BNKM.CasaTdAggregateBalance_DEP_YTD_TGT B WHERE\nA.CUSTOMERACCOUNTID = B.CUSTOMERACCOUNTID\nAND A.AGGREGATEBALANCETYPE = B.AGGREGATEBALANCETYPE\nAND A.PERIODENDDATE = B.PERIODENDDATE\nAND A.FINANCIALINSTITUTIONID = B.FINANCIALINSTITUTIONID\nAND A.SOURCESYSTEMCODE = B.SOURCESYSTEMCODE\n)"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "2",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [
+					{
+						"activity": "1",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH TEMP_TABLE_SRC AS (\nSELECT CustomerAccountId, MAX(PeriodEndDate) AS PeriodEndDate,AGGREGATEBALANCETYPE,FINANCIALINSTITUTIONID,SOURCESYSTEMCODE FROM BNKM.CasaTdAggregateBalance_DEP_YTD_SRC\nGROUP BY CustomerAccountId,AGGREGATEBALANCETYPE,FINANCIALINSTITUTIONID,SOURCESYSTEMCODE\n)\n\nSELECT COUNT(1) CNT, 'SRC_MAX' TBLNAME  FROM TEMP_TABLE_SRC A\nWHERE NOT EXISTS (SELECT * FROM BNKM.CasaTdAggregateBalance_DEP_YTD_TGT B WHERE\nA.CUSTOMERACCOUNTID = B.CUSTOMERACCOUNTID\nAND A.AGGREGATEBALANCETYPE = B.AGGREGATEBALANCETYPE\nAND A.PERIODENDDATE = B.PERIODENDDATE\nAND A.FINANCIALINSTITUTIONID = B.FINANCIALINSTITUTIONID\nAND A.SOURCESYSTEMCODE = B.SOURCESYSTEMCODE)"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "3",
+				"type": "Script",
+				"state": "Inactive",
+				"onInactiveMarkAs": "Succeeded",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "SELECT\nBDG.FORACID AS CustomerAccountId\n,BDT.CURRENT_EOD_DATE AS PeriodEndDate\n,BDT.INSERT_DTTM AS INSERTDTTM\n,BDG.isLatest AS BDG_ISLATEST\n,BDG.isActive AS BDG_ISACTIVE\n,BDT.isLatest AS BDT_ISLATEST\n,BDt.isActive AS BDT_ISACTIVE\nFROM  BUSC.DEP_YTDDEPAGGRBALANCES BDT \nLEFT JOIN  BUSC.DEP_GENERALACCOUNTMASTER BDG ON BDG.ACID = BDT.ACID AND BDG.ISLATEST = '1'\nWHERE BDG.FORACID = 'c5d37433671a59475cd5cb6c52d8762a' AND BDT.ISLATEST = '1'\nORDER BY BDT.CURRENT_EOD_DATE"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "4",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "select count(1) SOURCE_NOT_IN_TARGET \nfrom BNKM.CasaTdAggregateBalance_DEP_YTD_SRC\nwhere concat(convert(varchar,CUSTOMERACCOUNTID),convert(varchar,AGGREGATEBALANCETYPE),\nconvert(date,PERIODENDDATE),FINANCIALINSTITUTIONID,SOURCESYSTEMCODE) \nnot in\n(SELECT concat(convert(varchar,CUSTOMERACCOUNTID),convert(varchar,AGGREGATEBALANCETYPE),\nconvert(date,PERIODENDDATE),FINANCIALINSTITUTIONID,SOURCESYSTEMCODE)  \nFROM BNKM.CasaTdAggregateBalance where sourcesystemcode = 'DEP')"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "5",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "4",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "WITH TEMP_TABLE_SRC AS (\n    SELECT CustomerAccountId, MAX(PeriodEndDate) AS PeriodEndDate,AGGREGATEBALANCETYPE,FINANCIALINSTITUTIONID,SOURCESYSTEMCODE FROM BNKM.CasaTdAggregateBalance_DEP_YTD_SRC\n    GROUP BY CustomerAccountId,AGGREGATEBALANCETYPE,FINANCIALINSTITUTIONID,SOURCESYSTEMCODE\n)\nselect count(1) SRC_MAX \nfrom TEMP_TABLE_SRC \nwhere concat(convert(varchar,CustomerAccountId),convert(varchar,AGGREGATEBALANCETYPE),convert(date,PERIODENDDATE),FINANCIALINSTITUTIONID,SOURCESYSTEMCODE) \nnot in\n(SELECT concat(convert(varchar,CustomerAccountId),convert(varchar,AGGREGATEBALANCETYPE),convert(date,PERIODENDDATE),FINANCIALINSTITUTIONID,SOURCESYSTEMCODE)  \nFROM BNKM.CasaTdAggregateBalance\nwhere sourcesystemcode = 'DEP')"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-09-19T14:11:05Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

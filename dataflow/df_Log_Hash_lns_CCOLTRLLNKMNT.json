@@ -1,0 +1,174 @@
+{
+	"name": "df_Log_Hash_lns_CCOLTRLLNKMNT",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference"
+					},
+					"name": "source1"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "SQLPool_tgt_Logstable",
+						"type": "DatasetReference"
+					},
+					"name": "sink1"
+				}
+			],
+			"transformations": [
+				{
+					"name": "filter1"
+				},
+				{
+					"name": "derivedColumn1"
+				},
+				{
+					"name": "unpivot1"
+				},
+				{
+					"name": "filter3"
+				},
+				{
+					"name": "aggregate1"
+				},
+				{
+					"name": "join1"
+				},
+				{
+					"name": "derivedColumn2"
+				},
+				{
+					"name": "derivedColumn3"
+				},
+				{
+					"name": "aggregate2"
+				},
+				{
+					"name": "filter4"
+				},
+				{
+					"name": "sort1"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          H as string,",
+				"          COLLATERAL_ID as string,",
+				"          COLLATERAL_TYPE as string,",
+				"          REF_NUMBER as string,",
+				"          CONDITIONS as string,",
+				"          DOU_AOU_EXP_DATE as string,",
+				"          TAV as string,",
+				"          SUBJECT_LOAN as string,",
+				"          ANNOTATION as string,",
+				"          DEL_FLG as string,",
+				"          ENTITY_CRE_FLG as string,",
+				"          LCHG_USER_ID as string,",
+				"          LCHG_TIME as string,",
+				"          RCHG_USER_ID as string,",
+				"          RCHG_TIME as string,",
+				"          BANK_ID as string,",
+				"          CSTDY_CLTRL as string,",
+				"          OTHERS_LOCATN as string,",
+				"          BRANCH_CODE as string,",
+				"          NO_OF_UNITS as string,",
+				"          CURR_RESIDENCE as string,",
+				"          RISK_TYPE as string,",
+				"          SECURED_FLAG as string,",
+				"          LOANABLE_VALUE as string,",
+				"          DOCUMENT_VALUE as string,",
+				"          COLL_STATUS as string,",
+				"          COLL_DESC as string,",
+				"          DATE_OF_APPR as string,",
+				"          MORTGAGE_STATUS as string,",
+				"          IN_RECEIPT_NO as string,",
+				"          VALUATION_DATE as string,",
+				"          TRUSTEE_BANK as string,",
+				"          CBC_AMOUNT as string,",
+				"          MANUFCTR_MONTH as string,",
+				"          MANUFCTR_YEAR as string,",
+				"          CONFIRM_SALE_DATE as string,",
+				"          COLLTRL_REL_DATE as string,",
+				"          LAST6_ACCT_NUM as string,",
+				"          FILE_NAME as string,",
+				"          insert_dttm as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table',",
+				"     staged: true,",
+				"     partitionBy('roundRobin', 3)) ~> source1",
+				"source1 filter(H !='D') ~> filter1",
+				"filter1 derive(Date = toDate(left(right(FILE_NAME, 12),8),'yyyyMMdd'),",
+				"          Count_src = dropLeft(H,2),",
+				"          CBC_AMOUNT_src = CBC_AMOUNT,",
+				"          DOCUMENT_VALUE_src = DOCUMENT_VALUE,",
+				"          LOANABLE_VALUE_src = LOANABLE_VALUE) ~> derivedColumn1",
+				"join1 unpivot(output(",
+				"          Metrics as string,",
+				"          Source as string,",
+				"          Target as string",
+				"     ),",
+				"     ungroupBy(source1@FILE_NAME,",
+				"          insert_dttm,",
+				"          Date),",
+				"     lateral: true,",
+				"     ignoreNullPivots: true) ~> unpivot1",
+				"source1 filter(H == 'D') ~> filter3",
+				"filter3 aggregate(groupBy(FILE_NAME),",
+				"     Count_tgt = toString(count(H)),",
+				"          CBC_AMOUNT_tgt = toString(sum(toDouble(CBC_AMOUNT))),",
+				"          DOCUMENT_VALUE_tgt = toString(sum(toDouble(DOCUMENT_VALUE))),",
+				"          LOANABLE_VALUE_tgt = toString(sum(toDouble(LOANABLE_VALUE)))) ~> aggregate1",
+				"derivedColumn1, aggregate1 join(source1@FILE_NAME == aggregate1@FILE_NAME,",
+				"     joinType:'inner',",
+				"     matchType:'exact',",
+				"     ignoreSpaces: false,",
+				"     broadcast: 'auto')~> join1",
+				"unpivot1 derive(Source = case(like(Metrics, '%src%')  , Source, ''),",
+				"          Target = case(like(Metrics, '%tgt%')  , Source, '')) ~> derivedColumn2",
+				"derivedColumn2 derive(Metrics = case(like(Metrics,'%src%'), replace(Metrics, '_src', ''), replace(Metrics, '_tgt', '')),",
+				"          insert_dttm = toTimestamp(insert_dttm,'yyyy-MM-dd\\'T\\'HH:mm:ss')) ~> derivedColumn3",
+				"derivedColumn3 aggregate(groupBy(FILE_NAME,",
+				"          Date,",
+				"          Metrics,",
+				"          insert_dttm),",
+				"     Source = sum(toFloat(Source)),",
+				"          Target = sum(toFloat(Target))) ~> aggregate2",
+				"aggregate2 filter(Metrics!= 'H' && Metrics!='SOURCE_CODE' && Metrics!='BANK_CODE' && Metrics!='FileName' && Metrics!= 'TABLE_NAME') ~> filter4",
+				"filter4 sort(asc(Date, true),",
+				"     asc(FILE_NAME, true),",
+				"     asc(Metrics, true)) ~> sort1",
+				"sort1 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          ID as integer,",
+				"          File_name as string,",
+				"          Date as date,",
+				"          Load_date as timestamp,",
+				"          Metrics as string,",
+				"          Source as decimal(16,4),",
+				"          Target as decimal(16,4)",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     staged: true,",
+				"     allowCopyCommand: true,",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     partitionBy('roundRobin', 3)) ~> sink1"
+			]
+		}
+	}
+}

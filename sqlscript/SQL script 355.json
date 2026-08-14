@@ -1,0 +1,20 @@
+{
+	"name": "SQL script 355",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nCREATE PROC [DW].[HIST_SP_DW_FACTTOTALRELATIONSHIPEXPOSURE] AS\nBEGIN\n\nWITH TRE AS (\nSELECT [BusinessDateSK], DFLR.[BranchSK], DFLR.[BankSK], DFLR.[AccountSK], DFLR.[AccountID], [TotalRelationshipExposureFull], [TotalRelationshipExposureProrated] \nFROM DW.FactLoansRelationshipExposure DFLR\nJOIN DW.DimAccount DDA ON DFLR.AccountSK = DDA.AccountSK AND DDA.SOURCESYSTEMCODE = 'LNS'\nWHERE DDA.AccountStatus not in ('Closed') \n'1ec55736773ca140c517c5c78c3abf71' ,'563ff5577abc77c191610292cd6eafe7' ,'156f15da44c11650ac7a4d6c95cce5ae'\n\nUNION ALL\n\nSELECT [BusinessDateSK], DFCR.[BranchSK], DFCR.[BankSK], DFCR.[AccountSK], DFCR.[AccountID], [RelationshipExposure], [RelationshipExposure] \nFROM dw.FactCardsRelationshipExposure DFCR\nJOIN DW.DimAccount DDA ON DFCR.AccountSK = DDA.AccountSK AND DDA.SOURCESYSTEMCODE = 'CCD'\nWHERE DDA.AccountStatus not in ('8')\n)\n\n,Balance AS (\nSELECT \n\tCONVERT(VARCHAR,TRE.BusinessDateSK,112) AS BusinessDateSK\n\t,NULL [BranchSK]\n\t,TRE.[BankSK]\n\t,DCA.CustomerSK AS CustomerSK\n\t,DCA.CustomerID AS CustomerID\n\t,SUM([TotalRelationshipExposureFull]) AS TotalRelationshipExposureFull\n\t,SUM([TotalRelationshipExposureProrated]) AS TotalRelationshipExposureProrated \n\t,DC.SourceSystemCode AS SourceSystemCode\n\t,0 AS WorkFlowId\n\t,0 AS TaskRunId\n\t,Getdate() AS InsertDttm\nFROM TRE\nLEFT JOIN DW.DimCustomerAccount DCA ON TRE.AccountSK = DCA.AccountSK\nLEFT JOIN DW.DimCustomer DC ON  DCA.CustomerSK = DC.CustomerSK\nWHERE DC.CUSTOMERSK IS NOT NULL AND DCA.ShareIndicator = 'Y'\n\nGROUP BY \n TRE.[BusinessDateSK]\n,TRE.[BankSK]\n,DCA.CustomerSK\n,DCA.CustomerID\n,DC.SourceSystemCode)\n\n\n,Distinct_Balance AS (\nSELECT DISTINCT \n    BranchSK, BankSK, CustomerSK, CustomerID, BusinessDateSK, TotalRelationshipExposureFull, TotalRelationshipExposureProrated, SourceSystemCode, WorkFlowId, TaskRunId, InsertDttm\nFROM Balance )\n\nINSERT INTO DW.FactTotalRelationshipExposure\nSELECT\n\tBusinessDateSK\n\t,BranchSK\n\t,BankSK\n\t,CustomerSK\n\t,CustomerID\n\t,TotalRelationshipExposureFull\n\t,TotalRelationshipExposureProrated\n\t,SourceSystemCode\n\t,WorkFlowId\n\t,TaskRunId\n\t,InsertDttm\nFROM Distinct_Balance\n\t\nEND\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

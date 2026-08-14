@@ -1,0 +1,570 @@
+{
+	"name": "Workflow_SND_LDS_SMGFBLeads",
+	"properties": {
+		"activities": [
+			{
+				"name": "set startdate",
+				"type": "SetVariable",
+				"dependsOn": [],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "V_startDate",
+					"value": {
+						"value": "@pipeline().parameters.startdate",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "set enddate",
+				"type": "SetVariable",
+				"dependsOn": [],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "V_endDate",
+					"value": {
+						"value": "@pipeline().parameters.enddate",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "set startdate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "set enddate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(pipeline().parameters.endDate),ticks(pipeline().parameters.startDate)),864000000000),1))",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append variable1",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "ForEach1",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "STG_SND_LDS_SMGFBLeads",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										},
+										{
+											"name": "Secondary_phone_number",
+											"value": ""
+										},
+										{
+											"name": "Whatsapp_number",
+											"value": ""
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": {
+											"value": "@concat('dev/decrypted/',pipeline().parameters.src_sys)",
+											"type": "Expression"
+										},
+										"wildcardFileName": {
+											"value": "@concat('*',pipeline().parameters.table,'_*',replace(substring(item(),0,10),'-',''),'*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": {
+										"value": "@concat('TRUNCATE TABLE D360.STG_SND_',pipeline().parameters.table)",
+										"type": "Expression"
+									},
+									"allowCopyCommand": true,
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									},
+									"path": "data360/dev/stg_synapse"
+								},
+								"enableSkipIncompatibleRow": true,
+								"logSettings": {
+									"enableCopyActivityLog": true,
+									"copyActivityLogSettings": {
+										"logLevel": "Warning",
+										"enableReliableLogging": true
+									},
+									"logLocationSettings": {
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+											"type": "LinkedServiceReference"
+										},
+										"path": {
+											"value": "@concat('data360/dev/Logging/LDS/',pipeline().TriggerTime)",
+											"type": "Expression"
+										}
+									}
+								},
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "Id",
+												"type": "String"
+											},
+											"sink": {
+												"name": "ID",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "Created",
+												"type": "DateTime",
+												"format": "yyyyMMddHHmmss"
+											},
+											"sink": {
+												"name": "Created",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "Name",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Name",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Email",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Email",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Source",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Source",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Form",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Form",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Channel",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Channel",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Stage",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Stage",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Owner",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Owner",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Labels",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Labels",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Phone",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Phone",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Matched_email",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Matched_email",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Matched_phone",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Matched_phone",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Matched_at_least_1",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Matched_at_least_1",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Secondary_phone_number",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Secondary_phone_number",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "Whatsapp_number",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Whatsapp_number",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FILE_NAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm",
+												"type": "String"
+											},
+											"sink": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "Which_of_the_following_chinabank_products_are_you_interested_in?",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Which_of_the_following_chinabank_products_are_you_interested_in?",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "When_is_the_best_time_to_call_you?",
+												"type": "String"
+											},
+											"sink": {
+												"name": "When_is_the_best_time_to_call_you?",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Employment_status",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Employment_status",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "City",
+												"type": "String"
+											},
+											"sink": {
+												"name": "City",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Job_title",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Job_title",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "Company_name",
+												"type": "String"
+											},
+											"sink": {
+												"name": "Company_name",
+												"type": "String"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": " "
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": {
+											"value": "@concat('STG_SND_',pipeline().parameters.table)",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "LOAD_SND",
+							"type": "Script",
+							"dependsOn": [
+								{
+									"activity": "STG_SND_LDS_SMGFBLeads",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "TestSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"parameters": [
+											{
+												"name": "SND_SQL",
+												"type": "String",
+												"value": {
+													"value": "@pipeline().parameters.SND_SQL",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											}
+										],
+										"type": "Query",
+										"text": "EXEC sp_executesql @SND_SQL;"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"StartDate": {
+				"type": "string"
+			},
+			"EndDate": {
+				"type": "string"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "LDS"
+			},
+			"table": {
+				"type": "string",
+				"defaultValue": "LDS_SMGFBLEADS"
+			},
+			"SND_SQL": {
+				"type": "string",
+				"defaultValue": "DELETE FROM EDS.LDS_SMGFBLEADS WHERE AS_OF_DATE IN (     SELECT TOP 1            CAST(LEFT(RIGHT(FILE_NAME, 12), 8) AS DATE)     FROM D360.STG_SND_LDS_SMGFBLEADS );  INSERT INTO EDS.LDS_SMGFBLEADS (       AS_OF_DATE     , [ID]     , [Created]     , [Name]     , [Email]     , [Source]     , [Form]     , [Channel]     , [Stage]     , [Owner]     , [Labels]     , [Phone]     , [Matched_email]     , [Matched_phone]     , [Matched_at_least_1]     , [Secondary_phone_number]     , [Whatsapp_number]     , [Which_of_the_following_chinabank_products_are_you_interested_in?]     , [When_is_the_best_time_to_call_you?]     , [Employment_status]     , [City]     , [Job_title]     , [Company_name]     , BNK_CODE     , SOURCE_CODE     , FILE_NAME     , insert_dttm ) SELECT       CAST(LEFT(RIGHT(FILE_NAME, 12), 8) AS DATE) AS AS_OF_DATE     , [ID]     , [Created]     , [Name]     , [Email]     , [Source]     , [Form]     , [Channel]     , [Stage]     , [Owner]     , [Labels]     , [Phone]     , [Matched_email]     , [Matched_phone]     , [Matched_at_least_1]     , [Secondary_phone_number]     , [Whatsapp_number]     , [Which_of_the_following_chinabank_products_are_you_interested_in?]     , [When_is_the_best_time_to_call_you?]     , [Employment_status]     , [City]     , [Job_title]     , [Company_name]     , LEFT(FILE_NAME, 5) AS BNK_CODE     , 'LDS' AS SOURCE_CODE     , FILE_NAME     , insert_dttm FROM D360.STG_SND_LDS_SMGFBLEADS"
+			}
+		},
+		"variables": {
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-01-19T06:31:37Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,20 @@
+{
+	"name": "bnkm_SDIAccount_try",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "CREATE PROCEDURE BNKM.SP_SDIACCOUNT_TRY\nAS\nBEGIN\n\n--------------GET DELTA FROM BUSC\nWITH TEMP_BNKM_SDIAccount AS (\n\nSELECT\n\tBTS.Id AS SDIAccountId\n\t,BTS.Beneficiary_Id AS CustomerAccountId\n\t,BTS.CBCGLAcctSixDigits AS LastSixDigitsRelatedCustomerAccountId\n\t,BTS.Direct AS DirectIndicator\n\t,BTS.Roles AS RoleId\n\t,BTS.ProcessingOrg AS ProcessingOrgId\n\t,BTS.Currencies AS IsoCurrencyCode\n\t,BTS.Pay_Receive AS PayReceiveId\n\t,BTS.Method AS MethodId\n\t,BTS.BNK_CODE AS FinancialInstitutionId\n\t,'TRY' AS SourceSystemCode\n\t,0 AS WorkFlowId\n\t,0 AS TaskRunId\n\t,BTS.INSERT_DTTM AS InsertDttm\n\t,BTSD.RECORD_STATUS\nFROM BUSC.TRY_SDI_DELTA BTSD\nLEFT JOIN BUSC.TRY_SDI BTS ON BTSD.ID = BTS.ID AND BTSD.Beneficiary_Id = BTS.Beneficiary_Id AND BTSD.ID = BTS.ID AND BTS.ISLATEST = 1\n)\n\n\nSELECT * INTO #TEMP_BNKM_SDIAccount FROM TEMP_BNKM_SDIAccount;\n\n-------------CHECK IF THERE IS DELTA \nWITH\nTEMP_BNKM_SDIAccount_SRC\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nSDIAccountId\n,CustomerAccountId\n,LastSixDigitsRelatedCustomerAccountId\n,DirectIndicator\n,RoleId\n,ProcessingOrgId\n,IsoCurrencyCode\n,PayReceiveId\n,MethodId\n,FinancialInstitutionId\n)) HASHROW, SDIAccountId, RECORD_STATUS \nFROM #TEMP_BNKM_SDIAccount WHERE RECORD_STATUS = 'UPDATE'\n)\n,\nTEMP_BNKM_SDIAccount_TGT\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nSDIAccountId\n,CustomerAccountId\n,LastSixDigitsRelatedCustomerAccountId\n,DirectIndicator\n,RoleId\n,ProcessingOrgId\n,IsoCurrencyCode\n,PayReceiveId\n,MethodId\n,FinancialInstitutionId\n)) HASHROW, SDIAccountId\nFROM BNKM.SDIAccount --WHERE SOURCE_CODE = 'TRY'\t\n)\n,\nTEMP_BNKM_SDIAccount_DELTA\nAS\n(\nSELECT\t\n\tSRC.HASHROW AS SRC_HR\n\t,TGT.HASHROW AS TGT_HR\n\t,ISNULL(SRC.SDIAccountId,TGT.SDIAccountId) AS SDIAccountId\n\t--,ISNULL(SRC.CustomerStatusTypeId,TGT.CustomerStatusTypeId) AS CustomerStatusTypeId\n\t,CASE\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n\tELSE NULL END AS RECORD_STATUS\n\t\nFROM TEMP_BNKM_SDIAccount_SRC\tSRC\nFULL OUTER JOIN TEMP_BNKM_SDIAccount_TGT\tTGT\nON\tSRC.SDIAccountId = TGT.SDIAccountId\nWHERE SRC.HASHROW <> TGT.HASHROW \n)\n\nSELECT * INTO #TEMP_BNKM_SDIAccount_DELTA FROM TEMP_BNKM_SDIAccount_DELTA;\n\n---------UPDATE TO BNKM\nUPDATE TGT \nSET\n\tSDIAccountId = SRC.SDIAccountId\n\t,CustomerAccountId = SRC.CustomerAccountId\n\t,LastSixDigitsRelatedCustomerAccountId = SRC.LastSixDigitsRelatedCustomerAccountId\n\t,DirectIndicator = SRC.DirectIndicator\n\t,RoleId = SRC.RoleId\n\t,ProcessingOrgId = SRC.ProcessingOrgId\n\t,IsoCurrencyCode = SRC.IsoCurrencyCode\n\t,PayReceiveId = SRC.PayReceiveId\n\t,MethodId = SRC.MethodId\n\t,FinancialInstitutionId = SRC.FinancialInstitutionId\n\t,SourceSystemCode = 'TRY'\n\t,WorkFlowId = 0\n\t,TaskRunId = 0\n\t,InsertDttm = SRC.InsertDttm\nFROM BNKM.SDIAccount TGT\nJOIN #TEMP_BNKM_SDIAccount_DELTA DELTA ON DELTA.SDIAccountId = TGT.SDIAccountId  AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_SDIAccount SRC ON SRC.SDIAccountId = TGT.SDIAccountId ;\n\n \n-------INSERT TO BNKM\nINSERT INTO BNKM.SDIAccount\n(\n\tSDIAccountId\n\t,CustomerAccountId\n\t,LastSixDigitsRelatedCustomerAccountId\n\t,DirectIndicator\n\t,RoleId\n\t,ProcessingOrgId\n\t,IsoCurrencyCode\n\t,PayReceiveId\n\t,MethodId\n\t,FinancialInstitutionId\n\t,SourceSystemCode\n\t,WorkFlowId\n\t,TaskRunId\n\t,InsertDttm\n)\nSELECT\n\tSDIAccountId\n\t,CustomerAccountId\n\t,LastSixDigitsRelatedCustomerAccountId\n\t,DirectIndicator\n\t,RoleId\n\t,ProcessingOrgId\n\t,IsoCurrencyCode\n\t,PayReceiveId\n\t,MethodId\n\t,FinancialInstitutionId\n\t,'TRY' AS SourceSystemCode\n\t,0 AS WorkFlowId\n\t,0 AS TaskRunId\n\t,InsertDttm\nFROM #TEMP_BNKM_SDIAccount\nWHERE RECORD_STATUS IN ('INSERT');\n\nDROP TABLE #TEMP_BNKM_SDIAccount;\nDROP TABLE #TEMP_BNKM_SDIAccount_DELTA;\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

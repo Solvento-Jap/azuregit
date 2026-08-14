@@ -1,0 +1,661 @@
+{
+	"name": "Dimension_DimAccount",
+	"properties": {
+		"activities": [
+			{
+				"name": "ACCT_OTH",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "IF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'ACCOUNT_OTH') \r\nBEGIN\r\n   DROP TABLE DW.ACCOUNT_OTH;\r\nEND;\r\n\r\n\r\nWITH ACCOUNT_SK\r\nAS(\r\nSELECT ISNULL(MAX(AccountSk),0) RN FROM DW.DIMACCOUNT \r\n\r\n)\r\n, CoreCustomerAccountProfitCostCenter \r\nAS(\r\n    SELECT distinct A.* FROM BNKM.CoreCustomerAccountProfitCostCenter A\r\n\tJOIN (SELECT CustomerAccountId, FinancialInstitutionId,SourceSystemCode, MAX(Timestamp) Timestamp FROM BNKM.CoreCustomerAccountProfitCostCenter GROUP BY CustomerAccountId, FinancialInstitutionId, SourceSystemCode ) B\r\n\tON A.CustomerAccountId = B.CustomerAccountId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp AND A.SourceSystemCode = B.SourceSystemCode\r\n    WHERE A.ProfitCostCenterTypeId = 'Account PCC Code 1' AND A.SourceSystemCode NOT IN ('TRU','DEP','LNS')\r\n)\r\n, CORECUSTOMERACCOUNTPAYROLL\r\nAS(\r\n    SELECT distinct A.* FROM BNKM.CORECUSTOMERACCOUNTPAYROLL A\r\n\tJOIN (SELECT CUSTOMERACCOUNTID, FinancialInstitutionId,SourceSystemCode, MAX(Timestamp) Timestamp FROM BNKM.CORECUSTOMERACCOUNTPAYROLL GROUP BY CUSTOMERACCOUNTID, FinancialInstitutionId,SourceSystemCode ) B\r\n\tON A.CUSTOMERACCOUNTID = B.CUSTOMERACCOUNTID AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp AND A.SourceSystemCode = B.SourceSystemCode\r\n    WHERE A.SourceSystemCode NOT IN ('TRU','DEP','LNS')\r\n)\r\n\r\nSELECT\r\nROW_NUMBER() OVER(ORDER BY (SELECT NULL)) + (SELECT RN FROM ACCOUNT_SK) AS AccountSK\r\n,* \r\nINTO DW.ACCOUNT_OTH\r\nFROM ( \r\n    \r\nSELECT DISTINCT \r\nBCA.CustomerAccountId AS AccountID\r\n,BCA.CustomerAccountName AS AccountName\r\n,BCA.CustomerAccountOpenedDate AS AccountOpenedDate\r\n,BCAS.CustomerAccountStatusTypeId AS AccountStatus\r\n,CASE \r\n     WHEN BCAF.FINANCIALPRODUCTID IN ('00013','01013') OR BCCA.EmployeePayrollAccountIndicator = 'Y' \r\n     THEN 'Y' ELSE 'N' END AS PayrollIndicator\r\n,BCA.IsoCurrencyCode AS CurrencyCode\r\n,BCCC.ProfitCostCenterId AS ProfitCostCode\r\n,DDB.BankSK AS BankSK\r\n,DDBRAN.BranchSK AS BranchSK\r\n,BCA.SourceSystemCode AS SourceSystemCode\r\n,1 AS CurrentIndicator\r\n,GETDATE() AS ValidStartDate\r\n,'9999-12-31' AS ValidEndDate\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,GETDATE() AS InsertDttm\r\n\r\nFROM (SELECT DISTINCT CustomerAccountId,CustomerAccountName,CustomerAccountOpenedDate,IsoCurrencyCode,SourceSystemCode,FINANCIALINSTITUTIONID,BRANCHID FROM BNKM.CustomerAccount) BCA \r\nLEFT JOIN BNKM.CUSTOMERACCOUNTFINANCIALPRODUCT BCAF ON BCA.CUSTOMERACCOUNTID = convert(varchar,BCAF.CUSTOMERACCOUNTID) AND BCAF.SourceSystemCode = BCA.SourceSystemCode  AND BCA.FinancialInstitutionId = BCAF.FinancialInstitutionId AND (BCAF.PERIODENDDATE IS NULL OR BCAF.PERIODENDDATE = '1900-01-01' ) --NO DATA\r\nLEFT JOIN (SELECT ROW_NUMBER() OVER(PARTITION BY CustomerAccountId ORDER BY PeriodStartTimeStamp desc) rn, CustomerAccountId,CustomerAccountStatusTypeId,SourceSystemCode,FINANCIALINSTITUTIONID,PeriodEndTimestamp  FROM BNKM.CUSTOMERACCOUNTSTATUS) BCAS ON BCA.CustomerAccountId = BCAS.CustomerAccountId AND BCAS.SourceSystemCode = BCA.SourceSystemCode AND BCAS.FINANCIALINSTITUTIONID = BCA.FINANCIALINSTITUTIONID AND (BCAS.PeriodEndTimestamp IS NULL OR BCAS.PeriodEndTimestamp = '1900-01-01' ) AND BCAS.RN = 1\r\nLEFT JOIN CORECUSTOMERACCOUNTPAYROLL BCCA ON BCA.CUSTOMERACCOUNTID = BCCA.CUSTOMERACCOUNTID AND BCA.FINANCIALINSTITUTIONID = BCCA.FINANCIALINSTITUTIONID AND BCA.SourceSystemCode = BCCA.SourceSystemCode\r\nLEFT JOIN DW.DimBank DDB ON BCA.FINANCIALINSTITUTIONID = DDB.BANKID\r\nLEFT JOIN DW.DimBranch DDBRAN ON BCA.BRANCHID = DDBRAN.BRANCHID AND DDBRAN.CurrentIndicator = 1\r\nLEFT JOIN CoreCustomerAccountProfitCostCenter BCCC ON BCA.CustomerAccountId = BCCC.CustomerAccountId AND BCA.FinancialInstitutionId = BCCC.FinancialInstitutionId AND BCA.SourceSystemCode = BCCC.SourceSystemCode AND BCCC.ProfitCostCenterTypeId = 'Account PCC Code 1'\r\nWHERE BCA.SourceSystemCode NOT IN ('TRU','DEP','LNS')\r\n)a\r\n\r\n\r\n\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ACCT_OTH_2",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ACCT_OTH",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'TEMP_DW_DIMACCOUNT_DELTA_OTH') \r\nBEGIN\r\n   DROP TABLE DW.TEMP_DW_DIMACCOUNT_DELTA_OTH;\r\nEND;\r\n\r\n\r\nWITH\r\nTEMP_DW_DIMACCOUNT_SRC\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     CONVERT(VARCHAR,AccountID)\r\n    ,CONVERT(VARCHAR,AccountName)\r\n    ,CONVERT(DATE,AccountOpenedDate)\r\n    ,CONVERT(VARCHAR,AccountStatus)\r\n    ,CONVERT(VARCHAR,PayrollIndicator)\r\n    ,CONVERT(VARCHAR,CurrencyCode)\r\n    ,CONVERT(VARCHAR,ProfitCostCode)\r\n    ,CONVERT(INT,BankSK)\r\n    ,CONVERT(INT,BranchSK)\r\n    )) HASHROW, AccountID,BankSK ,SourceSystemCode\r\n    FROM DW.ACCOUNT_OTH\r\n)\r\n,\r\nTEMP_DW_DIMACCOUNT_TGT\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     CONVERT(VARCHAR,AccountID)\r\n    ,CONVERT(VARCHAR,AccountName)\r\n    ,CONVERT(DATE,AccountOpenedDate)\r\n    ,CONVERT(VARCHAR,AccountStatus)\r\n    ,CONVERT(VARCHAR,PayrollIndicator)\r\n    ,CONVERT(VARCHAR,CurrencyCode)\r\n    ,CONVERT(VARCHAR,ProfitCostCode)\r\n    ,CONVERT(INT,BankSK)\r\n    ,CONVERT(INT,BranchSK)\r\n    )) HASHROW, AccountID,BankSK ,SourceSystemCode\r\n    FROM DW.DIMACCOUNT WHERE CurrentIndicator = 1 AND SourceSystemCode NOT IN ('TRU','DEP','LNS')\r\n)\r\n\r\n    SELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n    ,ISNULL(SRC.AccountID,TGT.AccountID) AS AccountID\r\n\t,ISNULL(SRC.BankSK,TGT.BankSK) AS BankSK\r\n\t,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\r\n\t,CASE\r\n        WHEN  TGT.BankSK IS NULL AND TGT.AccountID IS NULL THEN 'INSERT'\r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n        ELSE NULL END AS RECORD_STATUS\r\nINTO DW.TEMP_DW_DIMACCOUNT_DELTA_OTH \t\r\nFROM TEMP_DW_DIMACCOUNT_SRC SRC\r\nLEFT JOIN TEMP_DW_DIMACCOUNT_TGT\tTGT\r\nON SRC.BankSK = TGT.BankSK\r\nAND SRC.AccountID = TGT.AccountID\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR ( TGT.BANKSK IS NULL AND TGT.AccountID IS NULL)"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ACCT_OTH_3",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ACCT_OTH_2",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "UPDATE TGT \r\nSET\r\n ValidEndDate = GETDATE()\r\n,CurrentIndicator = 0\r\nFROM DW.DIMACCOUNT TGT\r\nJOIN DW.TEMP_DW_DIMACCOUNT_DELTA_OTH DELTA ON  DELTA.BankSK = TGT.BankSK AND DELTA.AccountID = TGT.AccountID AND DELTA.SourceSystemCode = TGT.SourceSystemCode AND  DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN DW.ACCOUNT_OTH SRC ON  SRC.BankSK = TGT.BankSK AND SRC.AccountID = TGT.AccountID AND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE TGT.CurrentIndicator = 1 AND TGT.SourceSystemCode NOT IN ('TRU','DEP','LNS');\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ACCT_OTH_4",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ACCT_OTH_3",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nINSERT INTO DW.DIMACCOUNT\r\n(\r\n AccountSK\r\n,AccountID\r\n,AccountName\r\n,AccountOpenedDate\r\n,AccountStatus\r\n,PayrollIndicator\r\n,CurrencyCode\r\n,ProfitCostCode\r\n,BankSK\r\n,BranchSK\r\n,SourceSystemCode\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\nSELECT DISTINCT\r\nAccountSK\r\n,SRC.AccountID\r\n,AccountName\r\n,AccountOpenedDate\r\n,AccountStatus\r\n,PayrollIndicator\r\n,CurrencyCode\r\n,ProfitCostCode\r\n,SRC.BankSK\r\n,BranchSK\r\n,SRC.SourceSystemCode\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\nFROM DW.ACCOUNT_OTH SRC\r\nJOIN DW.TEMP_DW_DIMACCOUNT_DELTA_OTH DELTA ON  DELTA.BankSK = SRC.BankSK AND DELTA.AccountID = SRC.AccountID AND DELTA.SourceSystemCode = SRC.SourceSystemCode AND  DELTA.RECORD_STATUS IN ('UPDATE','INSERT');\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ACCT_TRU",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ACCT_OTH_4",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "IF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'ACCOUNT_TRU') \r\nBEGIN\r\n   DROP TABLE DW.ACCOUNT_TRU;\r\nEND;\r\n\r\n\r\nWITH ACCOUNT_SK\r\nAS(\r\nSELECT ISNULL(MAX(AccountSk),0) RN FROM DW.DIMACCOUNT \r\n\r\n)\r\n, CoreCustomerAccountProfitCostCenter \r\nAS(\r\n    SELECT distinct A.* FROM BNKM.CoreCustomerAccountProfitCostCenter A\r\n\tJOIN (SELECT CustomerAccountId, FinancialInstitutionId,SourceSystemCode, MAX(Timestamp) Timestamp FROM BNKM.CoreCustomerAccountProfitCostCenter GROUP BY CustomerAccountId, FinancialInstitutionId, SourceSystemCode ) B\r\n\tON A.CustomerAccountId = B.CustomerAccountId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp AND A.SourceSystemCode = B.SourceSystemCode\r\n    WHERE A.ProfitCostCenterTypeId = 'Account PCC Code 1' AND A.SourceSystemCode = 'TRU'\r\n)\r\n, CORECUSTOMERACCOUNTPAYROLL\r\nAS(\r\n    SELECT distinct A.* FROM BNKM.CORECUSTOMERACCOUNTPAYROLL A\r\n\tJOIN (SELECT CUSTOMERACCOUNTID, FinancialInstitutionId,SourceSystemCode, MAX(Timestamp) Timestamp FROM BNKM.CORECUSTOMERACCOUNTPAYROLL GROUP BY CUSTOMERACCOUNTID, FinancialInstitutionId,SourceSystemCode ) B\r\n\tON A.CUSTOMERACCOUNTID = B.CUSTOMERACCOUNTID AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp AND A.SourceSystemCode = B.SourceSystemCode\r\n    WHERE A.SourceSystemCode = 'TRU'\r\n)\r\n\r\nSELECT\r\nROW_NUMBER() OVER(ORDER BY (SELECT NULL)) + (SELECT RN FROM ACCOUNT_SK) AS AccountSK\r\n,* \r\nINTO DW.ACCOUNT_TRU\r\nFROM ( \r\n    \r\n--FOR TRU RECORDS FILTER\r\nSELECT\r\n BCA.CustomerAccountId AS AccountID\r\n,BCA.CustomerAccountName AS AccountName\r\n,BCA.CustomerAccountOpenedDate AS AccountOpenedDate\r\n,BCAS.CustomerAccountStatusTypeId AS AccountStatus\r\n,CASE \r\n     WHEN BCAF.FINANCIALPRODUCTID IN ('00013','01013') OR BCCA.EmployeePayrollAccountIndicator = 'Y' \r\n     THEN 'Y' ELSE 'N' END AS PayrollIndicator\r\n,BCA.IsoCurrencyCode AS CurrencyCode\r\n,BCCC.ProfitCostCenterId AS ProfitCostCode\r\n,DDB.BankSK AS BankSK\r\n,-1 AS BranchSK\r\n,BCA.SourceSystemCode AS SourceSystemCode\r\n,1 AS CurrentIndicator\r\n,GETDATE() AS ValidStartDate\r\n,'9999-12-31' AS ValidEndDate\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,GETDATE() AS InsertDttm\r\n\r\nFROM (SELECT CA.CustomerAccountId,CA.CustomerAccountName,CA.CustomerAccountOpenedDate,CA.IsoCurrencyCode,CA.SourceSystemCode,CA.FINANCIALINSTITUTIONID,CA.BRANCHID\r\nFROM (SELECT ROW_NUMBER() OVER (PARTITION BY CustomerAccountId ORDER BY CustomerAccountName) AS RN, CustomerAccountId, CustomerAccountName, CustomerAccountOpenedDate, IsoCurrencyCode, SourceSystemCode, FINANCIALINSTITUTIONID, BRANCHID \r\nFROM BNKM.CustomerAccount) CA\r\nWHERE CA.RN = 1) BCA \r\nLEFT JOIN BNKM.CUSTOMERACCOUNTFINANCIALPRODUCT BCAF ON BCA.CUSTOMERACCOUNTID = convert(varchar,BCAF.CUSTOMERACCOUNTID) AND BCAF.SourceSystemCode = BCA.SourceSystemCode  AND BCA.FinancialInstitutionId = BCAF.FinancialInstitutionId AND (BCAF.PERIODENDDATE IS NULL OR BCAF.PERIODENDDATE = '1900-01-01' ) --NO DATA\r\nLEFT JOIN BNKM.CUSTOMERACCOUNTSTATUS BCAS ON BCA.CustomerAccountId = BCAS.CustomerAccountId AND BCAS.SourceSystemCode = BCA.SourceSystemCode AND BCAS.FINANCIALINSTITUTIONID = BCA.FINANCIALINSTITUTIONID AND (BCAS.PeriodEndTimestamp IS NULL OR BCAS.PeriodEndTimestamp = '1900-01-01' )\r\nLEFT JOIN CORECUSTOMERACCOUNTPAYROLL BCCA ON BCA.CUSTOMERACCOUNTID = BCCA.CUSTOMERACCOUNTID AND BCA.FINANCIALINSTITUTIONID = BCCA.FINANCIALINSTITUTIONID AND BCA.SourceSystemCode = BCCA.SourceSystemCode\r\nLEFT JOIN DW.DimBank DDB ON BCA.FINANCIALINSTITUTIONID = DDB.BANKID\r\nLEFT JOIN CoreCustomerAccountProfitCostCenter BCCC ON BCA.CustomerAccountId = BCCC.CustomerAccountId AND BCA.FinancialInstitutionId = BCCC.FinancialInstitutionId AND BCA.SourceSystemCode = BCCC.SourceSystemCode AND BCCC.ProfitCostCenterTypeId = 'Account PCC Code 1'\r\n--LEFT JOIN DW.DimBranch DDBRAN ON BCA.BRANCHID = DDBRAN.BRANCHID AND DDBRAN.CurrentIndicator = 1 \r\nWHERE BCA.SourceSystemCode = 'TRU'\r\nGROUP BY \r\nBCA.CustomerAccountId\r\n,BCA.CustomerAccountName\r\n,BCA.CustomerAccountOpenedDate\r\n,BCAS.CustomerAccountStatusTypeId\r\n,BCAF.FINANCIALPRODUCTID\r\n,BCCA.EmployeePayrollAccountIndicator\r\n,BCA.IsoCurrencyCode\r\n,DDB.BankSK\r\n,BCA.SourceSystemCode\r\n,BCCC.ProfitCostCenterId\r\n)a"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ACCT_TRU_2",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ACCT_TRU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'TEMP_DW_DIMACCOUNT_DELTA_TRU') \r\nBEGIN\r\n   DROP TABLE DW.TEMP_DW_DIMACCOUNT_DELTA_TRU;\r\nEND;\r\n\r\n\r\nWITH\r\nTEMP_DW_DIMACCOUNT_SRC\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     CONVERT(VARCHAR,AccountID)\r\n    ,CONVERT(VARCHAR,AccountName)\r\n    ,CONVERT(DATE,AccountOpenedDate)\r\n    ,CONVERT(VARCHAR,AccountStatus)\r\n    ,CONVERT(VARCHAR,PayrollIndicator)\r\n    ,CONVERT(VARCHAR,CurrencyCode)\r\n    ,CONVERT(VARCHAR,ProfitCostCode)\r\n    ,CONVERT(INT,BankSK)\r\n    ,CONVERT(INT,BranchSK)\r\n    )) HASHROW, AccountID,BankSK ,SourceSystemCode\r\n    FROM DW.ACCOUNT_TRU\r\n)\r\n,\r\nTEMP_DW_DIMACCOUNT_TGT\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     CONVERT(VARCHAR,AccountID)\r\n    ,CONVERT(VARCHAR,AccountName)\r\n    ,CONVERT(DATE,AccountOpenedDate)\r\n    ,CONVERT(VARCHAR,AccountStatus)\r\n    ,CONVERT(VARCHAR,PayrollIndicator)\r\n    ,CONVERT(VARCHAR,CurrencyCode)\r\n    ,CONVERT(VARCHAR,ProfitCostCode)\r\n    ,CONVERT(INT,BankSK)\r\n    ,CONVERT(INT,BranchSK)\r\n    )) HASHROW, AccountID,BankSK ,SourceSystemCode\r\n    FROM DW.DIMACCOUNT WHERE CurrentIndicator = 1 AND SourceSystemCode = 'TRU'\r\n)\r\n\r\n    SELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n    ,ISNULL(SRC.AccountID,TGT.AccountID) AS AccountID\r\n\t,ISNULL(SRC.BankSK,TGT.BankSK) AS BankSK\r\n\t,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\r\n\t,CASE\r\n        WHEN  TGT.BankSK IS NULL AND TGT.AccountID IS NULL THEN 'INSERT'\r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n        ELSE NULL END AS RECORD_STATUS\r\nINTO DW.TEMP_DW_DIMACCOUNT_DELTA_TRU \t\r\nFROM TEMP_DW_DIMACCOUNT_SRC SRC\r\nLEFT JOIN TEMP_DW_DIMACCOUNT_TGT\tTGT\r\nON SRC.BankSK = TGT.BankSK\r\nAND SRC.AccountID = TGT.AccountID\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR ( TGT.BANKSK IS NULL AND TGT.AccountID IS NULL)\r\n\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ACCT_TRU_3",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ACCT_TRU_2",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "UPDATE TGT \r\nSET\r\n ValidEndDate = GETDATE()\r\n,CurrentIndicator = 0\r\nFROM DW.DIMACCOUNT TGT\r\nJOIN DW.TEMP_DW_DIMACCOUNT_DELTA_TRU DELTA ON  DELTA.BankSK = TGT.BankSK AND DELTA.AccountID = TGT.AccountID AND DELTA.SourceSystemCode = TGT.SourceSystemCode AND  DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN DW.ACCOUNT_TRU SRC ON  SRC.BankSK = TGT.BankSK AND SRC.AccountID = TGT.AccountID AND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE TGT.CurrentIndicator = 1 AND TGT.SourceSystemCode = 'TRU';"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ACCT_TRU_4",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ACCT_TRU_3",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nINSERT INTO DW.DIMACCOUNT\r\n(\r\n AccountSK\r\n,AccountID\r\n,AccountName\r\n,AccountOpenedDate\r\n,AccountStatus\r\n,PayrollIndicator\r\n,CurrencyCode\r\n,ProfitCostCode\r\n,BankSK\r\n,BranchSK\r\n,SourceSystemCode\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\nSELECT DISTINCT\r\nAccountSK\r\n,SRC.AccountID\r\n,AccountName\r\n,AccountOpenedDate\r\n,AccountStatus\r\n,PayrollIndicator\r\n,CurrencyCode\r\n,ProfitCostCode\r\n,SRC.BankSK\r\n,BranchSK\r\n,SRC.SourceSystemCode\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\nFROM DW.ACCOUNT_TRU SRC\r\nJOIN DW.TEMP_DW_DIMACCOUNT_DELTA_TRU DELTA ON  DELTA.BankSK = SRC.BankSK AND DELTA.AccountID = SRC.AccountID AND DELTA.SourceSystemCode = SRC.SourceSystemCode AND  DELTA.RECORD_STATUS IN ('UPDATE','INSERT');\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ACCT_LNS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "get_businessdate_EODACCTBAL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "businessdate",
+									"type": "String",
+									"value": {
+										"value": "@activity('get_businessdate_EODACCTBAL').output.firstRow.Businessdate",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "NonQuery",
+							"text": "IF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'ACCOUNT_LNS') \r\nBEGIN\r\n   DROP TABLE DW.ACCOUNT_LNS;\r\nEND;\r\n\r\n\r\nWITH ACCOUNT_SK\r\nAS(\r\nSELECT ISNULL(MAX(AccountSk),0) RN FROM DW.DIMACCOUNT \r\n\r\n)\r\n, CoreCustomerAccountProfitCostCenter \r\nAS(\r\n    SELECT distinct A.* FROM BNKM.CoreCustomerAccountProfitCostCenter A\r\n\tJOIN (SELECT CustomerAccountId, FinancialInstitutionId,SourceSystemCode, MAX(Timestamp) Timestamp FROM BNKM.CoreCustomerAccountProfitCostCenter GROUP BY CustomerAccountId, FinancialInstitutionId, SourceSystemCode ) B\r\n\tON A.CustomerAccountId = B.CustomerAccountId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp AND A.SourceSystemCode = B.SourceSystemCode\r\n    WHERE A.ProfitCostCenterTypeId = 'Account PCC Code 1' AND A.SourceSystemCode = 'LNS'\r\n)\r\n, CORECUSTOMERACCOUNTPAYROLL\r\nAS(\r\n    SELECT distinct A.* FROM BNKM.CORECUSTOMERACCOUNTPAYROLL A\r\n\tJOIN (SELECT CUSTOMERACCOUNTID, FinancialInstitutionId,SourceSystemCode, MAX(Timestamp) Timestamp FROM BNKM.CORECUSTOMERACCOUNTPAYROLL GROUP BY CUSTOMERACCOUNTID, FinancialInstitutionId,SourceSystemCode ) B\r\n\tON A.CUSTOMERACCOUNTID = B.CUSTOMERACCOUNTID AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp AND A.SourceSystemCode = B.SourceSystemCode\r\n    WHERE A.SourceSystemCode = 'LNS'\r\n), \r\n\t CustomerAccountLoanPayoff\r\nAS(\r\n\tSELECT distinct A.* FROM BNKM.CustomerAccountLoanPayoff A\r\n\t JOIN (SELECT CustomerAccountId, FinancialInstitutionId, MAX(PayoffTimestamp) PayoffTimestamp FROM BNKM.CustomerAccountLoanPayoff GROUP BY CustomerAccountId, FinancialInstitutionId ) B\r\n\t\tON A.CustomerAccountId = B.CustomerAccountId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.PayoffTimestamp = B.PayoffTimestamp\r\nWHERE A.SOURCESYSTEMCODE = 'LNS'\r\n)\r\n,\r\nCustomerAccountBalance_LNS AS (\r\nSELECT \r\n\r\n\tMAX(Timestamp) AS Timestamp\r\n\t,CustomerAccountId\r\n\t,FinancialInstitutionId\r\n    ,BalancetypeId\r\n\tFROM BNKM.CustomerAccountBalance\r\n\tWHERE BalancetypeId = 'Clear Balance Amount'\r\n    GROUP BY CustomerAccountId, FinancialInstitutionId, BalancetypeId\r\n)\r\n\r\nSELECT\r\nROW_NUMBER() OVER(ORDER BY (SELECT NULL)) + (SELECT RN FROM ACCOUNT_SK) AS AccountSK\r\n,*\r\nINTO DW.ACCOUNT_LNS from ( \r\nSELECT DISTINCT\r\n\tBCA.CustomerAccountId AS AccountID\r\n\t,BCA.CustomerAccountName AS AccountName\r\n\t,BCA.CustomerAccountOpenedDate AS AccountOpenedDate\r\n\t--,CASE\r\n\t--\tWHEN BCCA.ClosedAccountIndicator = 'Y' AND BCAF.FcbsApplication IN ('LAA', 'CLA') AND BCAB.BalanceAmount = 0 \r\n\t--\tTHEN 'Closed' ELSE 'Active' END AS AccountStatus\r\n\t, CASE\r\n        WHEN BCALP.PayoffIndicator = 'Y'\r\n             AND CONVERT(DATE,BCALP.PayoffTimestamp) <=  @Businessdate\r\n             AND BCAF.FcbsApplication IN ('LAA', 'CLA')\r\n        THEN 'Closed'\r\n        WHEN BCALP.PayoffIndicator = 'N'\r\n             AND BCAF.FcbsApplication IN ('LAA', 'CLA')\r\n        THEN 'Active'\r\n        WHEN BCALP.PayoffIndicator = 'Y'\r\n             AND CONVERT(DATE,BCALP.PayoffTimestamp) >  @Businessdate\r\n             AND BCAF.FcbsApplication IN ('LAA', 'CLA')\r\n        THEN 'Active'\r\n    END AS AccountStatus\r\n\t,CASE \r\n\t\t WHEN BCAF.FINANCIALPRODUCTID IN ('00013','01013') OR BCCAP.EmployeePayrollAccountIndicator = 'Y' \r\n\t\t THEN 'Y' ELSE 'N' END AS PayrollIndicator\r\n\t,BCA.IsoCurrencyCode AS CurrencyCode\r\n\t,BCCC.ProfitCostCenterId AS ProfitCostCode\r\n\t,DDB.BankSK AS BankSK\r\n\t,DDBRAN.BranchSK AS BranchSK\r\n\t,BCA.SourceSystemCode AS SourceSystemCode\r\n\t,1 AS CurrentIndicator\r\n\t,GETDATE() AS ValidStartDate\r\n\t,'9999-12-31' AS ValidEndDate\r\n\t,0 AS WorkFlowId\r\n\t,0 AS TaskRunId\r\n    ,GETDATE() AS InsertDttm\r\nFROM (SELECT DISTINCT CustomerAccountId,CustomerAccountName,CustomerAccountOpenedDate,IsoCurrencyCode,SourceSystemCode,FINANCIALINSTITUTIONID,BRANCHID FROM BNKM.CustomerAccount) BCA \r\n--LEFT JOIN BNKM.CoreCustomerAccount BCCA ON BCA.CustomerAccountId = BCCA.CustomerAccountId AND BCA.FinancialInstitutionId = BCCA.FinancialInstitutionId AND BCA.SourceSystemCode = BCCA.SourceSystemCode\r\nLEFT JOIN CustomerAccountLoanPayoff BCALP ON BCA.CustomerAccountId = BCALP.CustomerAccountId  AND BCA.FinancialInstitutionId = BCALP.FinancialInstitutionId AND BCA.SourceSystemCode = BCALP.SourceSystemCode\r\n--LEFT JOIN (SELECT BCAB.* FROM BNKM.CustomerAccountBalance BCAB\r\n--LEFT JOIN CustomerAccountBalance_LNS BCABL ON BCAB.Timestamp = BCABL.Timestamp AND BCAB.CustomerAccountId = BCABL.CustomerAccountId AND BCAB.FinancialInstitutionId = BCABL.FinancialInstitutionId AND BCAB.BalancetypeId = BCABL.BalancetypeId\r\n--WHERE BCAB.BalancetypeId = 'Clear Balance Amount' ) BCAB ON BCA.CustomerAccountId = BCAB.CustomerAccountId AND BCA.FinancialInstitutionId = BCAB.FinancialInstitutionId\r\nLEFT JOIN BNKM.CustomerAccountFinancialProduct BCAF ON BCA.CUSTOMERACCOUNTID = BCAF.CUSTOMERACCOUNTID AND BCAF.SourceSystemCode = BCA.SourceSystemCode  AND BCA.FinancialInstitutionId = BCAF.FinancialInstitutionId \r\n--AND (BCAF.PERIODENDDATE IS NULL OR BCAF.PERIODENDDATE = '1900-01-01' )\r\nLEFT JOIN CORECUSTOMERACCOUNTPAYROLL BCCAP ON BCA.CUSTOMERACCOUNTID = BCCAP.CUSTOMERACCOUNTID AND BCA.FINANCIALINSTITUTIONID = BCCAP.FINANCIALINSTITUTIONID AND BCA.SourceSystemCode = BCCAP.SourceSystemCode\r\nLEFT JOIN DW.DimBank DDB ON BCA.FINANCIALINSTITUTIONID = DDB.BANKID\r\nLEFT JOIN DW.DimBranch DDBRAN ON BCA.BRANCHID = DDBRAN.BRANCHID AND CurrentIndicator = 1\r\nLEFT JOIN CoreCustomerAccountProfitCostCenter BCCC ON BCA.CustomerAccountId = BCCC.CustomerAccountId AND BCA.FinancialInstitutionId = BCCC.FinancialInstitutionId AND BCA.SourceSystemCode = BCCC.SourceSystemCode AND BCCC.ProfitCostCenterTypeId = 'Account PCC Code 1'\r\nWHERE BCA.SourceSystemCode = 'LNS'\r\n\r\n\r\n)a"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ACCT_LNS_2",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ACCT_LNS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'TEMP_DW_DIMACCOUNT_DELTA_LNS') \r\nBEGIN\r\n   DROP TABLE DW.TEMP_DW_DIMACCOUNT_DELTA_LNS;\r\nEND;\r\n\r\n\r\nWITH\r\nTEMP_DW_DIMACCOUNT_SRC\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     CONVERT(VARCHAR,AccountID)\r\n    ,CONVERT(VARCHAR,AccountName)\r\n    ,CONVERT(DATE,AccountOpenedDate)\r\n    ,CONVERT(VARCHAR,AccountStatus)\r\n    ,CONVERT(VARCHAR,PayrollIndicator)\r\n    ,CONVERT(VARCHAR,CurrencyCode)\r\n    ,CONVERT(VARCHAR,ProfitCostCode)\r\n    ,CONVERT(INT,BankSK)\r\n    ,CONVERT(INT,BranchSK)\r\n    )) HASHROW, AccountID,BankSK ,SourceSystemCode\r\n    FROM DW.ACCOUNT_LNS\r\n)\r\n,\r\nTEMP_DW_DIMACCOUNT_TGT\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     CONVERT(VARCHAR,AccountID)\r\n    ,CONVERT(VARCHAR,AccountName)\r\n    ,CONVERT(DATE,AccountOpenedDate)\r\n    ,CONVERT(VARCHAR,AccountStatus)\r\n    ,CONVERT(VARCHAR,PayrollIndicator)\r\n    ,CONVERT(VARCHAR,CurrencyCode)\r\n    ,CONVERT(VARCHAR,ProfitCostCode)\r\n    ,CONVERT(INT,BankSK)\r\n    ,CONVERT(INT,BranchSK)\r\n    )) HASHROW, AccountID,BankSK ,SourceSystemCode\r\n    FROM DW.DIMACCOUNT WHERE CurrentIndicator = 1 AND SourceSystemCode = 'LNS'\r\n)\r\n\r\n    SELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n    ,ISNULL(SRC.AccountID,TGT.AccountID) AS AccountID\r\n\t,ISNULL(SRC.BankSK,TGT.BankSK) AS BankSK\r\n\t,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\r\n\t,CASE\r\n        WHEN  TGT.BankSK IS NULL AND TGT.AccountID IS NULL THEN 'INSERT'\r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n        ELSE NULL END AS RECORD_STATUS\r\nINTO DW.TEMP_DW_DIMACCOUNT_DELTA_LNS \t\r\nFROM TEMP_DW_DIMACCOUNT_SRC SRC\r\nLEFT JOIN TEMP_DW_DIMACCOUNT_TGT\tTGT\r\nON SRC.BankSK = TGT.BankSK\r\nAND SRC.AccountID = TGT.AccountID\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR ( TGT.BANKSK IS NULL AND TGT.AccountID IS NULL)\r\n\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ACCT_LNS_3",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ACCT_LNS_2",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "UPDATE TGT \r\nSET\r\n ValidEndDate = GETDATE()\r\n,CurrentIndicator = 0\r\nFROM DW.DIMACCOUNT TGT\r\nJOIN DW.TEMP_DW_DIMACCOUNT_DELTA_LNS DELTA ON  DELTA.BankSK = TGT.BankSK AND DELTA.AccountID = TGT.AccountID AND DELTA.SourceSystemCode = TGT.SourceSystemCode AND  DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN DW.ACCOUNT_LNS SRC ON  SRC.BankSK = TGT.BankSK AND SRC.AccountID = TGT.AccountID AND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE TGT.CurrentIndicator = 1 AND TGT.SourceSystemCode = 'LNS';"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ACCT_LNS_4",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ACCT_LNS_3",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nINSERT INTO DW.DIMACCOUNT\r\n(\r\n AccountSK\r\n,AccountID\r\n,AccountName\r\n,AccountOpenedDate\r\n,AccountStatus\r\n,PayrollIndicator\r\n,CurrencyCode\r\n,ProfitCostCode\r\n,BankSK\r\n,BranchSK\r\n,SourceSystemCode\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\nSELECT DISTINCT\r\nAccountSK\r\n,SRC.AccountID\r\n,AccountName\r\n,AccountOpenedDate\r\n,AccountStatus\r\n,PayrollIndicator\r\n,CurrencyCode\r\n,ProfitCostCode\r\n,SRC.BankSK\r\n,BranchSK\r\n,SRC.SourceSystemCode\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\nFROM DW.ACCOUNT_LNS SRC\r\nJOIN DW.TEMP_DW_DIMACCOUNT_DELTA_LNS DELTA ON  DELTA.BankSK = SRC.BankSK AND DELTA.AccountID = SRC.AccountID AND DELTA.SourceSystemCode = SRC.SourceSystemCode AND  DELTA.RECORD_STATUS IN ('UPDATE','INSERT');\r\n\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ACCT_DEP",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ACCT_DEP_0",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "IF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'ACCOUNT_DEP') \r\nBEGIN\r\n   DROP TABLE DW.ACCOUNT_DEP;\r\nEND;\r\n\r\nWITH ACCOUNT_SK\r\nAS(\r\nSELECT ISNULL(MAX(AccountSk),0) RN FROM DW.DIMACCOUNT \r\n\r\n)\r\n\r\nSELECT\r\nROW_NUMBER() OVER(ORDER BY (SELECT NULL)) + (SELECT RN FROM ACCOUNT_SK) AS AccountSK, * \r\nINTO DW.ACCOUNT_DEP\r\nFROM \r\n(SELECT DISTINCT\r\nBCA.CustomerAccountId AS AccountID\r\n,BCA.CustomerAccountName AS AccountName\r\n,BCA.CustomerAccountOpenedDate AS AccountOpenedDate\r\n,CASE\r\n     WHEN BCCACCT.ClosedAccountIndicator = 'Y' AND BCA.CustomerAccountClosedDate <= getdate() AND BCAF.FcbsApplication IN ('CAA', 'SBA', 'TDA') \r\n     THEN 'Closed'\r\n     WHEN BCCACCT.ClosedAccountIndicator = 'N' AND BCAF.FcbsApplication IN ('CAA', 'SBA') \r\n     THEN BDAS.DepositAccountStatusTypeId\r\n     WHEN BCCACCT.ClosedAccountIndicator = 'Y' AND BCA.CustomerAccountClosedDate > getdate() AND BCAF.FcbsApplication IN ('CAA', 'SBA') \r\n     THEN BDAS.DepositAccountStatusTypeId\r\n     WHEN BCCACCT.ClosedAccountIndicator = 'Y' AND BCA.CustomerAccountClosedDate > getdate() AND BCAF.FcbsApplication IN ('TDA') \r\n     THEN  BDAS.DepositAccountStatusTypeId\r\n     WHEN BCCACCT.ClosedAccountIndicator = 'N' AND BCAF.FcbsApplication IN ('TDA') \r\n     THEN BDAS.DepositAccountStatusTypeId\r\n     END AS AccountStatus \r\n,CASE \r\n     WHEN BCAF.ProductId IN ('00013','01013') OR BCCA.EmployeePayrollAccountIndicator = 'Y' \r\n     THEN 'Y' ELSE 'N' END AS PayrollIndicator\r\n,BCA.IsoCurrencyCode AS CurrencyCode\r\n,BCCC.ProfitCostCenterId AS ProfitCostCode\r\n,DDB.BankSK AS BankSK\r\n,DDBRAN.BranchSK AS BranchSK\r\n,BCA.SourceSystemCode AS SourceSystemCode\r\n,1 AS CurrentIndicator\r\n,GETDATE() AS ValidStartDate\r\n,'9999-12-31' AS ValidEndDate\r\n,0 AS WorkFlowId\r\n,0 AS TaskRunId\r\n,GETDATE() AS InsertDttm\r\n\r\nFROM (SELECT DISTINCT CustomerAccountId,CustomerAccountName,CustomerAccountOpenedDate,CustomerAccountClosedDate,IsoCurrencyCode,SourceSystemCode,FINANCIALINSTITUTIONID,BRANCHID FROM BNKM.CustomerAccount where SourceSystemCode = 'DEP' ) BCA \r\nJOIN (SELECT ROW_NUMBER() OVER(PARTITION BY CustomerAccountId,PeriodStartDate,FinancialInstitutionId,SourceSystemCode ORDER BY INSERTDTTM desc) rn, CUSTOMERACCOUNTID,SourceSystemCode,FinancialInstitutionId,PERIODENDDATE,ProductId,FINANCIALPRODUCTID,FcbsApplication FROM BNKM.CustomerAccountFinancialProduct WHERE (PERIODENDDATE IS NULL OR PERIODENDDATE = '1900-01-01') AND SourceSystemCode = 'DEP' ) BCAF ON convert(varchar,BCA.CUSTOMERACCOUNTID) = convert(varchar,BCAF.CUSTOMERACCOUNTID) AND BCAF.SourceSystemCode = BCA.SourceSystemCode  AND BCA.FinancialInstitutionId = BCAF.FinancialInstitutionId  AND BCAF.RN = 1\r\nLEFT JOIN (SELECT FinancialProductId,SourceSystemCode,FinancialInstitutionId,FcbsApplicationId FROM DW.FINPRODAPP) FPA ON CONVERT(VARCHAR,BCAF.ProductId) = CONVERT(VARCHAR,FPA.FinancialProductId) AND BCAF.FinancialInstitutionId = FPA.FinancialInstitutionId AND BCAF.SourceSystemCode = FPA.SourceSystemCode\r\nLEFT JOIN (SELECT CustomerAccountId,FinancialInstitutionId,SourceSystemCode,ClosedAccountIndicator FROM BNKM.CoreCustomerAccount WHERE SourceSystemCode = 'DEP'  ) BCCACCT ON BCA.CustomerAccountId = BCCACCT.CustomerAccountId AND BCA.FinancialInstitutionId = BCCACCT.FinancialInstitutionId  AND BCA.SourceSystemCode = BCCACCT.SourceSystemCode\r\n--LEFT JOIN (SELECT CustomerAccountId,FinancialInstitutionId,DepositAccountStatusTypeId FROM BNKM.DepositAccountStatus WHERE PeriodEndTimestamp IS NULL) BDAS ON BCA.CustomerAccountId = BDAS.CustomerAccountId AND BCA.FinancialInstitutionId = BDAS.FinancialInstitutionId \r\nLEFT JOIN (SELECT ROW_NUMBER() OVER(PARTITION BY CustomerAccountId ORDER BY PeriodStartTimeStamp desc) rn, CustomerAccountId,FinancialInstitutionId,DepositAccountStatusTypeId FROM BNKM.DepositAccountStatus WHERE PeriodEndTimestamp IS NULL) BDAS ON BCA.CustomerAccountId = BDAS.CustomerAccountId AND BCA.FinancialInstitutionId = BDAS.FinancialInstitutionId  AND BDAS.RN = 1\r\nLEFT JOIN (SELECT CUSTOMERACCOUNTID,FINANCIALINSTITUTIONID,SourceSystemCode,EmployeePayrollAccountIndicator FROM DW.CORECUSTACCPYROLL WHERE SourceSystemCode = 'DEP') BCCA ON BCA.CUSTOMERACCOUNTID = BCCA.CUSTOMERACCOUNTID AND BCA.FINANCIALINSTITUTIONID = BCCA.FINANCIALINSTITUTIONID AND BCA.SourceSystemCode = BCCA.SourceSystemCode\r\nLEFT JOIN DW.DimBank DDB ON BCA.FINANCIALINSTITUTIONID = DDB.BANKID\r\nLEFT JOIN DW.DimBranch DDBRAN ON BCA.BRANCHID = DDBRAN.BRANCHID AND DDBRAN.CurrentIndicator = 1 \r\nLEFT JOIN (SELECT CustomerAccountId,FinancialInstitutionId,SourceSystemCode,ProfitCostCenterId FROM DW.CoreCustAccProCostCenter WHERE ProfitCostCenterTypeId = 'Account PCC Code 1' AND SourceSystemCode = 'DEP') BCCC ON BCA.CustomerAccountId = BCCC.CustomerAccountId AND BCA.FinancialInstitutionId = BCCC.FinancialInstitutionId AND BCA.SourceSystemCode = BCCC.SourceSystemCode \r\nWHERE BCA.SourceSystemCode = 'DEP'\r\nAND BCAF.ProductId NOT LIKE ('09%')\r\nAND FPA.FcbsApplicationId IN ('CAA', 'SBA', 'TDA')\r\n)A\r\n\r\n\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ACCT_DEP_2",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ACCT_DEP",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'TEMP_DW_DIMACCOUNT_DELTA_DEP') \r\nBEGIN\r\n   DROP TABLE DW.TEMP_DW_DIMACCOUNT_DELTA_DEP;\r\nEND;\r\n\r\n\r\nWITH\r\nTEMP_DW_DIMACCOUNT_SRC\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     CONVERT(VARCHAR,AccountID)\r\n    ,CONVERT(VARCHAR,AccountName)\r\n    ,CONVERT(DATE,AccountOpenedDate)\r\n    ,CONVERT(VARCHAR,AccountStatus)\r\n    ,CONVERT(VARCHAR,PayrollIndicator)\r\n    ,CONVERT(VARCHAR,CurrencyCode)\r\n    ,CONVERT(VARCHAR,ProfitCostCode)\r\n    ,CONVERT(INT,BankSK)\r\n    ,CONVERT(INT,BranchSK)\r\n    )) HASHROW, AccountID,BankSK ,SourceSystemCode\r\n    FROM DW.ACCOUNT_DEP\r\n)\r\n,\r\nTEMP_DW_DIMACCOUNT_TGT\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     CONVERT(VARCHAR,AccountID)\r\n    ,CONVERT(VARCHAR,AccountName)\r\n    ,CONVERT(DATE,AccountOpenedDate)\r\n    ,CONVERT(VARCHAR,AccountStatus)\r\n    ,CONVERT(VARCHAR,PayrollIndicator)\r\n    ,CONVERT(VARCHAR,CurrencyCode)\r\n    ,CONVERT(VARCHAR,ProfitCostCode)\r\n    ,CONVERT(INT,BankSK)\r\n    ,CONVERT(INT,BranchSK)\r\n    )) HASHROW, AccountID,BankSK ,SourceSystemCode\r\n    FROM DW.DIMACCOUNT WHERE CurrentIndicator = 1 AND SourceSystemCode = 'DEP'\r\n)\r\n\r\n    SELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n    ,ISNULL(SRC.AccountID,TGT.AccountID) AS AccountID\r\n\t,ISNULL(SRC.BankSK,TGT.BankSK) AS BankSK\r\n\t,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\r\n\t,CASE\r\n        WHEN  TGT.BankSK IS NULL AND TGT.AccountID IS NULL THEN 'INSERT'\r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n        ELSE NULL END AS RECORD_STATUS\r\nINTO DW.TEMP_DW_DIMACCOUNT_DELTA_DEP \t\r\nFROM TEMP_DW_DIMACCOUNT_SRC SRC\r\nLEFT JOIN TEMP_DW_DIMACCOUNT_TGT\tTGT\r\nON SRC.BankSK = TGT.BankSK\r\nAND SRC.AccountID = TGT.AccountID\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR ( TGT.BANKSK IS NULL AND TGT.AccountID IS NULL)"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ACCT_DEP_3",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ACCT_DEP_2",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "UPDATE TGT \r\nSET\r\n ValidEndDate = GETDATE()\r\n,CurrentIndicator = 0\r\nFROM DW.DIMACCOUNT TGT\r\nJOIN DW.TEMP_DW_DIMACCOUNT_DELTA_DEP DELTA ON  DELTA.BankSK = TGT.BankSK AND DELTA.AccountID = TGT.AccountID AND DELTA.SourceSystemCode = TGT.SourceSystemCode AND  DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN DW.ACCOUNT_DEP SRC ON  SRC.BankSK = TGT.BankSK AND SRC.AccountID = TGT.AccountID AND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE TGT.CurrentIndicator = 1 AND TGT.SourceSystemCode = 'DEP';"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ACCT_DEP_4",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ACCT_DEP_3",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nINSERT INTO DW.DIMACCOUNT\r\n(\r\n AccountSK\r\n,AccountID\r\n,AccountName\r\n,AccountOpenedDate\r\n,AccountStatus\r\n,PayrollIndicator\r\n,CurrencyCode\r\n,ProfitCostCode\r\n,BankSK\r\n,BranchSK\r\n,SourceSystemCode\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\nSELECT DISTINCT\r\nAccountSK\r\n,SRC.AccountID\r\n,AccountName\r\n,AccountOpenedDate\r\n,AccountStatus\r\n,PayrollIndicator\r\n,CurrencyCode\r\n,ProfitCostCode\r\n,SRC.BankSK\r\n,BranchSK\r\n,SRC.SourceSystemCode\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\nFROM DW.ACCOUNT_DEP SRC\r\nJOIN DW.TEMP_DW_DIMACCOUNT_DELTA_DEP DELTA ON  DELTA.BankSK = SRC.BankSK AND DELTA.AccountID = SRC.AccountID AND DELTA.SourceSystemCode = SRC.SourceSystemCode AND  DELTA.RECORD_STATUS IN ('UPDATE','INSERT');\r\n\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ACCT_DEP_0",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ACCT_LNS_4",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'FINPRODAPP') \r\nBEGIN\r\n   DROP TABLE DW.FINPRODAPP;\r\nEND;\r\n \r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'CoreCustAccProCostCenter') \r\nBEGIN\r\n   DROP TABLE DW.CoreCustAccProCostCenter;\r\nEND;\r\n\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'CORECUSTACCPYROLL') \r\nBEGIN\r\n   DROP TABLE DW.CORECUSTACCPYROLL;\r\nEND;\r\n\r\n\r\n    SELECT distinct A.* INTO DW.FINPRODAPP\r\n    FROM BNKM.FinancialProductApplication A\r\n\tJOIN (SELECT FinancialProductId, FinancialInstitutionId,FcbsApplicationId, SourceSystemCode, MAX(Timestamp) Timestamp FROM BNKM.FinancialProductApplication GROUP BY FinancialProductId, FinancialInstitutionId, FcbsApplicationId, SourceSystemCode ) B\r\n\tON A.FinancialProductId = B.FinancialProductId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.SourceSystemCode = B.SourceSystemCode AND A.FcbsApplicationId = B.FcbsApplicationId  AND A.Timestamp = B.Timestamp\r\n    WHERE A.SourceSystemCode = 'DEP';\r\n\r\n\r\n    SELECT distinct A.* INTO DW.CoreCustAccProCostCenter\r\n    FROM BNKM.CoreCustomerAccountProfitCostCenter A\r\n\tJOIN (SELECT CustomerAccountId, FinancialInstitutionId,SourceSystemCode, MAX(Timestamp) Timestamp FROM BNKM.CoreCustomerAccountProfitCostCenter GROUP BY CustomerAccountId, FinancialInstitutionId, SourceSystemCode ) B\r\n\tON A.CustomerAccountId = B.CustomerAccountId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp AND A.SourceSystemCode = B.SourceSystemCode\r\n    WHERE A.ProfitCostCenterTypeId = 'Account PCC Code 1' AND A.SourceSystemCode = 'DEP'\r\n\r\n    SELECT distinct A.* INTO DW.CORECUSTACCPYROLL \r\n    FROM BNKM.CORECUSTOMERACCOUNTPAYROLL A\r\n\tJOIN (SELECT CUSTOMERACCOUNTID, FinancialInstitutionId,SourceSystemCode, MAX(Timestamp) Timestamp FROM BNKM.CORECUSTOMERACCOUNTPAYROLL GROUP BY CUSTOMERACCOUNTID, FinancialInstitutionId,SourceSystemCode ) B\r\n\tON A.CUSTOMERACCOUNTID = B.CUSTOMERACCOUNTID AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.Timestamp = B.Timestamp AND A.SourceSystemCode = B.SourceSystemCode\r\n    WHERE A.SourceSystemCode = 'DEP'\r\n\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "get_businessdate_EODACCTBAL",
+				"type": "Lookup",
+				"dependsOn": [
+					{
+						"activity": "ACCT_TRU_4",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "select distinct (left(right(FILE_NAME, 12),8)) Businessdate from d360.stg_LNS_GENERALACCTMAST where H = 'd'\n",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": " "
+						}
+					}
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-11-07T04:54:07Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

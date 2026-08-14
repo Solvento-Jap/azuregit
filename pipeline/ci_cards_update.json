@@ -1,0 +1,39 @@
+{
+	"name": "ci_cards_update",
+	"properties": {
+		"activities": [
+			{
+				"name": "CI cards",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "SET ANSI_NULLS ON\r\nGO\r\nSET QUOTED_IDENTIFIER ON\r\nGO\r\n\r\nALTER PROC [DW].[SP_CI_Cards_Retail] AS\r\nBEGIN\r\n\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'CI_Cards_Retail') \r\nBEGIN\r\n   DROP TABLE  DW.CI_Cards_Retail;\r\nEND;\r\n\r\nWITH DIMCUSTOMERACCOUNT AS\r\n(\r\n    SELECT AccountID,CustomerSK,BANKSK,BRANCHSK,ACCOUNTSK,CustomerID,SourceSystemCode,ValidStartDate \r\n    FROM DW.DIMCUSTOMERACCOUNT \r\n    WHERE SourceSystemCode = 'CCD' AND CurrentIndicator = 1\r\n\r\n\r\n)\r\n\r\nSELECT \r\n    DCA.AccountId AS AccountID\r\n    ,DCA.CustomerID AS CustomerID\r\n    ,CASE WHEN DDC.GlobalCIF IS NOT NULL THEN REPLACE(DDC.GlobalCIF,'Global_CIF_','Entity_CIF_')\r\n      ELSE CONCAT('Entity_CIF_', DDC.SourceSystemCode, '_', DDC.CustomerID) END AS EntityCIF\r\n    ,DDB.BankID AS BankCode\r\n    ,DDBR.BranchID AS BranchCode\r\n    ,DDBR.BranchName AS BranchName\r\n    ,DDBR.Area AS Area\r\n    ,DDBR.Region AS Region\r\n    ,DCA.SourceSystemCode AS Source\r\n    ,DDP.ProductGroup AS ProductGrouping\r\n    ,DDP.Productname AS ProductType\r\n    ,CONCAT(DDP.ProductGroup,'-',DDP.ProductName) AS ProductDetails\r\n    ,DDA.AccountOpenedDate AS OpenedDate\r\n    ,DFC.RelationshipExposure AS RelationshipExposure\r\n    ,DFL.StatementBalance AS StatementBalance\r\n    ,DFLC.CurrentCreditLimit AS CreditLimit\r\n    ,DFC.BusinessDateSK AS BusinessDate\r\n    ,DCA.ValidStartDate AS LastUpdatedDate\r\n    ,CONCAT(DCA.AccountId,DCA.CustomerID,DDB.BankID,DCA.SourceSystemCode) as AccountKey\r\nINTO DW.CI_Cards_Retail\r\nFROM DIMCUSTOMERACCOUNT DCA\r\n    JOIN (SELECT CustomerSK ,GlobalCIF,SourceSystemCode,CustomerID FROM DW.DimCustomer WHERE CustomerType = 'Retail') DDC ON DCA.CustomerSK = DDC.CustomerSK\r\n    LEFT JOIN (SELECT BANKSK,BankID FROM DW.DIMBANK) DDB ON DCA.BANKSK = DDB.BANKSK\r\n    LEFT JOIN (SELECT BranchID,BranchName,Area,Region,BRANCHSK FROM DW.DIMBRANCH) DDBR ON DCA.BRANCHSK = DDBR.BRANCHSK\r\n    LEFT JOIN (SELECT ACCOUNTSK,PRODUCTSK FROM DW.DIMACCOUNTPRODUCT) DAP ON DCA.ACCOUNTSK = DAP.ACCOUNTSK\r\n    LEFT JOIN (SELECT ProductGroup,ProductName,PRODUCTSK FROM DW.DIMPRODUCT) DDP ON DAP.PRODUCTSK = DDP.PRODUCTSK \r\n    LEFT JOIN (SELECT AccountOpenedDate,ACCOUNTSK FROM DW.DIMACCOUNT) DDA ON DCA.ACCOUNTSK = DDA.ACCOUNTSK\r\n    LEFT JOIN (SELECT RelationshipExposure,BusinessDateSK,ACCOUNTSK  FROM DW.FACTCARDSRELATIONSHIPEXPOSURE WHERE BusinessDateSK = (SELECT MAX(BusinessDateSK) FROM DW.FACTCARDSRELATIONSHIPEXPOSURE )) DFC ON DCA.ACCOUNTSK = DFC.ACCOUNTSK\r\n    LEFT JOIN (SELECT ACCOUNTSK,StatementBalance FROM DW.FactCardsOutstandingBalance where BusinessDateSK = (SELECT MAX(BusinessDateSK) FROM DW.FactCardsOutstandingBalance ) ) DFL ON DCA.ACCOUNTSK = DFL.ACCOUNTSK\r\n    LEFT JOIN (SELECT ACCOUNTSK,CurrentCreditLimit FROM DW.FactCardsCreditLimit where BusinessDateSK = (SELECT MAX(BusinessDateSK) FROM DW.FactCardsCreditLimit )) DFLC ON DCA.ACCOUNTSK = DFLC.ACCOUNTSK\r\n    \r\nGROUP BY\r\nDCA.AccountId\r\n,DCA.CustomerId\r\n,DDC.CustomerID\r\n,DDC.GlobalCIF\r\n,DDC.SourceSystemCode\r\n,DDB.BankId\r\n,DDBR.BranchID\r\n,DDBR.BranchName\r\n,DDBR.Area\r\n,DDBR.Region\r\n,DCA.SourceSystemCode\r\n,DDP.ProductGroup\r\n,DDP.ProductName\r\n,DDA.AccountOpenedDate\r\n,DFC.BusinessDateSK\r\n,DCA.ValidStartDate\r\n,RelationshipExposure\r\n,DFC.BusinessDateSK\r\n,DFL.StatementBalance\r\n,DFLC.CurrentCreditLimit\r\n\r\nEND\r\nGO"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-08-31T15:19:14Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

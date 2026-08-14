@@ -1,0 +1,20 @@
+{
+	"name": "SQL script 510",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nSELECT  *\nFROM BNKM.CustomerAccount  BCA \nJOIN (SELECT CUSTOMERACCOUNTID,SourceSystemCode,FinancialInstitutionId,PERIODENDDATE,ProductId,FINANCIALPRODUCTID,PeriodStartDate,FcbsApplication FROM BNKM.CustomerAccountFinancialProduct  ) BCAF ON convert(varchar,BCA.CUSTOMERACCOUNTID) = convert(varchar,BCAF.CUSTOMERACCOUNTID) AND BCAF.SourceSystemCode = BCA.SourceSystemCode  AND BCA.FinancialInstitutionId = BCAF.FinancialInstitutionId AND CONVERT(DATE,BCA.CustomerAccountOpenedDate) = CONVERT(DATE,BCAF.PeriodStartDate)  \nJOIN DW.RefDepositVerifiedAccounts rdva on BCA.CustomerAccountId = rdva.FORACID and BCA.FINANCIALINSTITUTIONID = rdva.Bnk_code and BCA.CustomerAccountOpenedDate = rdva.ACCT_OPN_DATE\nwhere BCA.SourceSystemCode = 'DEP' \n\n\nALTER PROC [DW].[SP_DW_Verify_DW_DimAccount] AS\nBEGIN\n\n\n\nSELECT * into DW.DIMACCOUNT_DEP_PREDEL_20240205 FROM DW.DimAccount A\nWHERE NOT EXISTS(SELECT * FROM DW.RefDepositVerifiedAccounts D WHERE  D.FORACID = A.AccountID\nAND CAST(CONVERT(CHAR(8), A.AccountOpenedDate,112) AS INT) = CAST(CONVERT(CHAR(8), D.ACCT_OPN_DATE,112) AS INT) ) AND A.SourceSystemCode = 'DEP';\n\n--DEL UNVERIFIED DIMACCOUNT--\nDELETE A  FROM DW.DimAccount A\nWHERE NOT EXISTS(SELECT * FROM DW.RefDepositVerifiedAccounts D WHERE  D.FORACID = A.AccountID\nAND CAST(CONVERT(CHAR(8), A.AccountOpenedDate,112) AS INT) = CAST(CONVERT(CHAR(8), D.ACCT_OPN_DATE,112) AS INT) ) AND A.SourceSystemCode = 'DEP';\n\n\n\n--UPDATE INDICATOR = 0 --\n--UPDATE DW.DimAccount\n--SET\n--CURRENTINDICATOR = 0\n--WHERE SOURCESYSTEMCODE = 'DEP';\n\n\n--RANK TABLE DIMACCOUNT--\nWITH DDA AS (\nSELECT AccountSK, AccountID, ROW_NUMBER() OVER (PARTITION BY AccountID ORDER BY ValidStartDate DESC, ValidEndDate DESC) RNK\nFROM DW.DimAccount\n)\nSELECT * INTO #DDA FROM DDA;\n\n\n--UPDATE INDICATOR AND ENDDATE--\nUPDATE B \nSET\nCURRENTINDICATOR = 1\n,VALIDENDDATE = '9999-12-31'\nFROM DW.DimAccount B\nINNER JOIN #DDA A ON A.AccountSK = B.AccountSK WHERE A.RNK = 1 AND SourceSystemCode = 'DEP' AND CurrentIndicator = '0';\n\nDROP TABLE #DDA;\n\n\nEND\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

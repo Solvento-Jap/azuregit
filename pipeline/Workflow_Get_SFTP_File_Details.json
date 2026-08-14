@@ -1,0 +1,737 @@
+{
+	"name": "Workflow_Get_SFTP_File_Details",
+	"properties": {
+		"activities": [
+			{
+				"name": "LIST ALL SFTP_ONPREM FILES_CBC01",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "Delete Max Modified Date",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "SFTP_OnPrem",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filepath": {
+								"value": "data360/uat/CBC01/*/encrypt",
+								"type": "Expression"
+							},
+							"Filename": {
+								"value": "*",
+								"type": "Expression"
+							}
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "SftpReadSettings",
+						"recursive": true,
+						"modifiedDatetimeStart": {
+							"value": "@addhours(variables('V_startDate'),-8)",
+							"type": "Expression"
+						},
+						"enablePartitionDiscovery": false,
+						"disableChunking": false
+					},
+					"formatSettings": {
+						"type": "BinaryReadSettings"
+					}
+				}
+			},
+			{
+				"name": "ForEachFile CBC01",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "LIST ALL SFTP_ONPREM FILES_CBC01",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('LIST ALL SFTP_ONPREM FILES_CBC01').output.childItems",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "If Condition1",
+							"type": "IfCondition",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(length(item().name),10)",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "LIST SFTP_ONPREM PER FILE_CBC01",
+										"type": "GetMetadata",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 3,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"dataset": {
+												"referenceName": "SFTP_OnPrem",
+												"type": "DatasetReference",
+												"parameters": {
+													"Filepath": {
+														"value": "@concat('data360/uat/CBC01/',substring(replace(item().Name,'RIB','EBK' ),6,3),'/encrypt')",
+														"type": "Expression"
+													},
+													"Filename": {
+														"value": "@item().Name",
+														"type": "Expression"
+													}
+												}
+											},
+											"fieldList": [
+												"itemName",
+												"itemType",
+												"lastModified",
+												"size"
+											],
+											"storeSettings": {
+												"type": "SftpReadSettings",
+												"recursive": true,
+												"enablePartitionDiscovery": false,
+												"disableChunking": false
+											},
+											"formatSettings": {
+												"type": "BinaryReadSettings"
+											}
+										}
+									},
+									{
+										"name": "SP_SFTP_FILE_DTL_CBC01",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "LIST SFTP_ONPREM PER FILE_CBC01",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_SFTP_FILE_DTL]",
+											"storedProcedureParameters": {
+												"item_name": {
+													"value": {
+														"value": "@activity('LIST SFTP_ONPREM PER FILE_CBC01').output.itemName",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"item_type": {
+													"value": {
+														"value": "@activity('LIST SFTP_ONPREM PER FILE_CBC01').output.itemType",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"last_modified": {
+													"value": {
+														"value": "@activity('LIST SFTP_ONPREM PER FILE_CBC01').output.lastModified",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"size": {
+													"value": {
+														"value": "@activity('LIST SFTP_ONPREM PER FILE_CBC01').output.size",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CHECK MODIFIED DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.Modifieddate,'9999-12-31')",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.Modifieddate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_LATEST_MODIFIED_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "SELECT \n    MAX(LAST_MODIFIED) MAX_LAST_MODIFIED \nFROM \n    [OM].[OM_SFTP_FILE_DTL]",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "OM_SFTP_FILE_DTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_LATEST_MODIFIED_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_LATEST_MODIFIED_DATE').output.firstRow.MAX_LAST_MODIFIED\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Delete Max Modified Date",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CHECK MODIFIED DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "modifieddate",
+									"type": "Datetime",
+									"value": {
+										"value": "@variables('V_startDate')",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "NonQuery",
+							"text": "DELETE FROM [OM].[OM_SFTP_FILE_DTL] WHERE LAST_MODIFIED=cast(@modifieddate as datetime)"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "LIST ALL SFTP_ONPREM FILES_SEC",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "ForEachFile CBC01",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "SFTP_OnPrem",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filepath": {
+								"value": "data360/uat/CBC11/SEC/encrypt",
+								"type": "Expression"
+							},
+							"Filename": {
+								"value": "*",
+								"type": "Expression"
+							}
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "SftpReadSettings",
+						"recursive": true,
+						"modifiedDatetimeStart": {
+							"value": "@addhours(variables('V_startDate'),-8)",
+							"type": "Expression"
+						},
+						"enablePartitionDiscovery": false,
+						"disableChunking": false
+					},
+					"formatSettings": {
+						"type": "BinaryReadSettings"
+					}
+				}
+			},
+			{
+				"name": "ForEachFile CBC11_SEC",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "LIST ALL SFTP_ONPREM FILES_SEC",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('LIST ALL SFTP_ONPREM FILES_SEC').output.childItems",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "If Condition1_copy1",
+							"type": "IfCondition",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(length(item().name),10)",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "LIST SFTP_ONPREM PER FILE_SEC",
+										"type": "GetMetadata",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 3,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"dataset": {
+												"referenceName": "SFTP_OnPrem",
+												"type": "DatasetReference",
+												"parameters": {
+													"Filepath": {
+														"value": "@concat('data360/uat/CBC11/SEC/encrypt')",
+														"type": "Expression"
+													},
+													"Filename": {
+														"value": "@item().Name",
+														"type": "Expression"
+													}
+												}
+											},
+											"fieldList": [
+												"itemName",
+												"itemType",
+												"lastModified",
+												"size"
+											],
+											"storeSettings": {
+												"type": "SftpReadSettings",
+												"recursive": true,
+												"enablePartitionDiscovery": false,
+												"disableChunking": false
+											},
+											"formatSettings": {
+												"type": "BinaryReadSettings"
+											}
+										}
+									},
+									{
+										"name": "SP_SFTP_FILE_DTL_SEC",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "LIST SFTP_ONPREM PER FILE_SEC",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_SFTP_FILE_DTL]",
+											"storedProcedureParameters": {
+												"item_name": {
+													"value": {
+														"value": "@activity('LIST SFTP_ONPREM PER FILE_SEC').output.itemName",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"item_type": {
+													"value": {
+														"value": "@activity('LIST SFTP_ONPREM PER FILE_SEC').output.itemType",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"last_modified": {
+													"value": {
+														"value": "@activity('LIST SFTP_ONPREM PER FILE_SEC').output.lastModified",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"size": {
+													"value": {
+														"value": "@activity('LIST SFTP_ONPREM PER FILE_SEC').output.size",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "LIST ALL SFTP_ONPREM FILES_SED",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "ForEachFile CBC11_SEC",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "SFTP_OnPrem",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filepath": {
+								"value": "data360/uat/CBC11/SED/encrypt",
+								"type": "Expression"
+							},
+							"Filename": {
+								"value": "*",
+								"type": "Expression"
+							}
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "SftpReadSettings",
+						"recursive": true,
+						"modifiedDatetimeStart": {
+							"value": "@addhours(variables('V_startDate'),-8)",
+							"type": "Expression"
+						},
+						"enablePartitionDiscovery": false,
+						"disableChunking": false
+					},
+					"formatSettings": {
+						"type": "BinaryReadSettings"
+					}
+				}
+			},
+			{
+				"name": "ForEachFile CBC11_SED",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "LIST ALL SFTP_ONPREM FILES_SED",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('LIST ALL SFTP_ONPREM FILES_SED').output.childItems",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "If Condition1_copy1_copy1",
+							"type": "IfCondition",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(length(item().name),10)",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "LIST SFTP_ONPREM PER FILE_SED",
+										"type": "GetMetadata",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 3,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"dataset": {
+												"referenceName": "SFTP_OnPrem",
+												"type": "DatasetReference",
+												"parameters": {
+													"Filepath": {
+														"value": "@concat('data360/uat/CBC11/SED/encrypt')",
+														"type": "Expression"
+													},
+													"Filename": {
+														"value": "@item().Name",
+														"type": "Expression"
+													}
+												}
+											},
+											"fieldList": [
+												"itemName",
+												"itemType",
+												"lastModified",
+												"size"
+											],
+											"storeSettings": {
+												"type": "SftpReadSettings",
+												"recursive": true,
+												"enablePartitionDiscovery": false,
+												"disableChunking": false
+											},
+											"formatSettings": {
+												"type": "BinaryReadSettings"
+											}
+										}
+									},
+									{
+										"name": "SP_SFTP_FILE_DTL_SED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "LIST SFTP_ONPREM PER FILE_SED",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_SFTP_FILE_DTL]",
+											"storedProcedureParameters": {
+												"item_name": {
+													"value": {
+														"value": "@activity('LIST SFTP_ONPREM PER FILE_SED').output.itemName",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"item_type": {
+													"value": {
+														"value": "@activity('LIST SFTP_ONPREM PER FILE_SED').output.itemType",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"last_modified": {
+													"value": {
+														"value": "@activity('LIST SFTP_ONPREM PER FILE_SED').output.lastModified",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"size": {
+													"value": {
+														"value": "@activity('LIST SFTP_ONPREM PER FILE_SED').output.size",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"Modifieddate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			}
+		},
+		"variables": {
+			"V_startDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-10-31T03:43:22Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

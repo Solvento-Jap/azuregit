@@ -1,0 +1,704 @@
+{
+	"name": "DecToStg_TRU_FXRATES_EDS",
+	"properties": {
+		"activities": [
+			{
+				"name": "TRU_FXRATES_getfile_CBC01",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "decrypt_csv",
+						"type": "DatasetReference",
+						"parameters": {
+							"Filename": {
+								"value": "@concat('CBC01_TRU_FXRATES*',pipeline().parameters.DatetoProcessed,'*')",
+								"type": "Expression"
+							},
+							"SourceCode": "dev/decrypted/TRU"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "If Condition5",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "TRU_FXRATES_getfile_CBC01",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@empty(activity('TRU_FXRATES_getfile_CBC01').output.childItems)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "TRU_FXRATES",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 3,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"additionalColumns": [
+										{
+											"name": "FILE_NAME",
+											"value": "$$FILEPATH"
+										},
+										{
+											"name": "insert_dttm",
+											"value": {
+												"value": "@addhours(pipeline().TriggerTime,8)",
+												"type": "Expression"
+											}
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"wildcardFolderPath": "dev/decrypted/TRU",
+										"wildcardFileName": {
+											"value": "@concat('*TRU_FXRATES*',pipeline().parameters.DatetoProcessed,'*')",
+											"type": "Expression"
+										},
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "SqlDWSink",
+									"preCopyScript": "truncate TABLE D360.STG_EDS_TRU_FXRATES",
+									"allowCopyCommand": true,
+									"tableOption": "autoCreate",
+									"disableMetricsCollection": false
+								},
+								"enableStaging": true,
+								"stagingSettings": {
+									"linkedServiceName": {
+										"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+										"type": "LinkedServiceReference"
+									},
+									"path": "data360/dev/stg_synapse",
+									"enableCompression": true
+								},
+								"enableSkipIncompatibleRow": true,
+								"logSettings": {
+									"enableCopyActivityLog": true,
+									"copyActivityLogSettings": {
+										"logLevel": "Warning",
+										"enableReliableLogging": true
+									},
+									"logLocationSettings": {
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+											"type": "LinkedServiceReference"
+										},
+										"path": {
+											"value": "@concat('data360/dev/Logging/TRU/TRU_FXRATES/',substring(replace(replace(replace(addHours(utcnow(),+8),'-',''),'T','_'),':',''),0,15))",
+											"type": "Expression"
+										}
+									}
+								},
+								"translator": {
+									"type": "TabularTranslator",
+									"mappings": [
+										{
+											"source": {
+												"name": "H",
+												"type": "String"
+											},
+											"sink": {
+												"name": "H",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BR_CD",
+												"type": "String"
+											},
+											"sink": {
+												"name": "BR_CD",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "SOURCE_CCY_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "SOURCE_CCY_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "TARGET_CCY_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "TARGET_CCY_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "BUYING_RATE",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "BUYING_RATE",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "SELLING_RATE",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "SELLING_RATE",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "BOOK_RATE",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "BOOK_RATE",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "EFFECTIVE_DATE",
+												"type": "DateTime",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "EFFECTIVE_DATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "MAKER_ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "MAKER_ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "MAKER_DATE",
+												"type": "DateTime",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "MAKER_DATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "AUTH_ID",
+												"type": "String"
+											},
+											"sink": {
+												"name": "AUTH_ID",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "AUTH_DATE",
+												"type": "DateTime",
+												"format": "yyyyMMdd"
+											},
+											"sink": {
+												"name": "AUTH_DATE",
+												"type": "DateTime"
+											}
+										},
+										{
+											"source": {
+												"name": "SPOT_VARIANCE",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "SPOT_VARIANCE",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FREQUENCY",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FREQUENCY",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "REGION_CODE",
+												"type": "String"
+											},
+											"sink": {
+												"name": "REGION_CODE",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "NORMAL_MID_RATE",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "NORMAL_MID_RATE",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "INTER_BANK_BUY_RATE",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "INTER_BANK_BUY_RATE",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "INTER_BANK_SELL_RATE",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "INTER_BANK_SELL_RATE",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "INTER_BANK_MID_RATE",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "INTER_BANK_MID_RATE",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "TREASURY_BUY_RATE",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "TREASURY_BUY_RATE",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "TREASURY_SELL_RATE",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "TREASURY_SELL_RATE",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "TREASURY_MID_RATE",
+												"type": "Decimal"
+											},
+											"sink": {
+												"name": "TREASURY_MID_RATE",
+												"type": "Decimal"
+											}
+										},
+										{
+											"source": {
+												"name": "FILE_NAME",
+												"type": "String"
+											},
+											"sink": {
+												"name": "FILE_NAME",
+												"type": "String"
+											}
+										},
+										{
+											"source": {
+												"name": "insert_dttm",
+												"type": "String"
+											},
+											"sink": {
+												"name": "insert_dttm",
+												"type": "DateTime"
+											}
+										}
+									]
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "decrypt_csv",
+									"type": "DatasetReference",
+									"parameters": {
+										"Filename": " ",
+										"SourceCode": " "
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "SQLPool_STG",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "STG_EDS_TRU_FXRATES"
+									}
+								}
+							]
+						},
+						{
+							"name": "SP_LOG_COPY_ACTIVITY_DTL",
+							"type": "SqlPoolStoredProcedure",
+							"dependsOn": [
+								{
+									"activity": "TRU_FXRATES",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_LOG_COPY_ACTIVITY_DTL]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"pipeline_runid": {
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"data_layer": {
+										"value": "EDS_STG",
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@pipeline().parameters.DatetoProcessed",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"dataread": {
+										"value": {
+											"value": "@activity('TRU_FXRATES').output.dataRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"datawritten": {
+										"value": {
+											"value": "@activity('TRU_FXRATES').output.dataWritten",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"filesread": {
+										"value": {
+											"value": "@activity('TRU_FXRATES').output.filesRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"sourcepeakconnections": {
+										"value": {
+											"value": "@activity('TRU_FXRATES').output.sourcePeakConnections",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsread": {
+										"value": {
+											"value": "@activity('TRU_FXRATES').output.rowsRead",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowscopied": {
+										"value": {
+											"value": "@activity('TRU_FXRATES').output.rowsCopied",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"rowsskipped": {
+										"value": {
+											"value": "@activity('TRU_FXRATES').output.rowsSkipped",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"copyduration": {
+										"value": {
+											"value": "@activity('TRU_FXRATES').output.copyDuration",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"throughput": {
+										"value": {
+											"value": "@activity('TRU_FXRATES').output.throughput",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"redirectrowpath": {
+										"value": {
+											"value": "@activity('TRU_FXRATES').output.redirectRowPath",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"logfilepath": {
+										"value": {
+											"value": "@activity('TRU_FXRATES').output.logFilePath",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Set v_error_desc_get",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "TRU_FXRATES",
+									"dependencyConditions": [
+										"Failed"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "@activity('TRU_FXRATES').Error.message",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "Fail5",
+							"type": "Fail",
+							"dependsOn": [
+								{
+									"activity": "Set v_error_desc_get_nofile",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"message": {
+									"value": "File not found: TRU_FXRATES",
+									"type": "Expression"
+								},
+								"errorCode": {
+									"value": "404",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "Set v_error_desc_get_nofile",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "v_error_desc",
+								"value": {
+									"value": "File not found: TRU_FXRATES",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "SP_LOG_TASK_ERROR_DTL_GET",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "If Condition5",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[OM].[SP_LOG_TASK_ERROR_DTL]",
+					"storedProcedureParameters": {
+						"task_name": {
+							"value": {
+								"value": "@concat('TSK_STG_EDS_',replace(pipeline().parameters.tables,'''',''))",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"pipeline_runid": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"data_layer": {
+							"value": "EDS_STG",
+							"type": "String"
+						},
+						"process_date": {
+							"value": {
+								"value": "@pipeline().parameters.DatetoProcessed",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"error_desc": {
+							"value": {
+								"value": "@variables('v_error_desc')",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "Failed_DectoStg",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "SP_LOG_TASK_ERROR_DTL_GET",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": {
+						"value": "@variables('v_error_desc')",
+						"type": "Expression"
+					},
+					"errorCode": "500"
+				}
+			}
+		],
+		"parameters": {
+			"DatetoProcessed": {
+				"type": "string"
+			},
+			"tables": {
+				"type": "string"
+			}
+		},
+		"variables": {
+			"v_error_desc": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-12-04T05:40:56Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

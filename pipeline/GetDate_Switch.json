@@ -1,0 +1,143 @@
+{
+	"name": "GetDate_Switch",
+	"properties": {
+		"activities": [
+			{
+				"name": "GetRangeType",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "startDate",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.startDate",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "endDate",
+									"type": "String",
+									"value": {
+										"value": "@pipeline().parameters.endDate",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								},
+								{
+									"name": "v_startDate",
+									"type": "String",
+									"value": "start",
+									"direction": "Output",
+									"size": 10
+								},
+								{
+									"name": "v_endDate",
+									"type": "String",
+									"value": "end",
+									"direction": "Output",
+									"size": 10
+								}
+							],
+							"type": "Query",
+							"text": "DECLARE @a DATE\r\nDECLARE @b DATE\r\nSELECT @a = CAST(@startDate AS DATE)\r\nSELECT @b = CAST(@endDate AS DATE)\r\n\r\nIF (@a != '9999-12-31' AND @b != '9999-12-31')\r\nBEGIN\r\n    SELECT \r\n        CONVERT(VARCHAR(10), @a, 23) as [start], \r\n        CONVERT(VARCHAR(10), @b, 23) AS [end]\r\nEND\r\n\r\nELSE IF (@a != '9999-12-31' AND @b = '9999-12-31')\r\nBEGIN\r\n    SELECT \r\n        CONVERT(VARCHAR(10), @a, 23) as [start], \r\n        CONVERT(VARCHAR(10),PREVIOUS_BUSINESS_DAY, 23) AS [end]\r\n    FROM EDS.DATE_DIM\r\n    WHERE FULLDATE = CAST(GETDATE() AS DATE)\r\nEND\r\n\r\nELSE IF (@a = '9999-12-31' AND @b = '9999-12-31')\r\nBEGIN\r\n    SELECT \r\n        CONVERT(VARCHAR(10), FULLDATE, 23) as [start], \r\n        CONVERT(VARCHAR(10), FULLDATE, 23) AS [end]\r\n    FROM EDS.EDS_CTL ECT\r\n    INNER JOIN EDS.DATE_DIM DD\r\n        ON ECT.FMS_DATE = DD.PREVIOUS_BUSINESS_DAY\r\n        AND DD.BUSINESS_DAY_FLAG = 'Y'\r\nEND"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Set Start Date",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "GetRangeType",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_startDate",
+					"value": {
+						"value": "@activity('GetRangeType').output.resultSets[0].rows[0].start",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Set EndDate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "GetRangeType",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_endDate",
+					"value": {
+						"value": "@activity('GetRangeType').output.resultSets[0].rows[0].end",
+						"type": "Expression"
+					}
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"ctlDate": {
+				"type": "string",
+				"defaultValue": "FMS_DATE"
+			}
+		},
+		"variables": {
+			"v_startDate": {
+				"type": "String"
+			},
+			"v_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-08-12T09:51:09Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

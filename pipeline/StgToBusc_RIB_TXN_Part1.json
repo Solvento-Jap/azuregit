@@ -1,0 +1,1210 @@
+{
+	"name": "StgToBusc_RIB_TXN_Part1",
+	"properties": {
+		"activities": [
+			{
+				"name": "RIB_CUSTOMERPAYEE",
+				"type": "Copy",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT \n    convert(numeric(10,0),ISNULL(NULLIF(REPLACE(STG.[PAYEE_LIST_ID],' ',''),''),0)) as PAYEE_LIST_ID\n    ,STG.[BANK_ID]\n    ,[USER_ID]\n    ,[DB_TS]\n    ,[CORP_ID]\n    ,convert(numeric(10,0),ISNULL(NULLIF(REPLACE([BNF_ID],' ',''),''),0)) as BNF_ID\n    ,[BNF_NIC_NAME]\n    ,[FREE_FIELD_1]\n    ,[FREE_FIELD_2]\n    ,[FREE_FIELD_3]\n    ,[FREE_FLG1]\n    ,[FREE_FLG2]\n    ,STG.[DEL_FLG]\n    ,[R_MOD_ID]\n    ,CONVERT(DATETIME2, STUFF(STUFF(STUFF([R_MOD_TIME], 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) AS R_MOD_TIME\n    ,[R_CRE_ID]\n    ,CONVERT(DATETIME2, STUFF(STUFF(STUFF([R_CRE_TIME], 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) AS R_CRE_TIME\n    ,[CONSUMER_CD]\n    ,[RECEIVE_BILLS_FLG]\n    ,[AUTOPAY_FLG]\n    ,convert(numeric(18,3),ISNULL(NULLIF(REPLACE([AUTOPAY_AMT],' ',''),''),0)) as AUTOPAY_AMT\n    ,[AUTOPAY_CRN]\n    ,[AUTOPAY_ACID]\n    ,[AUTOPAY_BRCH_ID]\n    ,[AUTOPAY_MODE]\n    ,CONVERT(DATETIME2, STUFF(STUFF(STUFF([SUBSCRIPTION_START_DATE], 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) AS SUBSCRIPTION_START_DATE\n    ,[ADHOC_PAYEE]\n    ,[NICKNAME_CRE_ID]\n    ,[BNF_PYMT_DETAILS_1]\n    ,[BNF_PYMT_DETAILS_2]\n    ,[BNF_PYMT_DETAILS_3]\n    ,[BNF_PYMT_DETAILS_4]\n    ,convert(numeric(10,0),ISNULL(NULLIF(REPLACE([NOTIFICATION_REF_NO],' ',''),''),0)) as NOTIFICATION_REF_NO\n    ,convert(numeric(18,3),ISNULL(NULLIF(REPLACE([MAX_AMT_IN_HOMECRN],' ',''),''),0)) as MAX_AMT_IN_HOMECRN\n    ,1 AS isActive\n    ,1 AS isLatest\n    ,left(FILE_NAME, 5) as [BNK_CODE]\n    ,substring(FILE_NAME,7,3) as [SOURCE_CODE]\n    ,[FILE_NAME]\n    ,convert(date,[insert_dttm]) as insert_dttm\nFROM [BUSC].[RIB_CUSTOMERPAYEE_DELTA] DELTA\nLEFT JOIN [d360].[STG_RIB_CUSTOMERPAYEE] STG ON DELTA.PAYEE_LIST_ID = STG.PAYEE_LIST_ID AND DELTA.BANK_ID = STG.BANK_ID\nWHERE H='D' ",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "SqlDWSink",
+						"allowPolyBase": true,
+						"polyBaseSettings": {
+							"rejectValue": 0,
+							"rejectType": "value",
+							"useTypeDefault": true
+						},
+						"disableMetricsCollection": false
+					},
+					"enableStaging": true,
+					"stagingSettings": {
+						"linkedServiceName": {
+							"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+							"type": "LinkedServiceReference"
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_RIB_CUSTOMERPAYEE"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SQLPool_TGT",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "RIB_CUSTOMERPAYEE"
+						}
+					}
+				]
+			},
+			{
+				"name": "ErrorExecutionLog",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "RIB_CUSTOMERPAYEE",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@pipeline().TriggerTime",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": {
+								"value": "@activity('RIB_CUSTOMERPAYEE').error.message",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": {
+								"value": "@activity('RIB_CUSTOMERPAYEE').error.message",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "@concat('FAILED - ',activity('RIB_CUSTOMERPAYEE').error.message)",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SuccessExecutionLog",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "RIB_CUSTOMERPAYEE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@addHours(pipeline().TriggerTime,+8)",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "SUCCESS",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "RIB_REQUESTDETAILS",
+				"type": "Copy",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT \n    [ACC_ID]\n    ,[ACCOUNT_BANK_ID]\n    ,[BACKEND_REF_ID]\n    ,[BANK_ID]\n    ,[BRANCH_ID]\n    ,[CORP_ID]\n    ,[CORP_USER]\n    ,[CUST_ID]\n    ,convert(numeric(5,0),ISNULL(NULLIF(REPLACE([DB_TS],' ',''),''),0)) as DB_TS\n    ,[DEL_FLG]\n    ,[FORM_REQ_ID]\n    ,[FORM_REQ_STATE]\n    ,convert(numeric(10,0),ISNULL(NULLIF(REPLACE([FTXN_ID],' ',''),''),0)) as FTXN_ID\n    ,[MODULE_ID]\n    ,convert(numeric(2,0),ISNULL(NULLIF(REPLACE([NO_RM_DAEMON_TRIES],' ',''),''),0)) as NO_RM_DAEMON_TRIES\n    ,[ORG_EXT_INFO]\n    ,[ORG_MOD_NAME]\n    ,[PRODUCT_ID]\n    ,[R_CRE_ID]\n    ,CONVERT(DATETIME2, STUFF(STUFF(STUFF([R_CRE_TIME], 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) AS R_CRE_TIME\n    ,[R_MOD_ID]\n    ,CONVERT(DATETIME2, STUFF(STUFF(STUFF([R_MOD_TIME], 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) AS R_MOD_TIME\n    ,[REQ_ENTITY_EXTN1]\n    ,[REQ_ENTITY_ID]\n    ,[REQ_ENTITY_TYPE]\n    ,[REQUEST_MODE]\n    ,[RESP_CODE]\n    ,[RQST_ID]\n    ,1 AS isActive\n    ,1 AS isLatest\n    ,left(FILE_NAME, 5) as [BNK_CODE]\n    ,substring(FILE_NAME,7,3) as [SOURCE_CODE]\n    ,[FILE_NAME]\n    ,convert(date,[insert_dttm]) as insert_dttm\nFROM [d360].[STG_RIB_REQUESTDETAILS]\nWHERE H = 'D'        ",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "SqlDWSink",
+						"allowPolyBase": true,
+						"polyBaseSettings": {
+							"rejectValue": 0,
+							"rejectType": "value",
+							"useTypeDefault": true
+						},
+						"disableMetricsCollection": false
+					},
+					"enableStaging": true,
+					"stagingSettings": {
+						"linkedServiceName": {
+							"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+							"type": "LinkedServiceReference"
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_RIB_REQUESTDETAILS"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SQLPool_TGT",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "RIB_REQUESTDETAILS"
+						}
+					}
+				]
+			},
+			{
+				"name": "ErrorExecutionLog_1",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "RIB_REQUESTDETAILS",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@pipeline().TriggerTime",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": {
+								"value": "@activity('RIB_REQUESTDETAILS').error.message",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": {
+								"value": "@activity('RIB_REQUESTDETAILS').error.message",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "@concat('FAILED - ',activity('RIB_REQUESTDETAILS').error.message)",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SuccessExecutionLog_1",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "RIB_REQUESTDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@addHours(pipeline().TriggerTime,+8)",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "SUCCESS",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "RIB_TRANSACTIONHEADER",
+				"type": "Copy",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT \n    [BANK_ID]\n    ,convert(numeric(10,0),ISNULL(NULLIF(REPLACE([TXN_ID],' ',''),''),0)) as TXN_ID\n    ,convert(numeric(5,0),ISNULL(NULLIF(REPLACE([DB_TS],' ',''),''),0)) as DB_TS\n    ,convert(numeric(10,0),ISNULL(NULLIF(REPLACE([REQ_ID],' ',''),''),0)) as REQ_ID\n    ,convert(numeric(10,0),ISNULL(NULLIF(REPLACE([PARENT_REQ_ID],' ',''),''),0)) as PARENT_REQ_ID\n    ,[CORP_ID]\n    ,[CORP_USER]\n    ,[TXN_TYPE]\n    ,CONVERT(DATE,[REQUEST_DATE]) AS REQUEST_DATE\n    ,CONVERT(DATE,[TXN_DATE]) AS TXN_DATE\n    ,[TXN_CRN]\n    ,convert(numeric(18,3),ISNULL(NULLIF(REPLACE([TOTAL_TXN_AMT],' ',''),''),0)) as TOTAL_TXN_AMT\n    ,convert(numeric(18,3),ISNULL(NULLIF(REPLACE([TOTAL_TXN_AMT_IN_HOMECRN],' ',''),''),0)) as TOTAL_TXN_AMT_IN_HOMECRN\n    ,convert(numeric(18,3),ISNULL(NULLIF(REPLACE([TOTAL_CHARGE_AMT],' ',''),''),0)) as TOTAL_CHARGE_AMT\n    ,convert(numeric(18,3),ISNULL(NULLIF(REPLACE([TOTAL_AMT],' ',''),''),0)) as TOTAL_AMT\n    ,[FREQ_TYPE]\n    ,[TXN_REF_NAME]\n    ,[PMT_FREQ]\n    ,convert(numeric(5,0),ISNULL(NULLIF(REPLACE([TOT_NO_OF_INSTANCES],' ',''),''),0)) as TOT_NO_OF_INSTANCES\n    ,[VALIDITY_INDICATOR]\n    ,convert(numeric(5,0),ISNULL(NULLIF(REPLACE([NO_OF_INSTANCES_PROCESSED],' ',''),''),0)) as NO_OF_INSTANCES_PROCESSED\n    ,[FILE_GEN_NUM]\n    ,[FILE_UPLOAD_NUM]\n    ,[BATCH_TYPE]\n    ,[HOLD_FLG]\n    ,convert(numeric(5,0),ISNULL(NULLIF(REPLACE([TOTAL_NO_OF_ENTRIES],' ',''),''),0)) as TOTAL_NO_OF_ENTRIES\n    ,convert(numeric(18,3),ISNULL(NULLIF(REPLACE([HIGHEST_ENTRY_AMOUNT],' ',''),''),0)) as HIGHEST_ENTRY_AMOUNT\n    ,convert(numeric(10,0),ISNULL(NULLIF(REPLACE([HIGHEST_ENTRY_SRL_NO],' ',''),''),0)) as HIGHEST_ENTRY_SRL_NO\n    ,[DRCR_FLG]\n    ,[TXN_STATUS]\n    ,convert(numeric(10,0),ISNULL(NULLIF(REPLACE([TMPL_ID],' ',''),''),0)) as TMPL_ID\n    ,convert(numeric(10,0),ISNULL(NULLIF(REPLACE([TMPL_DISPLAY_ID],' ',''),''),0)) as TMPL_DISPLAY_ID\n    ,[USER_ACTION_REMRAKS]\n    ,[ENTERER_ID]\n    ,[APPROVAL_HISTORY]\n    ,[ACCOUNTS_USED]\n    ,[DEL_FLG]\n    ,convert(numeric(10,0),ISNULL(NULLIF(REPLACE([BULK_PMT_REF_NUM],' ',''),''),0)) as BULK_PMT_REF_NUM\n    ,convert(numeric(10,0),ISNULL(NULLIF(REPLACE([FU_REC_NUM],' ',''),''),0)) as FU_REC_NUM\n    ,[R_CRE_ID]\n    ,CONVERT(DATETIME2, STUFF(STUFF(STUFF([R_CRE_TIME], 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) AS R_CRE_TIME\n    ,[R_MOD_ID]\n    ,CONVERT(DATETIME2, STUFF(STUFF(STUFF([R_MOD_TIME], 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) AS R_MOD_TIME\n    ,1 AS isActive\n    ,1 AS isLatest\n    ,left(FILE_NAME, 5) as [BNK_CODE]\n    ,substring(FILE_NAME,7,3) as [SOURCE_CODE]\n    ,[FILE_NAME]\n    ,convert(date,[insert_dttm]) as insert_dttm\nFROM [d360].[STG_RIB_TRANSACTIONHEADER]\nWHERE H = 'D'        \n",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "SqlDWSink",
+						"allowPolyBase": true,
+						"polyBaseSettings": {
+							"rejectValue": 0,
+							"rejectType": "value",
+							"useTypeDefault": true
+						},
+						"disableMetricsCollection": false
+					},
+					"enableStaging": true,
+					"stagingSettings": {
+						"linkedServiceName": {
+							"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+							"type": "LinkedServiceReference"
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_RIB_TRANSACTIONHEADER"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SQLPool_TGT",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "RIB_TRANSACTIONHEADER"
+						}
+					}
+				]
+			},
+			{
+				"name": "ErrorExecutionLog_2",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "RIB_TRANSACTIONHEADER",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@pipeline().TriggerTime",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": {
+								"value": "@activity('RIB_TRANSACTIONHEADER').error.message",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": {
+								"value": "@activity('RIB_TRANSACTIONHEADER').error.message",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "@concat('FAILED - ',activity('RIB_TRANSACTIONHEADER').error.message)",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SuccessExecutionLog_2",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "RIB_TRANSACTIONHEADER",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@addHours(pipeline().TriggerTime,+8)",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "SUCCESS",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "RIB_MONITORINGLOGINHISTORYTABLE",
+				"type": "Copy",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT\n\tACTUAL_USER_ID\n\t,BANK_ID\n\t,CHANNEL_ID\n\t,CONVERT(NUMERIC(5,0),ISNULL(NULLIF(REPLACE([DB_TS],' ',''),''),0)) as DB_TS\n\t,IPADDRESS\n\t,CONVERT(DATETIME2, stuff(stuff(stuff(LOGIN_TIME, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) as LOGIN_TIME\n\t,CONVERT(DATETIME2, stuff(stuff(stuff(LOGOFF_TIME, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) as LOGOFF_TIME\n\t,CONVERT(NUMERIC(6,0),ISNULL(NULLIF(REPLACE([MSG_CODE],' ',''),''),0)) as MSG_CODE\n\t,MSG_DESC\n\t,R_CRE_ID\n\t,CONVERT(DATETIME2, stuff(stuff(stuff(R_CRE_TIME, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) as R_CRE_TIME\n\t,R_MOD_ID\n\t,CONVERT(DATETIME2, stuff(stuff(stuff(R_MOD_TIME, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) as R_MOD_TIME\n\t,SESSION_ID\n\t,STATUS\n\t,USER_ID\n\t,USER_TYPE\n\t,1 AS ISACTIVE\n\t,1 AS ISLATEST\n\t,LEFT(FILE_NAME, 5) AS BNK_CODE\n\t,SUBSTRING(FILE_NAME,7,3) AS SOURCE_CODE\n\t,FILE_NAME\n\t,convert(date,INSERT_DTTM) AS INSERT_DTTM\nFROM d360.STG_RIB_MONITORINGLOGINHISTORYTABLE\nWHERE H = 'D'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "SqlDWSink",
+						"allowPolyBase": true,
+						"polyBaseSettings": {
+							"rejectValue": 0,
+							"rejectType": "value",
+							"useTypeDefault": true
+						},
+						"disableMetricsCollection": false
+					},
+					"enableStaging": true,
+					"stagingSettings": {
+						"linkedServiceName": {
+							"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+							"type": "LinkedServiceReference"
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_RIB_MONITORINGLOGINHISTORYTABLE"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SQLPool_TGT",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "RIB_MONITORINGLOGINHISTORYTABLE"
+						}
+					}
+				]
+			},
+			{
+				"name": "ErrorExecutionLog_3",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "RIB_MONITORINGLOGINHISTORYTABLE",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@pipeline().TriggerTime",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": {
+								"value": "@activity('RIB_MONITORINGLOGINHISTORYTABLE').error.message",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": {
+								"value": "@activity('RIB_MONITORINGLOGINHISTORYTABLE').error.message",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "@concat('FAILED - ',activity('RIB_MONITORINGLOGINHISTORYTABLE').error.message)",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SuccessExecutionLog_3",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "RIB_MONITORINGLOGINHISTORYTABLE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@addHours(pipeline().TriggerTime,+8)",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "SUCCESS",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "RIB_PAYEEMASTER",
+				"type": "Copy",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT\n\tSTG.BANK_ID\n\t,CONVERT(NUMERIC(10,0),ISNULL(NULLIF(REPLACE(STG.[BNF_ID],' ',''),''),0)) as BNF_ID\n\t,CONVERT(NUMERIC(5,0),ISNULL(NULLIF(REPLACE([DB_TS],' ',''),''),0)) as DB_TS\n\t,LANG_ID\n\t,CONVERT(NUMERIC(10,0),ISNULL(NULLIF(REPLACE([DISPLAY_ID],' ',''),''),0)) as DISPLAY_ID\n\t,CORP_ID\n\t,BNF_CODE\n\t,BNF_NAME\n\t,BNF_ADDRESS_1\n\t,BNF_ADDRESS_2\n\t,BNF_ADDRESS_3\n\t,BNF_STATE\n\t,BNF_CNTRY\n\t,BNF_TEL\n\t,BNF_MOB\n\t,BNF_FAX\n\t,BNF_TYPE\n\t,OTH_BANK_REF_NO\n\t,BNF_BANK_NAME\n\t,BNF_BANK_ADDRESS\n\t,HOME_BANK_BRANCH_CODE\n\t,BNF_BANK_COUNTRY\n\t,ACCOUNT_ID\n\t,BNF_ACCT_CRN\n\t,BNF_COMM_IND\n\t,PAYEE_FORMAT\n\t,PYMT_FORMAT\n\t,CONVERT(DATE,[EXPIRY_DATE]) AS EXPIRY_DATE\n\t,BNF_IND\n\t,FREE_FIELD_1\n\t,FREE_FIELD_2\n\t,FREE_FIELD_3\n\t,FREE_FIELD_4\n\t,FREE_FLG_1\n\t,FREE_FLG_2\n\t,FREE_FLG_3\n\t,FREE_FLG_4\n\t,FREE_IND_1\n\t,FREE_IND_2\n\t,CONVERT(NUMERIC(5,0),ISNULL(NULLIF(REPLACE([BILL_EXPIRY_PRD],' ',''),''),0)) as BILL_EXPIRY_PRD\n\t,CONVERT(NUMERIC(18,3),ISNULL(NULLIF(REPLACE([MIN_PMT_AMT],' ',''),''),0)) as MIN_PMT_AMT\n\t,LATE_PYMT_FLG\n\t,PART_PYMT_FLG\n\t,EXS_PYMT_FLG\n\t,REAL_TIME_CREDIT_FLG\n\t,CHRG_PMT_FLG\n\t,PRENOTE_REQUIRED\n\t,STG.DEL_FLG\n\t,GLOBAL_FLG\n\t,R_MOD_ID\n\t,CONVERT(DATETIME2, stuff(stuff(stuff(R_MOD_TIME, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) as R_MOD_TIME\n\t,R_CRE_ID\n\t,CONVERT(DATETIME2, stuff(stuff(stuff(R_CRE_TIME, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) as R_CRE_TIME\n\t,BNF_ACCT_TYPE\n\t,BNF_CITY_ZIP\n\t,BNF_BANK_CITY_ZIP\n\t,BNF_GROUP_ID\n\t,BNF_EMAIL\n\t,STD_IND_CD\n\t,DIVISION\n\t,ADDED_BANK_BRANCH_NAME\n\t,BANK_TYPE\n\t,BNF_CITY_CODE\n\t,BNF_ZIP_CODE\n\t,NETWORK_ID\n\t,BANK_IDENTIFIER\n\t,PTP_TYPE\n\t,PTP_ID\n\t,1 AS ISACTIVE\n\t,1 AS ISLATEST\n\t,left(FILE_NAME, 5) as [BNK_CODE]\n\t,SUBSTRING(FILE_NAME,7,3) as [SOURCE_CODE]\n\t,[FILE_NAME]\n\t,CONVERT(DATE,[INSERT_DTTM]) as INSERT_DTTM\nFROM BUSC.RIB_PAYEEMASTER_DELTA DELTA\nLEFT JOIN d360.STG_RIB_PAYEEMASTER STG ON DELTA.BANK_ID = STG.BANK_ID\nAND DELTA.BNF_ID = STG.BNF_ID\nWHERE H = 'D'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "SqlDWSink",
+						"allowPolyBase": true,
+						"polyBaseSettings": {
+							"rejectValue": 0,
+							"rejectType": "value",
+							"useTypeDefault": true
+						},
+						"disableMetricsCollection": false
+					},
+					"enableStaging": true,
+					"stagingSettings": {
+						"linkedServiceName": {
+							"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+							"type": "LinkedServiceReference"
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_RIB_PAYEEMASTER"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SQLPool_TGT",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "RIB_PAYEEMASTER"
+						}
+					}
+				]
+			},
+			{
+				"name": "ErrorExecutionLog_4",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "RIB_PAYEEMASTER",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@pipeline().TriggerTime",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": {
+								"value": "@activity('RIB_PAYEEMASTER').error.message",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": {
+								"value": "@activity('RIB_PAYEEMASTER').error.message",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "@concat('FAILED - ',activity('RIB_PAYEEMASTER').error.message)",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SuccessExecutionLog_4",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "RIB_PAYEEMASTER",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@addHours(pipeline().TriggerTime,+8)",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "SUCCESS",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "RIB_TRANSACTIONDETAILS",
+				"type": "Copy",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT\n\tBANK_ID\n\t,CONVERT(NUMERIC(10,0),ISNULL(NULLIF(REPLACE([TXN_ID],' ',''),''),0)) as TXN_ID\n\t,CONVERT(NUMERIC(5,0),ISNULL(NULLIF(REPLACE([REQ_SR_NO],' ',''),''),0)) as REQ_SR_NO\n\t,CONVERT(NUMERIC(5,0),ISNULL(NULLIF(REPLACE([DB_TS],' ',''),''),0)) as DB_TS\n\t,CP_ENTITY_TYPE\n\t,CP_ENTITY_ID\n\t,CP_ENTITY_EXTN1\n\t,CP_ENTITY_EXTN2\n\t,CP_ENTITY_EXTN3\n\t,CP_ENTITY_NICKNAME\n\t,CP_REMARKS\n\t,CP_ROUTING_NO\n\t,CP_ACCT_CRN\n\t,TRAN_ACT_ENTITY_TYPE\n\t,TRAN_ACT_ENTITY_ID\n\t,TRAN_ACT_ENTITY_EXTN1\n\t,TRAN_ACT_ENTITY_EXTN2\n\t,TRAN_ACT_ENTITY_NICKNAME\n\t,TRAN_ACT_REMARKS\n\t,TRAN_ACT_CRN\n\t,CONVERT(DATE,[VALUE_DATE]) AS VALUE_DATE\n\t,CHANNEL_ID\n\t,CONVERT(NUMERIC(18,3),ISNULL(NULLIF(REPLACE([ENTRY_AMT],' ',''),''),0)) as ENTRY_AMT\n\t,CONVERT(NUMERIC(18,3),ISNULL(NULLIF(REPLACE([TOTAL_ENTRY_AMT],' ',''),''),0)) as TOTAL_ENTRY_AMT\n\t,CONVERT(NUMERIC(18,3),ISNULL(NULLIF(REPLACE([LIMIT_AMT_IN_HOMECRN],' ',''),''),0)) as LIMIT_AMT_IN_HOMECRN\n\t,CONVERT(NUMERIC(18,7),ISNULL(NULLIF(REPLACE([LIMIT_RATE],' ',''),''),0)) as LIMIT_RATE\n\t,LIMIT_RATE_CODE\n\t,CONVERT(NUMERIC(18,3),ISNULL(NULLIF(REPLACE([CHARGE_AMT],' ',''),''),0)) as CHARGE_AMT\n\t,CHARGE_CRN\n\t,CONVERT(NUMERIC(18,3),ISNULL(NULLIF(REPLACE([NW_COMMISSION_AMT],' ',''),''),0)) as NW_COMMISSION_AMT\n\t,NW_COMMISSION_CRN\n\t,NW_COMMISSION_INDICATOR\n\t,TRANSACTION_PURPOSE\n\t,CONVERT(NUMERIC(10,0),ISNULL(NULLIF(REPLACE([MANDATE_NO],' ',''),''),0)) as MANDATE_NO\n\t,NETWORK_ID\n\t,ADDITIONAL_REMARKS\n\t,NETWORK_PRODUCT\n\t,DEAL_REFERENCE_NO\n\t,CONVERT(NUMERIC(18,7),ISNULL(NULLIF(REPLACE([NEGOTIATED_RATE],' ',''),''),0)) as NEGOTIATED_RATE\n\t,TRACE_ACCOUNT\n\t,TRACE_ACCOUNT_BANK_CODE\n\t,TRACE_ACCOUNT_BRANCH_ID\n\t,DELIVERY_MODE\n\t,ORDERING_PARTY_CUST_ID\n\t,ORDERING_PARTY\n\t,ORDERING_PARTY_ADDRESS\n\t,ORDERING_PARTY_CITY_ZIP\n\t,ORDERING_PARTY_STATE\n\t,ORDERING_PARTY_COUNTRY\n\t,INTERMEDIARY_BANK_REF_NO\n\t,ENTRY_RMKS\n\t,DEL_FLG\n\t,R_CRE_ID\n\t,CONVERT(DATETIME2, stuff(stuff(stuff(R_CRE_TIME, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) as R_CRE_TIME\n\t,R_MOD_ID\n\t,CONVERT(DATETIME2, stuff(stuff(stuff(R_MOD_TIME, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) as R_MOD_TIME\n\t,TXN_ENTRY_STATUS\n\t,RESPONSE_CODE\n\t,RESPONSE_MSG\n\t,PYMT_SRL_NO\n\t,CONVERT(NUMERIC(2,0),ISNULL(NULLIF(REPLACE([NO_OF_RETRIES],' ',''),''),0)) as NO_OF_RETRIES\n\t,HOST_REF_NO\n\t,CONVERT(NUMERIC(10,0),ISNULL(NULLIF(REPLACE([BNF_DISPLAY_ID],' ',''),''),0)) as BNF_DISPLAY_ID\n\t,CONVERT(DATETIME2, stuff(stuff(stuff(BORPI_DWNLD_DT, 9, 0, ' '), 12, 0, ':'), 15, 0, ':')) as BORPI_DWNLD_DT\n\t,BORPI_DWNLD_FILE_NUM\n\t,CONSUMER_CODE\n\t,BENEFICIARY_REFERENCE\n\t,EXTRA_TRANSACTION_INFO\n\t,CONVERT(NUMERIC(10,0),ISNULL(NULLIF(REPLACE([NOTIFICATION_REF_NO],' ',''),''),0)) as NOTIFICATION_REF_NO\n\t,EXTERNAL_REF_NO\n\t,1 AS ISACTIVE\n\t,1 AS ISLATEST\n\t,LEFT(FILE_NAME, 5) AS BNK_CODE\n\t,SUBSTRING(FILE_NAME,7,3) AS SOURCE_CODE\n\t,FILE_NAME\n\t,CONVERT(DATE,INSERT_DTTM) AS INSERT_DTTM\nFROM d360.STG_RIB_TRANSACTIONDETAILS\nWHERE H = 'D'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "SqlDWSink",
+						"allowPolyBase": true,
+						"polyBaseSettings": {
+							"rejectValue": 0,
+							"rejectType": "value",
+							"useTypeDefault": true
+						},
+						"disableMetricsCollection": false
+					},
+					"enableStaging": true,
+					"stagingSettings": {
+						"linkedServiceName": {
+							"referenceName": "cbcd360devsynpssg-WorkspaceDefaultStorage",
+							"type": "LinkedServiceReference"
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_RIB_TRANSACTIONDETAILS"
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "SQLPool_TGT",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "RIB_TRANSACTIONDETAILS"
+						}
+					}
+				]
+			},
+			{
+				"name": "ErrorExecutionLog_5",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "RIB_TRANSACTIONDETAILS",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@pipeline().TriggerTime",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": {
+								"value": "@activity('RIB_TRANSACTIONDETAILS').error.message",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": {
+								"value": "@activity('RIB_TRANSACTIONDETAILS').error.message",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "@concat('FAILED - ',activity('RIB_TRANSACTIONDETAILS').error.message)",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			},
+			{
+				"name": "SuccessExecutionLog_5",
+				"type": "SqlPoolStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "RIB_TRANSACTIONDETAILS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 60,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"sqlPool": {
+					"referenceName": "testSQLpool",
+					"type": "SqlPoolReference"
+				},
+				"typeProperties": {
+					"storedProcedureName": "[d360].[StatusExecutionLog]",
+					"storedProcedureParameters": {
+						"RunId": {
+							"value": {
+								"value": "@pipeline().RunId",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().Pipeline",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RunDate": {
+							"value": {
+								"value": "@addHours(pipeline().TriggerTime,+8)",
+								"type": "Expression"
+							},
+							"type": "Datetime"
+						},
+						"SuccessRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FailedRowCount": {
+							"value": null,
+							"type": "String"
+						},
+						"FileName": {
+							"value": null,
+							"type": "String"
+						},
+						"StatusDescription": {
+							"value": {
+								"value": "SUCCESS",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-10-19T05:05:53Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,116 @@
+{
+	"name": "EDS_TRY_SDI",
+	"properties": {
+		"activities": [
+			{
+				"name": "TRY_SDI_LU",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": "SELECT COUNT(1) CNT FROM D360.STG_EDS_TRY_SDI WHERE H = 'D'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_STG",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "STG_EDS_TRY_SDI"
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "If Condition",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "TRY_SDI_LU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('TRY_SDI_LU').output.firstRow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "TRY_SDI",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"parameters": [
+											{
+												"name": "DATETOPROCESS",
+												"type": "Datetime",
+												"value": {
+													"value": "@pipeline().parameters.Datetoprocess",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											}
+										],
+										"type": "NonQuery",
+										"text": "\nTRUNCATE TABLE d360.STG_EDS_TRY_SDI_SELECT_SRC;\n\nINSERT INTO d360.STG_EDS_TRY_SDI_SELECT_SRC\n(\n                Beneficiary,\n                Beneficiary_Id,\n                CBCGLAcctEncryted,\n                CBCGLAcctSixDigits,\n                Currencies,\n                Direct,\n                Id,\n                Method,\n                Pay_Receive,\n                ProcessingOrg,\n                Products,\n                Roles,\n                FILE_NAME,\n\t\t\t\tJSRC_FLG, \n\t\t\t\tJTAR_FLG \n)\n\n\nSELECT \n                Beneficiary,\n                Beneficiary_Id,\n                CBCGLAcctEncryted,\n                CBCGLAcctSixDigits,\n                Currencies,\n                Direct,\n                Id,\n                Method,\n                Pay_Receive,\n                ProcessingOrg,\n                Products,\n                Roles,\n                FILE_NAME,\n\t\t\t\t1 AS JSRC_FLG, \n\t\t\t\t0 AS JTAR_FLG \n\t\t\tFROM [d360].[STG_EDS_TRY_SDI]\n            WHERE H = 'D';\n\n\nINSERT INTO d360.STG_EDS_TRY_SDI_SELECT_SRC\n(\n                Beneficiary,\n                Beneficiary_Id,\n                CBCGLAcctEncryted,\n                CBCGLAcctSixDigits,\n                Currencies,\n                Direct,\n                Id,\n                Method,\n                Pay_Receive,\n                ProcessingOrg,\n                Products,\n                Roles,\n                FILE_NAME, \n\t\t\t\tJSRC_FLG, \n\t\t\t\tJTAR_FLG \n)\n\t\t\tSELECT \t\t\t\t\n                CC.Beneficiary,\n                CC.Beneficiary_Id,\n                CC.CBCGLAcctEncryted,\n                CC.CBCGLAcctSixDigits,\n                CC.Currencies,\n                CC.Direct,\n                CC.Id,\n                CC.Method,\n                CC.Pay_Receive,\n                CC.ProcessingOrg,\n                CC.Products,\n                CC.Roles,\n                CC.FILE_NAME,\n\t\t        0 AS JSRC_FLG, \n\t\t\t\t1 AS JTAR_FLG \n\t\t\tFROM EDS.TRY_SDI CC\n\t\t\tWHERE CC.ISLATEST = '1';\n\n\nTRUNCATE TABLE d360.STG_EDS_TRY_SDI_GROUP_SRC;\n\nINSERT INTO d360.STG_EDS_TRY_SDI_GROUP_SRC\n(\n                Beneficiary,\n                Beneficiary_Id,\n                CBCGLAcctEncryted,\n                CBCGLAcctSixDigits,\n                Currencies,\n                Direct,\n                Id,\n                Method,\n                Pay_Receive,\n                ProcessingOrg,\n                Products,\n                Roles,\n                FILE_NAME, \n\t\t\t\tJSRC_FLG_CNT, \n\t\t\t\tJTAR_FLG_CNT, \n\t\t\t\tFILE_DATE\n)\n\nselect \n                Beneficiary,\n                Beneficiary_Id,\n                CBCGLAcctEncryted,\n                CBCGLAcctSixDigits,\n                Currencies,\n                Direct,\n                Id,\n                Method,\n                Pay_Receive,\n                ProcessingOrg,\n                Products,\n                Roles,\n\t\t\t\tFILE_NAME, \n\t\t\t\tJSRC_FLG_CNT, \n\t\t\t\tJTAR_FLG_CNT,\n\t\t\t\tCAST(LEFT(RIGHT(FILE_NAME , 12), 8) AS DATE) FILE_DATE\nfrom \n(\n\tSELECT \t\t\t\t\n                Beneficiary,\n                Beneficiary_Id,\n                CBCGLAcctEncryted,\n                CBCGLAcctSixDigits,\n                Currencies,\n                Direct,\n                Id,\n                Method,\n                Pay_Receive,\n                ProcessingOrg,\n                Products,\n                Roles,\n\t\t\t\tMAX(FILE_NAME) FILE_NAME, \n\t\t\t\tSUM(JSRC_FLG) AS JSRC_FLG_CNT, \n\t\t\t\tSUM(JTAR_FLG) AS JTAR_FLG_CNT\n\tFROM d360.STG_EDS_TRY_SDI_SELECT_SRC\n\tGROUP BY \t\t\t\t\t\n                Beneficiary,\n                Beneficiary_Id,\n                CBCGLAcctEncryted,\n                CBCGLAcctSixDigits,\n                Currencies,\n                Direct,\n                Id,\n                Method,\n                Pay_Receive,\n                ProcessingOrg,\n                Products,\n                Roles\n\tHAVING ( SUM(JSRC_FLG) > 0 AND SUM(JTAR_FLG) = 0 ) OR ( SUM(JSRC_FLG) = 0 AND SUM(JTAR_FLG) = 1) \n) AS TEMP\n\n\nDECLARE @PREVIOUS_BUSINESS_DAY AS DATE\nSELECT @PREVIOUS_BUSINESS_DAY = PREVIOUS_BUSINESS_DAY FROM EDS.DATE_DIM \nWHERE FULLDATE = @DATETOPROCESS;\t\n\n\nUPDATE A\nSET\nSCD_END_DATE = @PREVIOUS_BUSINESS_DAY\n, ISLATEST = 0\nFROM EDS.TRY_SDI A \nINNER JOIN d360.STG_EDS_TRY_SDI_GROUP_SRC B ON\nCOALESCE(A.ID,'-1') = COALESCE(B.ID,'-1')\nAND A.ISLATEST = 1\nAND B.JTAR_FLG_CNT = 1\n\n\nINSERT INTO EDS.TRY_SDI\n(\n                Beneficiary,\n                Beneficiary_Id,\n                CBCGLAcctEncryted,\n                CBCGLAcctSixDigits,\n                Currencies,\n                Direct,\n                Id,\n                Method,\n                Pay_Receive,\n                ProcessingOrg,\n                Products,\n                Roles,\n\t\t\t\tSCD_START_DATE, \n\t\t\t\tSCD_END_DATE, \n\t\t\t\tISACTIVE, \n\t\t\t\tISLATEST, \n\t\t\t\tBNK_CODE, \n\t\t\t\tSOURCE_CODE, \n\t\t\t\tFILE_NAME, \n\t\t\t\tinsert_dttm\n)\nSELECT\n                SRC.Beneficiary,\n                SRC.Beneficiary_Id,\n                SRC.CBCGLAcctEncryted,\n                SRC.CBCGLAcctSixDigits,\n                SRC.Currencies,\n                SRC.Direct,\n                SRC.Id,\n                SRC.Method,\n                SRC.Pay_Receive,\n                SRC.ProcessingOrg,\n                SRC.Products,\n                SRC.Roles,\n\t\t\t\t@DATETOPROCESS,\n\t\t\t\t'9999-12-31',\n\t\t\t\t1,\n\t\t\t\t1,\n\t\t\t\tLEFT(SRC.FILE_NAME,5),\n\t\t\t\t'TRY',\n\t\t\t\tSRC.FILE_NAME,\n\t\t\t\tCAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime)\nFROM d360.STG_EDS_TRY_SDI_GROUP_SRC SRC\nWHERE JSRC_FLG_CNT > 0"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"Datetoprocess": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-07-29T08:25:53Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

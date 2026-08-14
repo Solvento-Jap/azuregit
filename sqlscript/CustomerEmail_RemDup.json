@@ -1,0 +1,20 @@
+{
+	"name": "CustomerEmail_RemDup",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "STEPS:\n\n--1 CHECK DUPLICATE\nSELECT  CustomerId, EmailTypeId,PeriodStartTimeStamp, FinancialInstitutionId,SOURCECODE, count(1)\nFROM bnkm.CustomerEmail -- WHERE CUSTOMERACCOUNTID = ''\nGROUP BY CustomerId, EmailTypeId,PeriodStartTimeStamp, FinancialInstitutionId,SOURCECODE\nHAVING count(1) > 1\n\n\n\n--2 TAGGED DUPLICATE   with pipeline alternative\nSELECT ROW_NUMBER() OVER(PARTITION BY  CustomerId, EmailTypeId,PeriodStartTimeStamp, FinancialInstitutionId,SOURCECODE ORDER BY PeriodEndTimeStamp DESC, INSERTDTTM DESC ) RN , --define PKs in partition by\n*  --Name of backup table to store duplicate records\nFROM bnkm.CustomerEmail;\n\n\n\n--3 CHECK COUNT MAIN AND BU TABLE\nSELECT COUNT(*) FROM bnkm.CustomerEmail_WITH_DUP_20230531\n--\nSELECT COUNT(*) FROM bnkm.CustomerEmail\n--\n\n--4 CLEAN DUP\nTRUNCATE TABLE bnkm.CustomerEmail;\n\n\n\n--5 INSERT BACK UNIQUE RECORDS ONLY\nINSERT INTO bnkm.CustomerEmail --Target table to remove duplicate\nSELECT  \nCustomerId\n,EmailTypeId\n,EmailAddress\n,PeriodStartTimestamp\n,PeriodEndTimestamp\n,PreferenceId\n,CustomerEmailNote\n,DoNotDisturbIndicator\n,DateOfRequest\n,FinancialInstitutionId\n,SourceCode\n,TaskRunId\n,WorkFlowId\n,InsertDttm\n\nFROM bnkm.CustomerEmail_WITH_DUP_20230531 -- Name of backup table to store duplicate records\nWHERE RN = 1;\n\n\n--6 CHECK IF STILL HAVE DUP\nSELECT  CustomerId, EmailTypeId,PeriodStartTimeStamp, FinancialInstitutionId,SOURCECODE, count(1)\nFROM bnkm.CustomerEmail -- WHERE CUSTOMERACCOUNTID = ''\nGROUP BY CustomerId, EmailTypeId,PeriodStartTimeStamp, FinancialInstitutionId,SOURCECODE\nHAVING count(1) > 1\n\n\n\n--7 COUNT\nSELECT COUNT(*) FROM bnkm.CustomerEmail_WITH_DUP_20230531\n--\nSELECT COUNT(*) FROM bnkm.CustomerEmail\n--",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "master",
+				"poolName": "Built-in"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

@@ -1,0 +1,327 @@
+{
+	"name": "DATE_DIM_20240819",
+	"properties": {
+		"activities": [
+			{
+				"name": "RENAME",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Backup",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "RENAME OBJECT EDS.DATE_DIM TO DATE_DIM_BU_20240819;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Backup",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "CREATE TABLE D360.DATE_DIM_BU_20240819\r\nWITH (\r\n    DISTRIBUTION = ROUND_ROBIN,\r\n\tHEAP\r\n)\r\nAS SELECT * \r\nFROM EDS.DATE_DIM;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "CTAS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "RENAME",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "CREATE TABLE EDS.DATE_DIM\r\nWITH (HEAP, DISTRIBUTION=REPLICATE)\r\nAS SELECT * \r\nFROM D360.DATE_DIM_BU_20240819;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PREV_B_DAY",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "DATE_DIM_UPDATE",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "--\tPrevious Business Day\r\n\r\nUPDATE EDS.DATE_DIM\r\nSET Previous_Business_Day = CAST(CAST(Business_Day.Previous_Business_Date AS VARCHAR(8)) AS DATE)\r\nFROM (\r\n\t\tSELECT DateSK\r\n\t\t\t, Business_Day_Flag\r\n\t\t\t, Max(CASE WHEN Business_Day_Flag = 'Y' THEN DateSK ELSE NULL END)\r\n\t\t\t\tOver (PARTITION BY 1 ORDER BY DateSK ROWS BETWEEN Unbounded Preceding AND 1 Preceding) Previous_Business_Date                     \r\n\t\tFROM EDS.DATE_DIM\r\n\t\tWHERE DateSK BETWEEN 20221231 AND 20241231\r\n    ) AS Business_Day\r\nWHERE DATE_DIM.DateSK = Business_Day.DateSK;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PREV_WEEK",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PREV_B_DAY",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "--\tPrevious Week\r\n\r\nUPDATE EDS.Date_Dim\r\nSET Previous_Week = CAST(CAST(Business_Day.Previous_Business_Week AS VARCHAR(8)) AS DATE)\r\nFROM \r\n   (\r\n\t\tSELECT DateSK\r\n\t\t\t, Business_Day_Flag\r\n\t\t\t, Max(CASE WHEN Business_Day_Flag = 'Y' THEN DateSK ELSE NULL END)\r\n\t\t\t\t\t\tOver (PARTITION BY 1 ORDER BY DateSK ROWS BETWEEN Unbounded Preceding AND 7 Preceding) Previous_Business_Week                     \r\n\t\tFROM EDS.Date_Dim\r\n\t\tWHERE DateSK BETWEEN 20221231 AND 20241231\r\n   ) AS Business_Day\r\nWHERE Date_Dim.DateSK = Business_Day.DateSK;\r\n\r\n--\tPrevious Month\r\n\r\nUPDATE EDS.Date_Dim\r\nSET Previous_Month = DATEADD(month, -1, fulldate)\r\nWHERE Business_Day_Flag = 'Y';\r\n               \r\nUPDATE EDS.Date_Dim\r\nSET Previous_Month = CAST(CAST(Business_Day.Latest_Business_Day AS VARCHAR(8)) AS DATE)\r\nFROM \r\n\t(\r\n\t\tSELECT DateSK\r\n\t\t\t, fulldate\r\n\t\t\t, Max(CASE WHEN Business_Day_Flag = 'Y' THEN DateSK ELSE NULL END)\r\n\t\t\t\t\t\tOver (PARTITION BY 1 ORDER BY DateSK ROWS BETWEEN Unbounded Preceding AND CURRENT ROW) Latest_Business_Day\r\n\t\tFROM EDS.Date_Dim\r\n\t\tWHERE DateSK BETWEEN 20221201 AND 20241231\r\n\t) AS Business_Day\r\nWHERE Date_Dim.Previous_Month = Business_Day.fulldate;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PREV_MONTH",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PREV_WEEK",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "\r\n--\tPrevious Month\r\n\r\nUPDATE EDS.Date_Dim\r\nSET Previous_Quarter = DATEADD(month, -3, fulldate)\r\nWHERE Business_Day_Flag = 'Y';\r\n               \r\nUPDATE EDS.Date_Dim\r\nSET Previous_Quarter = CAST(CAST(Business_Day.Latest_Business_Day AS VARCHAR(8)) AS DATE)\r\nFROM \r\n\t(\r\n\t\tSELECT DateSK\r\n\t\t\t, fulldate\r\n\t\t\t, Max(CASE WHEN Business_Day_Flag = 'Y' THEN DateSK ELSE NULL END)\r\n\t\t\t\t\t\tOver (PARTITION BY 1 ORDER BY DateSK ROWS BETWEEN Unbounded Preceding AND CURRENT ROW) Latest_Business_Day\r\n\t\tFROM EDS.Date_Dim\r\n\t\tWHERE DateSK BETWEEN 20221201 AND 20241231\r\n\t) AS Business_Day\r\nWHERE Date_Dim.Previous_Quarter = Business_Day.fulldate;\r\n\r\n--\tPrevious Year\r\n\r\nUPDATE EDS.Date_Dim\r\nSET Previous_Year = DATEADD(month, -12, fulldate)\r\nWHERE Business_Day_Flag = 'Y';\r\n               \r\nUPDATE EDS.Date_Dim\r\nSET Previous_Year = CAST(CAST(Business_Day.Latest_Business_Day AS VARCHAR(8)) AS DATE)\r\nFROM \r\n\t(\r\n\t\tSELECT DateSK\r\n\t\t\t, fulldate\r\n\t\t\t, Max(CASE WHEN Business_Day_Flag = 'Y' THEN DateSK ELSE NULL END)\r\n\t\t\t\t\t\tOver (PARTITION BY 1 ORDER BY DateSK ROWS BETWEEN Unbounded Preceding AND CURRENT ROW) Latest_Business_Day\r\n\t\tFROM EDS.Date_Dim\r\n\t\tWHERE DateSK BETWEEN 20221201 AND 20241231\r\n\t) AS Business_Day\r\nWHERE Date_Dim.Previous_Year = Business_Day.fulldate;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "ADD SEC_FLG",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PREV_MONTH",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "ALTER TABLE EDS.DATE_DIM\r\nADD SEC_Business_Day_Flag CHAR(1);"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "UPDATE_SEC_FLG",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "ADD SEC_FLG",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "UPDATE EDS.DATE_DIM\r\nSET SEC_Business_Day_Flag = Business_Day_Flag;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "DATE_DIM_UPDATE",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "CTAS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "Query",
+							"text": "update EDS.DATE_DIM set Business_Day_Flag = 'Y';\r\n\r\nupdate EDS.DATE_DIM set Business_Day_Flag = 'N' where weekday in (1,7);\r\n\r\nupdate EDS.DATE_DIM set Business_Day_Flag = 'N' \r\nwhere fulldate in (\r\n'2023-01-01', '2023-02-24', '2023-04-10', '2023-04-06', '2023-04-07', '2023-04-21'\r\n, '2023-05-01', '2023-06-12', '2023-08-01', '2023-08-28', '2023-10-30', '2023-11-01'\r\n, '2023-11-02', '2023-11-27', '2023-12-08', '2023-12-25', '2023-12-26', '2023-12-30'\r\n, '2024-01-01', '2024-02-09', '2024-03-28', '2024-03-29', '2024-04-09', '2024-05-01'\r\n, '2024-06-12'\r\n, '2024-06-17'\r\n, '2024-08-26', '2024-08-23', '2024-11-30', '2024-11-01'\r\n, '2024-12-24', '2024-12-25', '2024-12-30', '2024-12-31'\r\n);\r\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-08-19T09:26:49Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

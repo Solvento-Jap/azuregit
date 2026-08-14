@@ -1,0 +1,20 @@
+{
+	"name": "PBI_Treasury_Retail",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "ALTER PROC [DW].[SP_PBI_Treasury_Retail]\nAS\nBEGIN\n\n\n\nDROP TABLE  DW.PBI_Treasury_Retail;\n\nWITH DimCustomerAccount_TRY AS\n(\n    SELECT\n        DCA.AccountID ,DCA.CustomerID ,DCA.SourceSystemCode ,DCA.ValidStartDate ,DCA.CustomerSK ,DCA.BankSK ,DCA.BranchSK ,DCA.AccountSK ,DA.AccountOpenedDate\n    FROM DW.DimCustomerAccount DCA\n    JOIN DW.DimAccount DA ON DCA.AccountSK = DA.AccountSK AND DA.SourceSystemCode = 'TRY'\n    WHERE DCA.SourceSystemCode = 'TRY' AND DCA.CurrentIndicator = '1' \n)\n\n\nSELECT \n     DCA.AccountID\n    ,DCA.CustomerID\n    ,CASE WHEN DC.GlobalCIF IS NOT NULL THEN REPLACE(DC.GlobalCIF,'Global_CIF_','Entity_CIF_')\n      ELSE CONCAT('Entity_CIF_', DC.SourceSystemCode, '_', DC.CustomerID) END AS EntityCIF\n    ,DB.BankID AS BankCode\n    ,DBr.BranchID as BranchCode\n    ,DBr.BranchName\n    ,DBr.Area\n    ,DBr.Region\n    ,DCA.SourceSystemCode\n    ,DP.ProductGroup AS ProductGrouping\n    ,DP.ProductName AS ProductType\n    ,CONCAT(DP.ProductGroup,'-',DP.ProductName) AS ProductDetails\n    ,DCA.AccountOpenedDate AS OpenedDate\n    ,FTOI.OutstandingInvestmentFull * .85 AS OutstandingInvestment_Full\n    ,FTOI.OutstandingInvestmentProrated * .85 AS OutstandingInvestment_Prorated\n    ,FTOI.BusinessDateSK AS BusinessDate\n    ,DCA.ValidStartDate AS LastUpdatedDate\n    ,CONCAT(DCA.AccountId,DCA.CustomerID,DP.ProductName,DB.BankID,DCA.SourceSystemCode) as AccountKey    \n    --,ABS(CHECKSUM(NewId())) % (SELECT AVG(OutstandingInvestmentFull) FROM DW.FactTreasuryOutstandingInvestment) AS OutstandingInvestmentFullRand\n    --,ABS(CHECKSUM(NewId())) % (SELECT AVG(OutstandingInvestmentProrated) FROM DW.FactTreasuryOutstandingInvestment) AS OutstandingInvestmentSharedRand    \n    INTO DW.PBI_Treasury_Retail\nFROM DimCustomerAccount_TRY DCA\nJOIN (SELECT CustomerSK ,GlobalCIF,SourceSystemCode,CustomerID FROM DW.DimCustomer WHERE CustomerType = 'Retail') DC ON DCA.CustomerSK = DC.CustomerSK\nLEFT JOIN (SELECT BankSK ,BankID FROM DW.DimBank) DB ON DCA.BankSK = DB.BankSK\nLEFT JOIN (SELECT AccountSK,ProductSK FROM DW.DimAccountProduct) DAP ON DCA.AccountSK = DAP.AccountSK\nLEFT JOIN (SELECT BranchSK ,BranchID ,BranchName ,Area ,Region FROM DW.DimBranch) DBr ON DCA.BranchSK = DBr.BranchSK\nLEFT JOIN (SELECT ProductSK ,ProductGroup ,ProductName FROM DW.DimProduct) DP ON DAP.ProductSK = DP.ProductSK ---- NO DATA\nLEFT JOIN (SELECT AccountSK ,OutstandingInvestmentFull ,OutstandingInvestmentProrated ,BusinessDateSK FROM DW.FactTreasuryOutstandingInvestment) FTOI ON DCA.AccountSK = FTOI.AccountSK\nGROUP BY \nDCA.AccountID\n,DCA.CustomerID\n,DC.GlobalCIF\n,DC.SourceSystemCode\n,DC.CustomerID\n,DB.BankID\n,DBr.BranchID\n,DBr.BranchName\n,DBr.Area\n,DBr.Region\n,DCA.SourceSystemCode\n,DP.ProductGroup\n,DP.ProductName\n,DCA.AccountOpenedDate\n,FTOI.OutstandingInvestmentFull\n,FTOI.OutstandingInvestmentProrated\n,FTOI.BusinessDateSK\n,DCA.ValidStartDate\n\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

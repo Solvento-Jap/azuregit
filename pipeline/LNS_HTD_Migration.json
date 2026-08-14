@@ -1,0 +1,316 @@
+{
+	"name": "LNS_HTD_Migration",
+	"properties": {
+		"activities": [
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "If Condition1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(variables('V_endDate')),ticks(variables('V_startDate'))),864000000000),1))\n",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append Process Date",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Iterate Execution of Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Check_Business_date",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('select COUNT(fulldate) CNT\nfrom eds.date_dim where fulldate =''', item(), ''' AND business_day_flag=''Y''')\n",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "date_dim"
+									}
+								}
+							}
+						},
+						{
+							"name": "If Condition2",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Check_Business_date",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Check_Business_date').output.firstrow.CNT,0)",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "LNS_HTD_Migration",
+										"type": "Script",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "TestSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"parameters": [
+														{
+															"name": "item",
+															"type": "String",
+															"value": {
+																"value": "@item()",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														}
+													],
+													"type": "Query",
+													"text": "DECLARE @DateToProcess DATE;\r\nSET @DateToProcess = @item;\r\n\r\nINSERT INTO EDS.LNS_HISTTRANDTL(\r\nACID\r\n,AMT_RESERVATION_IND\r\n,BANK_CODE\r\n,BANK_ID\r\n,BKDT_TRAN_FLG\r\n,BR_CODE\r\n,COMB_TRAN_ID\r\n,CRNCY_CODE\r\n,CRNCY_HOL_CHK_DONE_FLG\r\n,CUST_ID\r\n,DEL_FLG\r\n,DEL_MEMO_PAD\r\n,DTH_INIT_SOL_ID\r\n,EABFAB_UPD_FLG\r\n,ENTRY_DATE\r\n,ENTRY_USER_ID\r\n,FX_TRAN_AMT\r\n,GL_DATE\r\n,GL_SEGMENT_STRING\r\n,GL_SUB_HEAD_CODE\r\n,GST_UPD_FLG\r\n,IMPL_CASH_PART_TRAN_FLG\r\n,INSTRMNT_ALPHA\r\n,INSTRMNT_DATE\r\n,INSTRMNT_NUM\r\n,INSTRMNT_TYPE\r\n,ISO_FLG\r\n,LCHG_TIME\r\n,LCHG_USER_ID\r\n,LIFT_LIEN_FLG\r\n,MODULE_ID\r\n,MUD_POOL_BAL_BUILD_FLG\r\n,NAVIGATION_FLG\r\n,PARTY_CODE\r\n,PART_TRAN_SRL_NUM\r\n,PART_TRAN_TYPE\r\n,PRINCIPAL_PORTION_AMT\r\n,PRNT_ADVC_IND\r\n,PROXY_ACID\r\n,PROXY_POST_IND\r\n,PR_SRL_NUM\r\n,PSTD_DATE\r\n,PSTD_FLG\r\n,PSTD_USER_ID\r\n,PTRAN_CHRG_EXISTS_FLG\r\n,PTTM_EVENT_TYPE\r\n,PURPOSE_CODE\r\n,RATE\r\n,RATE_CODE\r\n,RCRE_TIME\r\n,RCRE_USER_ID\r\n,REFERRAL_ID\r\n,REF_AMT\r\n,REF_CRNCY_CODE\r\n,REF_NUM\r\n,REGULARIZATION_AMT\r\n,RESERVATION_AMT\r\n,RESP_ACCT_REF_NO\r\n,RESTRICT_MODIFY_IND\r\n,REVERSAL_DATE\r\n,REVERSAL_VALUE_DATE\r\n,RPT_CODE\r\n,SERIAL_NUM\r\n,SI_ORG_EXEC_DATE\r\n,SI_SRL_NUM\r\n,SOL_ID\r\n,SVS_TRAN_ID\r\n,SYS_PART_TRAN_CODE\r\n,TF_ENTITY_SOL_ID\r\n,TOD_ENTITY_ID\r\n,TOD_ENTITY_TYPE\r\n,TRAN_AMT\r\n,TRAN_CRNCY_CODE\r\n,TRAN_DATE\r\n,TRAN_FREE_CODE1\r\n,TRAN_FREE_CODE2\r\n,TRAN_ID\r\n,TRAN_PARTICULAR\r\n,TRAN_PARTICULAR_2\r\n,TRAN_PARTICULAR_CODE\r\n,TRAN_RMKS\r\n,TRAN_SUB_TYPE\r\n,TRAN_TYPE\r\n,TREA_RATE\r\n,TREA_REF_NUM\r\n,TR_STATUS\r\n,TS_CNT\r\n,UAD_MODULE_ID\r\n,UAD_MODULE_KEY\r\n,USED_CLEAN_EMER_ADVN\r\n,USED_CLEAN_SINGLE_TRAN_LIM\r\n,USED_EMER_ADVN\r\n,USED_SINGLE_TRAN_LIM\r\n,USED_UN_CLR_OVER_DACC_AMT\r\n,USER_PART_TRAN_CODE\r\n,VALUE_DATE\r\n,VFD_DATE\r\n,VFD_USER_ID\r\n,VOUCHER_PRINT_FLG\r\n,BNK_CODE\r\n,SOURCE_CODE\r\n,FILE_NAME\r\n,insert_dttm\r\n,BUSINESSDATE\r\n)\r\nSELECT\r\nACID\r\n,AMT_RESERVATION_IND\r\n,BANK_CODE\r\n,BANK_ID\r\n,BKDT_TRAN_FLG\r\n,BR_CODE\r\n,COMB_TRAN_ID\r\n,CRNCY_CODE\r\n,CRNCY_HOL_CHK_DONE_FLG\r\n,CUST_ID\r\n,DEL_FLG\r\n,DEL_MEMO_PAD\r\n,DTH_INIT_SOL_ID\r\n,EABFAB_UPD_FLG\r\n,ENTRY_DATE\r\n,ENTRY_USER_ID\r\n,FX_TRAN_AMT\r\n,GL_DATE\r\n,GL_SEGMENT_STRING\r\n,GL_SUB_HEAD_CODE\r\n,GST_UPD_FLG\r\n,IMPL_CASH_PART_TRAN_FLG\r\n,INSTRMNT_ALPHA\r\n,INSTRMNT_DATE\r\n,INSTRMNT_NUM\r\n,INSTRMNT_TYPE\r\n,ISO_FLG\r\n,LCHG_TIME\r\n,LCHG_USER_ID\r\n,LIFT_LIEN_FLG\r\n,MODULE_ID\r\n,MUD_POOL_BAL_BUILD_FLG\r\n,NAVIGATION_FLG\r\n,PARTY_CODE\r\n,PART_TRAN_SRL_NUM\r\n,PART_TRAN_TYPE\r\n,PRINCIPAL_PORTION_AMT\r\n,PRNT_ADVC_IND\r\n,PROXY_ACID\r\n,PROXY_POST_IND\r\n,PR_SRL_NUM\r\n,PSTD_DATE\r\n,PSTD_FLG\r\n,PSTD_USER_ID\r\n,PTRAN_CHRG_EXISTS_FLG\r\n,PTTM_EVENT_TYPE\r\n,PURPOSE_CODE\r\n,RATE\r\n,RATE_CODE\r\n,RCRE_TIME\r\n,RCRE_USER_ID\r\n,REFERRAL_ID\r\n,REF_AMT\r\n,REF_CRNCY_CODE\r\n,REF_NUM\r\n,REGULARIZATION_AMT\r\n,RESERVATION_AMT\r\n,RESP_ACCT_REF_NO\r\n,RESTRICT_MODIFY_IND\r\n,REVERSAL_DATE\r\n,REVERSAL_VALUE_DATE\r\n,RPT_CODE\r\n,SERIAL_NUM\r\n,SI_ORG_EXEC_DATE\r\n,SI_SRL_NUM\r\n,SOL_ID\r\n,SVS_TRAN_ID\r\n,SYS_PART_TRAN_CODE\r\n,TF_ENTITY_SOL_ID\r\n,TOD_ENTITY_ID\r\n,TOD_ENTITY_TYPE\r\n,TRAN_AMT\r\n,TRAN_CRNCY_CODE\r\n,TRAN_DATE\r\n,TRAN_FREE_CODE1\r\n,TRAN_FREE_CODE2\r\n,TRAN_ID\r\n,TRAN_PARTICULAR\r\n,TRAN_PARTICULAR_2\r\n,TRAN_PARTICULAR_CODE\r\n,TRAN_RMKS\r\n,TRAN_SUB_TYPE\r\n,TRAN_TYPE\r\n,TREA_RATE\r\n,TREA_REF_NUM\r\n,TR_STATUS\r\n,TS_CNT\r\n,UAD_MODULE_ID\r\n,UAD_MODULE_KEY\r\n,USED_CLEAN_EMER_ADVN\r\n,USED_CLEAN_SINGLE_TRAN_LIM\r\n,USED_EMER_ADVN\r\n,USED_SINGLE_TRAN_LIM\r\n,USED_UN_CLR_OVER_DACC_AMT\r\n,USER_PART_TRAN_CODE\r\n,VALUE_DATE\r\n,VFD_DATE\r\n,VFD_USER_ID\r\n,VOUCHER_PRINT_FLG\r\n,BNK_CODE\r\n,SOURCE_CODE\r\n,FILE_NAME\r\n,insert_dttm\r\n,BUSINESSDATE\r\nFROM BUSC.LNS_HISTTRANDTL\r\nWHERE CAST(LEFT(RIGHT(FILE_NAME,12),8) AS DATE) = @DateToProcess;"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "If Condition1",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "SET_startDate_copy1",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_endDate_copy1",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_startDate_copy1",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_endDate_copy1",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "SET_startDate",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_endDate",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			}
+		},
+		"variables": {
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			},
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"Test": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-09-13T03:40:45Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,1007 @@
+{
+	"name": "Dimension_DimProduct_with_processeddate",
+	"properties": {
+		"activities": [
+			{
+				"name": "PRDT_CCD",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "DatetoProcessed",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.DatetoProcessed",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "NonQuery",
+							"text": "IF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'PRODUCT_CCD') \r\nBEGIN\r\n   DROP TABLE DW.PRODUCT_CCD;\r\nEND;\r\n\r\nWITH FINANCIALPRODUCTAPPLICATION \r\nAS(\r\n    SELECT DISTINCT A.* FROM BNKM.FinancialProductApplication A\r\n\tJOIN (SELECT FinancialProductId, FinancialInstitutionId,FcbsApplicationId, SourceSystemCode, MAX(Timestamp) Timestamp FROM BNKM.FinancialProductApplication GROUP BY FinancialProductId, FinancialInstitutionId, FcbsApplicationId, SourceSystemCode ) B\r\n\tON A.FinancialProductId = B.FinancialProductId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.SourceSystemCode = B.SourceSystemCode AND A.FcbsApplicationId = B.FcbsApplicationId  AND A.Timestamp = B.Timestamp\r\n    WHERE A.SourceSystemCode = 'CCD'\r\n)\r\n\r\n, PRODUCT_SK\r\nAS(\r\nSELECT ISNULL(MAX(ProductSK),0) RN FROM DW.Dimproduct\r\n)\r\n\r\nSELECT \r\n     ROW_NUMBER() OVER(ORDER BY (SELECT NULL)) + (SELECT RN FROM Product_SK) AS ProductSK, * \r\n     INTO DW.PRODUCT_CCD\r\n     FROM(\r\n        SELECT DISTINCT\r\n    BFP.FinancialProductId AS ProductID\r\n    ,BFP.FinancialProductName AS ProductName\r\n    ,BFPG.ProductGrouping AS ProductGroup\r\n    ,NULL AS ProductDescription\r\n    ,BFPA.FcbsApplicationId AS FcbsApplication\r\n    ,DB.BankSk AS BankSK\r\n    ,Null AS BranchSK\r\n    ,1 AS CurrentIndicator\r\n    ,@DatetoProcessed AS ValidStartDate\r\n    ,'9999-12-31' AS ValidEndDate\r\n    ,BFP.SourceSystemCode AS SourceSystemCode \r\n    ,0 AS WorkFlowId\r\n    ,0 AS TaskRunId\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\n\r\nFROM BNKM.FinancialProduct BFP\r\nLEFT JOIN BNKM.FINANCIALPRODUCTGROUPING BFPG ON BFP.FINANCIALPRODUCTID = BFPG.FINANCIALPRODUCTID AND BFP.FinancialInstitutionId = BFPG.FinancialInstitutionId AND BFP.SourceSystemCode = BFPG.SourceCode\r\nLEFT JOIN FINANCIALPRODUCTAPPLICATION BFPA ON BFP.FINANCIALPRODUCTID = BFPA.FINANCIALPRODUCTID AND BFP.FinancialInstitutionId = BFPA.FinancialInstitutionId AND BFPA.SourceSystemCode = BFP.SourceSystemCode\r\nLEFT JOIN DW.DIMBANK DB ON BFP.FinancialInstitutionId = DB.BANKID\r\nWHERE BFP.SourceSystemCode = 'CCD'\r\n)A"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_CCD_2",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_CCD",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'TEMP_DW_DIMPRODUCT_DELTA_CCD') \r\nBEGIN\r\n   DROP TABLE DW.TEMP_DW_DIMPRODUCT_DELTA_CCD;\r\nEND;\r\n\r\nWITH\r\nTEMP_DW_DIMPRODUCT_SRC\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     convert(varchar,ProductID)\r\n    ,convert(varchar,ProductName)\r\n    ,convert(varchar,ProductGroup)\r\n    ,convert(varchar,ProductDescription)\r\n    ,convert(varchar,FcbsApplication)\r\n    ,convert(INT,BankSK)\r\n    ,convert(INT,BranchSK)\r\n    )) HASHROW, ProductID,BankSK ,SourceSystemCode\r\n    FROM DW.PRODUCT_CCD\r\n)\r\n,\r\nTEMP_DW_DIMPRODUCT_TGT\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     convert(varchar,ProductID)\r\n    ,convert(varchar,ProductName)\r\n    ,convert(varchar,ProductGroup)\r\n    ,convert(varchar,ProductDescription)\r\n    ,convert(varchar,FcbsApplication)\r\n    ,convert(INT,BankSK)\r\n    ,convert(INT,BranchSK)\r\n    )) HASHROW, ProductID,BankSK ,SourceSystemCode\r\n    FROM DW.Dimproduct WHERE CurrentIndicator = 1 AND SourceSystemCode = 'CCD'\r\n)\r\n\r\n    SELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n    ,ISNULL(SRC.ProductID,TGT.ProductID) AS ProductID\r\n\t,ISNULL(SRC.BankSK,TGT.BankSK) AS BankSK\r\n\t,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\r\n\t,CASE\r\n\t\tWHEN TGT.BankSK IS NULL AND TGT.ProductID IS NULL THEN 'INSERT'\r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n        ELSE NULL END AS RECORD_STATUS\r\nINTO DW.TEMP_DW_DIMPRODUCT_DELTA_CCD\t\r\nFROM TEMP_DW_DIMPRODUCT_SRC SRC\r\nLEFT JOIN TEMP_DW_DIMPRODUCT_TGT\tTGT\r\nON\tSRC.ProductID = TGT.ProductID\r\nAND SRC.BankSK = TGT.BankSK\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR (TGT.ProductID IS NULL AND TGT.BANKSK IS NULL)"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_CCD_3",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_CCD_2",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "DatetoProcessed",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.DatetoProcessed",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "NonQuery",
+							"text": "UPDATE TGT \r\nSET\r\n ValidEndDate = convert(date, DATEADD(day, -1, @DatetoProcessed))\r\n,CurrentIndicator = 0\r\nFROM DW.Dimproduct TGT\r\nJOIN DW.TEMP_DW_DIMPRODUCT_DELTA_CCD DELTA ON DELTA.ProductID = TGT.ProductID  AND DELTA.BankSK = TGT.BankSK AND DELTA.SourceSystemCode = TGT.SourceSystemCode AND  DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN DW.PRODUCT_CCD SRC ON SRC.ProductID = TGT.ProductID AND SRC.BankSK = TGT.BankSK AND SRC.SourceSystemCode = TGT.SourceSystemCode \r\nWHERE TGT.CurrentIndicator = 1 AND TGT.SourceSystemCode = 'CCD';"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_CCD_4",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_CCD_3",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nINSERT INTO DW.Dimproduct(\r\nProductSK\r\n,ProductID\r\n,ProductName\r\n,ProductGroup\r\n,ProductDescription\r\n,FcbsApplication\r\n,BankSK\r\n,BranchSK\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,SourceSystemCode \r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\nSELECT\r\nProductSK\r\n,ProductID\r\n,ProductName\r\n,ProductGroup\r\n,ProductDescription\r\n,FcbsApplication\r\n,BankSK\r\n,BranchSK\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,SourceSystemCode \r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm FROM (\r\nSELECT ROW_NUMBER() OVER(PARTITION BY SRC.ProductID,SRC.BankSK,SRC.SourceSystemCode ORDER BY ValidEndDate DESC) RN\r\n,ProductSK\r\n,SRC.ProductID\r\n,ProductName\r\n,ProductGroup\r\n,ProductDescription\r\n,FcbsApplication\r\n,SRC.BankSK\r\n,BranchSK\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,SRC.SourceSystemCode \r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\nFROM DW.PRODUCT_CCD SRC\r\nJOIN DW.TEMP_DW_DIMPRODUCT_DELTA_CCD DELTA ON DELTA.ProductID = SRC.ProductID  AND DELTA.BankSK = SRC.BankSK AND DELTA.SourceSystemCode = SRC.SourceSystemCode AND  DELTA.RECORD_STATUS IN ('UPDATE','INSERT')\r\n)A WHERE RN = 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_DEP",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_CCD_4",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "DatetoProcessed",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.DatetoProcessed",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "NonQuery",
+							"text": "IF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'PRODUCT_DEP') \r\nBEGIN\r\n   DROP TABLE DW.PRODUCT_DEP;\r\nEND;\r\n\r\nWITH FINANCIALPRODUCTAPPLICATION \r\nAS(\r\n    SELECT DISTINCT A.* FROM BNKM.FinancialProductApplication A\r\n\tJOIN (SELECT FinancialProductId, FinancialInstitutionId,FcbsApplicationId, SourceSystemCode, MAX(Timestamp) Timestamp FROM BNKM.FinancialProductApplication GROUP BY FinancialProductId, FinancialInstitutionId, FcbsApplicationId, SourceSystemCode ) B\r\n\tON A.FinancialProductId = B.FinancialProductId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.SourceSystemCode = B.SourceSystemCode AND A.FcbsApplicationId = B.FcbsApplicationId  AND A.Timestamp = B.Timestamp\r\n    WHERE A.SourceSystemCode = 'DEP'\r\n)\r\n\r\n, PRODUCT_SK\r\nAS(\r\nSELECT ISNULL(MAX(ProductSK),0) RN FROM DW.Dimproduct\r\n)\r\n\r\nSELECT \r\n     ROW_NUMBER() OVER(ORDER BY (SELECT NULL)) + (SELECT RN FROM Product_SK) AS ProductSK, *\r\n     INTO DW.PRODUCT_DEP\r\n     FROM(\r\n        SELECT DISTINCT\r\n    BFP.FinancialProductId AS ProductID\r\n    ,BFP.FinancialProductName AS ProductName\r\n    ,BFPG.ProductGrouping AS ProductGroup\r\n    ,NULL AS ProductDescription\r\n    ,BFPA.FcbsApplicationId AS FcbsApplication\r\n    ,DB.BankSk AS BankSK\r\n    ,Null AS BranchSK\r\n    ,1 AS CurrentIndicator\r\n    ,@DatetoProcessed AS ValidStartDate\r\n    ,'9999-12-31' AS ValidEndDate\r\n    ,BFP.SourceSystemCode AS SourceSystemCode \r\n    ,0 AS WorkFlowId\r\n    ,0 AS TaskRunId\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\n\r\nFROM BNKM.FinancialProduct BFP\r\nLEFT JOIN BNKM.FINANCIALPRODUCTGROUPING BFPG ON BFP.FINANCIALPRODUCTID = BFPG.FINANCIALPRODUCTID AND BFP.FinancialInstitutionId = BFPG.FinancialInstitutionId AND BFP.SourceSystemCode = BFPG.SourceCode\r\nLEFT JOIN FINANCIALPRODUCTAPPLICATION BFPA ON BFP.FINANCIALPRODUCTID = BFPA.FINANCIALPRODUCTID AND BFP.FinancialInstitutionId = BFPA.FinancialInstitutionId AND BFPA.SourceSystemCode = BFP.SourceSystemCode\r\nLEFT JOIN DW.DIMBANK DB ON BFP.FinancialInstitutionId = DB.BANKID\r\nWHERE BFP.SourceSystemCode = 'DEP'\r\n) A"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_DEP_2",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_DEP",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'TEMP_DW_DIMPRODUCT_DELTA_DEP') \r\nBEGIN\r\n   DROP TABLE DW.TEMP_DW_DIMPRODUCT_DELTA_DEP;\r\nEND;\r\n\r\nWITH\r\nTEMP_DW_DIMPRODUCT_SRC\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     convert(varchar,ProductID)\r\n    ,convert(varchar,ProductName)\r\n    ,convert(varchar,ProductGroup)\r\n    ,convert(varchar,ProductDescription)\r\n    ,convert(varchar,FcbsApplication)\r\n    ,convert(INT,BankSK)\r\n    ,convert(INT,BranchSK)\r\n    )) HASHROW, ProductID,BankSK ,SourceSystemCode\r\n    FROM DW.PRODUCT_DEP\r\n)\r\n,\r\nTEMP_DW_DIMPRODUCT_TGT\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     convert(varchar,ProductID)\r\n    ,convert(varchar,ProductName)\r\n    ,convert(varchar,ProductGroup)\r\n    ,convert(varchar,ProductDescription)\r\n    ,convert(varchar,FcbsApplication)\r\n    ,convert(INT,BankSK)\r\n    ,convert(INT,BranchSK)\r\n    )) HASHROW, ProductID,BankSK ,SourceSystemCode\r\n    FROM DW.Dimproduct WHERE CurrentIndicator = 1 AND SourceSystemCode = 'DEP'\r\n)\r\n\r\n    SELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n    ,ISNULL(SRC.ProductID,TGT.ProductID) AS ProductID\r\n\t,ISNULL(SRC.BankSK,TGT.BankSK) AS BankSK\r\n\t,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\r\n\t,CASE\r\n\t\tWHEN TGT.BankSK IS NULL AND TGT.ProductID IS NULL THEN 'INSERT'\r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n        ELSE NULL END AS RECORD_STATUS\r\nINTO DW.TEMP_DW_DIMPRODUCT_DELTA_DEP\t\r\nFROM TEMP_DW_DIMPRODUCT_SRC SRC\r\nLEFT JOIN TEMP_DW_DIMPRODUCT_TGT\tTGT\r\nON\tSRC.ProductID = TGT.ProductID\r\nAND SRC.BankSK = TGT.BankSK\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR (TGT.ProductID IS NULL AND TGT.BANKSK IS NULL)"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_DEP_3",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_DEP_2",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "DatetoProcessed",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.DatetoProcessed",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "NonQuery",
+							"text": "UPDATE TGT \r\nSET\r\n ValidEndDate = convert(date, DATEADD(day, -1, @DatetoProcessed))\r\n,CurrentIndicator = 0\r\nFROM DW.Dimproduct TGT\r\nJOIN DW.TEMP_DW_DIMPRODUCT_DELTA_DEP DELTA ON DELTA.ProductID = TGT.ProductID  AND DELTA.BankSK = TGT.BankSK AND DELTA.SourceSystemCode = TGT.SourceSystemCode AND  DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN DW.PRODUCT_DEP SRC ON SRC.ProductID = TGT.ProductID AND SRC.BankSK = TGT.BankSK AND SRC.SourceSystemCode = TGT.SourceSystemCode \r\nWHERE TGT.CurrentIndicator = 1 AND TGT.SourceSystemCode = 'DEP';"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_DEP_4",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_DEP_3",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nINSERT INTO DW.Dimproduct(\r\nProductSK\r\n,ProductID\r\n,ProductName\r\n,ProductGroup\r\n,ProductDescription\r\n,FcbsApplication\r\n,BankSK\r\n,BranchSK\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,SourceSystemCode \r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\nSELECT\r\nProductSK\r\n,ProductID\r\n,ProductName\r\n,ProductGroup\r\n,ProductDescription\r\n,FcbsApplication\r\n,BankSK\r\n,BranchSK\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,SourceSystemCode \r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm FROM (\r\nSELECT ROW_NUMBER() OVER(PARTITION BY SRC.ProductID,SRC.BankSK,SRC.SourceSystemCode ORDER BY ValidEndDate DESC) RN\r\n,ProductSK\r\n,SRC.ProductID\r\n,ProductName\r\n,ProductGroup\r\n,ProductDescription\r\n,FcbsApplication\r\n,SRC.BankSK\r\n,BranchSK\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,SRC.SourceSystemCode \r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\nFROM DW.PRODUCT_DEP SRC\r\nJOIN DW.TEMP_DW_DIMPRODUCT_DELTA_DEP DELTA ON DELTA.ProductID = SRC.ProductID  AND DELTA.BankSK = SRC.BankSK AND DELTA.SourceSystemCode = SRC.SourceSystemCode AND  DELTA.RECORD_STATUS IN ('UPDATE','INSERT')\r\n)A WHERE RN = 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_LNS",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_DEP_4",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "DatetoProcessed",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.DatetoProcessed",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "NonQuery",
+							"text": "IF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'PRODUCT_LNS') \r\nBEGIN\r\n   DROP TABLE DW.PRODUCT_LNS;\r\nEND;\r\n\r\nWITH FINANCIALPRODUCTAPPLICATION \r\nAS(\r\n    SELECT DISTINCT A.* FROM BNKM.FinancialProductApplication A\r\n\tJOIN (SELECT FinancialProductId, FinancialInstitutionId,FcbsApplicationId, SourceSystemCode, MAX(Timestamp) Timestamp FROM BNKM.FinancialProductApplication GROUP BY FinancialProductId, FinancialInstitutionId, FcbsApplicationId, SourceSystemCode ) B\r\n\tON A.FinancialProductId = B.FinancialProductId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.SourceSystemCode = B.SourceSystemCode AND A.FcbsApplicationId = B.FcbsApplicationId  AND A.Timestamp = B.Timestamp\r\n    WHERE A.SourceSystemCode = 'LNS'\r\n)\r\n\r\n, PRODUCT_SK\r\nAS(\r\nSELECT ISNULL(MAX(ProductSK),0) RN FROM DW.Dimproduct\r\n)\r\n\r\nSELECT \r\n     ROW_NUMBER() OVER(ORDER BY (SELECT NULL)) + (SELECT RN FROM Product_SK) AS ProductSK,* \r\n     INTO DW.PRODUCT_LNS\r\n     FROM (\r\n        SELECT DISTINCT\r\n    BFP.FinancialProductId AS ProductID\r\n    ,BFP.FinancialProductName AS ProductName\r\n    ,BFPG.ProductGrouping AS ProductGroup\r\n    ,NULL AS ProductDescription\r\n    ,BFPA.FcbsApplicationId AS FcbsApplication\r\n    ,DB.BankSk AS BankSK\r\n    ,Null AS BranchSK\r\n    ,1 AS CurrentIndicator\r\n    ,@DatetoProcessed AS ValidStartDate\r\n    ,'9999-12-31' AS ValidEndDate\r\n    ,BFP.SourceSystemCode AS SourceSystemCode \r\n    ,0 AS WorkFlowId\r\n    ,0 AS TaskRunId\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\n\r\nFROM BNKM.FinancialProduct BFP\r\nLEFT JOIN BNKM.FINANCIALPRODUCTGROUPING BFPG ON BFP.FINANCIALPRODUCTID = BFPG.FINANCIALPRODUCTID AND BFP.FinancialInstitutionId = BFPG.FinancialInstitutionId AND BFP.SourceSystemCode = BFPG.SourceCode\r\nLEFT JOIN FINANCIALPRODUCTAPPLICATION BFPA ON BFP.FINANCIALPRODUCTID = BFPA.FINANCIALPRODUCTID AND BFP.FinancialInstitutionId = BFPA.FinancialInstitutionId AND BFPA.SourceSystemCode = BFP.SourceSystemCode\r\nLEFT JOIN DW.DIMBANK DB ON BFP.FinancialInstitutionId = DB.BANKID\r\nWHERE BFP.SourceSystemCode = 'LNS'\r\n) A"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_LNS_2",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_LNS",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'TEMP_DW_DIMPRODUCT_DELTA_LNS') \r\nBEGIN\r\n   DROP TABLE DW.TEMP_DW_DIMPRODUCT_DELTA_LNS;\r\nEND;\r\n\r\nWITH\r\nTEMP_DW_DIMPRODUCT_SRC\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     convert(varchar,ProductID)\r\n    ,convert(varchar,ProductName)\r\n    ,convert(varchar,ProductGroup)\r\n    ,convert(varchar,ProductDescription)\r\n    ,convert(varchar,FcbsApplication)\r\n    ,convert(INT,BankSK)\r\n    ,convert(INT,BranchSK)\r\n    )) HASHROW, ProductID,BankSK ,SourceSystemCode\r\n    FROM DW.PRODUCT_LNS\r\n)\r\n,\r\nTEMP_DW_DIMPRODUCT_TGT\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     convert(varchar,ProductID)\r\n    ,convert(varchar,ProductName)\r\n    ,convert(varchar,ProductGroup)\r\n    ,convert(varchar,ProductDescription)\r\n    ,convert(varchar,FcbsApplication)\r\n    ,convert(INT,BankSK)\r\n    ,convert(INT,BranchSK)\r\n    )) HASHROW, ProductID,BankSK ,SourceSystemCode\r\n    FROM DW.Dimproduct WHERE CurrentIndicator = 1 AND SourceSystemCode = 'LNS'\r\n)\r\n\r\n    SELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n    ,ISNULL(SRC.ProductID,TGT.ProductID) AS ProductID\r\n\t,ISNULL(SRC.BankSK,TGT.BankSK) AS BankSK\r\n\t,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\r\n\t,CASE\r\n\t\tWHEN TGT.BankSK IS NULL AND TGT.ProductID IS NULL THEN 'INSERT'\r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n        ELSE NULL END AS RECORD_STATUS\r\nINTO DW.TEMP_DW_DIMPRODUCT_DELTA_LNS\t\r\nFROM TEMP_DW_DIMPRODUCT_SRC SRC\r\nLEFT JOIN TEMP_DW_DIMPRODUCT_TGT\tTGT\r\nON\tSRC.ProductID = TGT.ProductID\r\nAND SRC.BankSK = TGT.BankSK\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR (TGT.ProductID IS NULL AND TGT.BANKSK IS NULL)"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_LNS_3",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_LNS_2",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "DatetoProcessed",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.DatetoProcessed",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "NonQuery",
+							"text": "UPDATE TGT \r\nSET\r\n ValidEndDate = convert(date, DATEADD(day, -1, @DatetoProcessed))\r\n,CurrentIndicator = 0\r\nFROM DW.Dimproduct TGT\r\nJOIN DW.TEMP_DW_DIMPRODUCT_DELTA_LNS DELTA ON DELTA.ProductID = TGT.ProductID  AND DELTA.BankSK = TGT.BankSK AND DELTA.SourceSystemCode = TGT.SourceSystemCode AND  DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN DW.PRODUCT_LNS SRC ON SRC.ProductID = TGT.ProductID AND SRC.BankSK = TGT.BankSK AND SRC.SourceSystemCode = TGT.SourceSystemCode \r\nWHERE TGT.CurrentIndicator = 1 AND TGT.SourceSystemCode = 'LNS';"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_LNS_4",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_LNS_3",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nINSERT INTO DW.Dimproduct(\r\nProductSK\r\n,ProductID\r\n,ProductName\r\n,ProductGroup\r\n,ProductDescription\r\n,FcbsApplication\r\n,BankSK\r\n,BranchSK\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,SourceSystemCode \r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\nSELECT\r\nProductSK\r\n,ProductID\r\n,ProductName\r\n,ProductGroup\r\n,ProductDescription\r\n,FcbsApplication\r\n,BankSK\r\n,BranchSK\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,SourceSystemCode \r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm FROM (\r\nSELECT ROW_NUMBER() OVER(PARTITION BY SRC.ProductID,SRC.BankSK,SRC.SourceSystemCode ORDER BY ValidEndDate DESC) RN\r\n,ProductSK\r\n,SRC.ProductID\r\n,ProductName\r\n,ProductGroup\r\n,ProductDescription\r\n,FcbsApplication\r\n,SRC.BankSK\r\n,BranchSK\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,SRC.SourceSystemCode \r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\nFROM DW.PRODUCT_LNS SRC\r\nJOIN DW.TEMP_DW_DIMPRODUCT_DELTA_LNS DELTA ON DELTA.ProductID = SRC.ProductID  AND DELTA.BankSK = SRC.BankSK AND DELTA.SourceSystemCode = SRC.SourceSystemCode AND  DELTA.RECORD_STATUS IN ('UPDATE','INSERT')\r\n)A WHERE RN = 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_TRU",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_LNS_4",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "DatetoProcessed",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.DatetoProcessed",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "NonQuery",
+							"text": "IF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'PRODUCT_TRU') \r\nBEGIN\r\n   DROP TABLE DW.PRODUCT_TRU;\r\nEND;\r\n\r\nWITH FINANCIALPRODUCTAPPLICATION \r\nAS(\r\n    SELECT DISTINCT A.* FROM BNKM.FinancialProductApplication A\r\n\tJOIN (SELECT FinancialProductId, FinancialInstitutionId,FcbsApplicationId, SourceSystemCode, MAX(Timestamp) Timestamp FROM BNKM.FinancialProductApplication GROUP BY FinancialProductId, FinancialInstitutionId, FcbsApplicationId, SourceSystemCode ) B\r\n\tON A.FinancialProductId = B.FinancialProductId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.SourceSystemCode = B.SourceSystemCode AND A.FcbsApplicationId = B.FcbsApplicationId  AND A.Timestamp = B.Timestamp\r\n    WHERE A.SourceSystemCode = 'TRU'\r\n)\r\n\r\n, PRODUCT_SK\r\nAS(\r\nSELECT ISNULL(MAX(ProductSK),0) RN FROM DW.Dimproduct\r\n)\r\n\r\nSELECT \r\n     ROW_NUMBER() OVER(ORDER BY (SELECT NULL)) + (SELECT RN FROM Product_SK) AS ProductSK, *  \r\n     INTO DW.PRODUCT_TRU\r\n     FROM(\r\n        SELECT DISTINCT\r\n    BFP.FinancialProductId AS ProductID\r\n    ,BFP.FinancialProductName AS ProductName\r\n    ,BFPG.ProductGrouping AS ProductGroup\r\n    ,NULL AS ProductDescription\r\n    ,BFPA.FcbsApplicationId AS FcbsApplication\r\n    ,DB.BankSk AS BankSK\r\n    ,Null AS BranchSK\r\n    ,1 AS CurrentIndicator\r\n    ,@DatetoProcessed AS ValidStartDate\r\n    ,'9999-12-31' AS ValidEndDate\r\n    ,BFP.SourceSystemCode AS SourceSystemCode \r\n    ,0 AS WorkFlowId\r\n    ,0 AS TaskRunId\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\n\r\nFROM BNKM.FinancialProduct BFP\r\nLEFT JOIN BNKM.FINANCIALPRODUCTGROUPING BFPG ON BFP.FINANCIALPRODUCTID = BFPG.FINANCIALPRODUCTID AND BFP.FinancialInstitutionId = BFPG.FinancialInstitutionId AND BFP.SourceSystemCode = BFPG.SourceCode\r\nLEFT JOIN FINANCIALPRODUCTAPPLICATION BFPA ON BFP.FINANCIALPRODUCTID = BFPA.FINANCIALPRODUCTID AND BFP.FinancialInstitutionId = BFPA.FinancialInstitutionId AND BFPA.SourceSystemCode = BFP.SourceSystemCode\r\nLEFT JOIN DW.DIMBANK DB ON BFP.FinancialInstitutionId = DB.BANKID\r\nWHERE BFP.SourceSystemCode = 'TRU'\r\n)A"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_TRU_2",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_TRU",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'TEMP_DW_DIMPRODUCT_DELTA_TRU') \r\nBEGIN\r\n   DROP TABLE DW.TEMP_DW_DIMPRODUCT_DELTA_TRU;\r\nEND;\r\n\r\nWITH\r\nTEMP_DW_DIMPRODUCT_SRC\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     convert(varchar,ProductID)\r\n    ,convert(varchar,ProductName)\r\n    ,convert(varchar,ProductGroup)\r\n    ,convert(varchar,ProductDescription)\r\n    ,convert(varchar,FcbsApplication)\r\n    ,convert(INT,BankSK)\r\n    ,convert(INT,BranchSK)\r\n    )) HASHROW, ProductID,BankSK ,SourceSystemCode\r\n    FROM DW.PRODUCT_TRU\r\n)\r\n,\r\nTEMP_DW_DIMPRODUCT_TGT\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     convert(varchar,ProductID)\r\n    ,convert(varchar,ProductName)\r\n    ,convert(varchar,ProductGroup)\r\n    ,convert(varchar,ProductDescription)\r\n    ,convert(varchar,FcbsApplication)\r\n    ,convert(INT,BankSK)\r\n    ,convert(INT,BranchSK)\r\n    )) HASHROW, ProductID,BankSK ,SourceSystemCode\r\n    FROM DW.Dimproduct WHERE CurrentIndicator = 1 AND SourceSystemCode = 'TRU'\r\n)\r\n\r\n    SELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n    ,ISNULL(SRC.ProductID,TGT.ProductID) AS ProductID\r\n\t,ISNULL(SRC.BankSK,TGT.BankSK) AS BankSK\r\n\t,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\r\n\t,CASE\r\n\t\tWHEN TGT.BankSK IS NULL AND TGT.ProductID IS NULL THEN 'INSERT'\r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n        ELSE NULL END AS RECORD_STATUS\r\nINTO DW.TEMP_DW_DIMPRODUCT_DELTA_TRU\t\r\nFROM TEMP_DW_DIMPRODUCT_SRC SRC\r\nLEFT JOIN TEMP_DW_DIMPRODUCT_TGT\tTGT\r\nON\tSRC.ProductID = TGT.ProductID\r\nAND SRC.BankSK = TGT.BankSK\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR (TGT.ProductID IS NULL AND TGT.BANKSK IS NULL)"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_TRU_3",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_TRU_2",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "DatetoProcessed",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.DatetoProcessed",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "NonQuery",
+							"text": "UPDATE TGT \r\nSET\r\n ValidEndDate = convert(date, DATEADD(day, -1, @DatetoProcessed))\r\n,CurrentIndicator = 0\r\nFROM DW.Dimproduct TGT\r\nJOIN DW.TEMP_DW_DIMPRODUCT_DELTA_TRU DELTA ON DELTA.ProductID = TGT.ProductID  AND DELTA.BankSK = TGT.BankSK AND DELTA.SourceSystemCode = TGT.SourceSystemCode AND  DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN DW.PRODUCT_TRU SRC ON SRC.ProductID = TGT.ProductID AND SRC.BankSK = TGT.BankSK AND SRC.SourceSystemCode = TGT.SourceSystemCode \r\nWHERE TGT.CurrentIndicator = 1 AND TGT.SourceSystemCode = 'TRU';"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_TRU_4",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_TRU_3",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nINSERT INTO DW.Dimproduct(\r\nProductSK\r\n,ProductID\r\n,ProductName\r\n,ProductGroup\r\n,ProductDescription\r\n,FcbsApplication\r\n,BankSK\r\n,BranchSK\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,SourceSystemCode \r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\nSELECT\r\nProductSK\r\n,ProductID\r\n,ProductName\r\n,ProductGroup\r\n,ProductDescription\r\n,FcbsApplication\r\n,BankSK\r\n,BranchSK\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,SourceSystemCode \r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm FROM (\r\nSELECT ROW_NUMBER() OVER(PARTITION BY SRC.ProductID,SRC.BankSK,SRC.SourceSystemCode ORDER BY ValidEndDate DESC) RN\r\n,ProductSK\r\n,SRC.ProductID\r\n,ProductName\r\n,ProductGroup\r\n,ProductDescription\r\n,FcbsApplication\r\n,SRC.BankSK\r\n,BranchSK\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,SRC.SourceSystemCode \r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\nFROM DW.PRODUCT_TRU SRC\r\nJOIN DW.TEMP_DW_DIMPRODUCT_DELTA_TRU DELTA ON DELTA.ProductID = SRC.ProductID  AND DELTA.BankSK = SRC.BankSK AND DELTA.SourceSystemCode = SRC.SourceSystemCode AND  DELTA.RECORD_STATUS IN ('UPDATE','INSERT')\r\n)A WHERE RN = 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_TRY",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_TRU_4",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "DatetoProcessed",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.DatetoProcessed",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "NonQuery",
+							"text": "IF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'PRODUCT_TRY') \r\nBEGIN\r\n   DROP TABLE DW.PRODUCT_TRY;\r\nEND;\r\n\r\nWITH FINANCIALPRODUCTAPPLICATION \r\nAS(\r\n    SELECT A.* FROM BNKM.FinancialProductApplication A\r\n\tJOIN (SELECT FinancialProductId, FinancialInstitutionId,FcbsApplicationId, SourceSystemCode, MAX(Timestamp) Timestamp FROM BNKM.FinancialProductApplication GROUP BY FinancialProductId, FinancialInstitutionId, FcbsApplicationId, SourceSystemCode ) B\r\n\tON A.FinancialProductId = B.FinancialProductId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.SourceSystemCode = B.SourceSystemCode AND A.FcbsApplicationId = B.FcbsApplicationId  AND A.Timestamp = B.Timestamp\r\n    WHERE A.SourceSystemCode = 'TRY'\r\n)\r\n\r\n, PRODUCT_SK\r\nAS(\r\nSELECT ISNULL(MAX(ProductSK),0) RN FROM DW.Dimproduct\r\n)\r\n\r\nSELECT \r\n     ROW_NUMBER() OVER(ORDER BY (SELECT NULL)) + (SELECT RN FROM Product_SK) AS ProductSK,* \r\n     INTO DW.PRODUCT_TRY\r\n     FROM(\r\n        SELECT DISTINCT\r\n    BFP.FinancialProductId AS ProductID\r\n    ,BFP.FinancialProductName AS ProductName\r\n    ,BFPG.ProductGrouping AS ProductGroup\r\n    ,NULL AS ProductDescription\r\n    ,BFPA.FcbsApplicationId AS FcbsApplication\r\n    ,DB.BankSk AS BankSK\r\n    ,Null AS BranchSK\r\n    ,1 AS CurrentIndicator\r\n    ,@DatetoProcessed AS ValidStartDate\r\n    ,'9999-12-31' AS ValidEndDate\r\n    ,BFP.SourceSystemCode AS SourceSystemCode \r\n    ,0 AS WorkFlowId\r\n    ,0 AS TaskRunId\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\n\r\nFROM BNKM.FinancialProduct BFP\r\nLEFT JOIN BNKM.FINANCIALPRODUCTGROUPING BFPG ON BFP.FINANCIALPRODUCTID = BFPG.FINANCIALPRODUCTID AND BFP.FinancialInstitutionId = BFPG.FinancialInstitutionId AND BFP.SourceSystemCode = BFPG.SourceCode\r\nLEFT JOIN FINANCIALPRODUCTAPPLICATION BFPA ON BFP.FINANCIALPRODUCTID = BFPA.FINANCIALPRODUCTID AND BFP.FinancialInstitutionId = BFPA.FinancialInstitutionId AND BFPA.SourceSystemCode = BFP.SourceSystemCode\r\nLEFT JOIN DW.DIMBANK DB ON BFP.FinancialInstitutionId = DB.BANKID\r\nWHERE BFP.SourceSystemCode = 'TRY'\r\n)A"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_TRY_2",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_TRY",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'TEMP_DW_DIMPRODUCT_DELTA_TRY') \r\nBEGIN\r\n   DROP TABLE DW.TEMP_DW_DIMPRODUCT_DELTA_TRY;\r\nEND;\r\n\r\nWITH\r\nTEMP_DW_DIMPRODUCT_SRC\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     convert(varchar,ProductID)\r\n    ,convert(varchar,ProductName)\r\n    ,convert(varchar,ProductGroup)\r\n    ,convert(varchar,ProductDescription)\r\n    ,convert(varchar,FcbsApplication)\r\n    ,convert(INT,BankSK)\r\n    ,convert(INT,BranchSK)\r\n    )) HASHROW, ProductID,BankSK ,SourceSystemCode\r\n    FROM DW.PRODUCT_TRY\r\n)\r\n,\r\nTEMP_DW_DIMPRODUCT_TGT\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     convert(varchar,ProductID)\r\n    ,convert(varchar,ProductName)\r\n    ,convert(varchar,ProductGroup)\r\n    ,convert(varchar,ProductDescription)\r\n    ,convert(varchar,FcbsApplication)\r\n    ,convert(INT,BankSK)\r\n    ,convert(INT,BranchSK)\r\n    )) HASHROW, ProductID,BankSK ,SourceSystemCode\r\n    FROM DW.Dimproduct WHERE CurrentIndicator = 1 AND SourceSystemCode = 'TRY'\r\n)\r\n\r\n    SELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n    ,ISNULL(SRC.ProductID,TGT.ProductID) AS ProductID\r\n\t,ISNULL(SRC.BankSK,TGT.BankSK) AS BankSK\r\n\t,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\r\n\t,CASE\r\n\t\tWHEN TGT.BankSK IS NULL AND TGT.ProductID IS NULL THEN 'INSERT'\r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n        ELSE NULL END AS RECORD_STATUS\r\nINTO DW.TEMP_DW_DIMPRODUCT_DELTA_TRY\t\r\nFROM TEMP_DW_DIMPRODUCT_SRC SRC\r\nLEFT JOIN TEMP_DW_DIMPRODUCT_TGT\tTGT\r\nON\tSRC.ProductID = TGT.ProductID\r\nAND SRC.BankSK = TGT.BankSK\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR (TGT.ProductID IS NULL AND TGT.BANKSK IS NULL)"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_TRY_3",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_TRY_2",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "DatetoProcessed",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.DatetoProcessed",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "NonQuery",
+							"text": "UPDATE TGT \r\nSET\r\n ValidEndDate = convert(date, DATEADD(day, -1, @DatetoProcessed))\r\n,CurrentIndicator = 0\r\nFROM DW.Dimproduct TGT\r\nJOIN DW.TEMP_DW_DIMPRODUCT_DELTA_TRY DELTA ON DELTA.ProductID = TGT.ProductID  AND DELTA.BankSK = TGT.BankSK AND DELTA.SourceSystemCode = TGT.SourceSystemCode AND  DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN DW.PRODUCT_TRY SRC ON SRC.ProductID = TGT.ProductID AND SRC.BankSK = TGT.BankSK AND SRC.SourceSystemCode = TGT.SourceSystemCode \r\nWHERE TGT.CurrentIndicator = 1 AND TGT.SourceSystemCode = 'TRY';"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_TRY_4",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_TRY_3",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nINSERT INTO DW.Dimproduct(\r\nProductSK\r\n,ProductID\r\n,ProductName\r\n,ProductGroup\r\n,ProductDescription\r\n,FcbsApplication\r\n,BankSK\r\n,BranchSK\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,SourceSystemCode \r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\nSELECT\r\nProductSK\r\n,ProductID\r\n,ProductName\r\n,ProductGroup\r\n,ProductDescription\r\n,FcbsApplication\r\n,BankSK\r\n,BranchSK\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,SourceSystemCode \r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm FROM (\r\nSELECT ROW_NUMBER() OVER(PARTITION BY SRC.ProductID,SRC.BankSK,SRC.SourceSystemCode ORDER BY ValidEndDate DESC) RN\r\n,ProductSK\r\n,SRC.ProductID\r\n,ProductName\r\n,ProductGroup\r\n,ProductDescription\r\n,FcbsApplication\r\n,SRC.BankSK\r\n,BranchSK\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,SRC.SourceSystemCode \r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\nFROM DW.PRODUCT_TRY SRC\r\nJOIN DW.TEMP_DW_DIMPRODUCT_DELTA_TRY DELTA ON DELTA.ProductID = SRC.ProductID  AND DELTA.BankSK = SRC.BankSK AND DELTA.SourceSystemCode = SRC.SourceSystemCode AND  DELTA.RECORD_STATUS IN ('UPDATE','INSERT')\r\n)A WHERE RN = 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_OTH",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_TRY_4",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "DatetoProcessed",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.DatetoProcessed",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "NonQuery",
+							"text": "IF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'PRODUCT_OTH') \r\nBEGIN\r\n   DROP TABLE DW.PRODUCT_OTH;\r\nEND;\r\n\r\nWITH FINANCIALPRODUCTAPPLICATION \r\nAS(\r\n    SELECT DISTINCT A.* FROM BNKM.FinancialProductApplication A\r\n\tJOIN (SELECT FinancialProductId, FinancialInstitutionId,FcbsApplicationId, SourceSystemCode, MAX(Timestamp) Timestamp FROM BNKM.FinancialProductApplication GROUP BY FinancialProductId, FinancialInstitutionId, FcbsApplicationId, SourceSystemCode ) B\r\n\tON A.FinancialProductId = B.FinancialProductId AND A.FinancialInstitutionId = B.FinancialInstitutionId AND A.SourceSystemCode = B.SourceSystemCode AND A.FcbsApplicationId = B.FcbsApplicationId  AND A.Timestamp = B.Timestamp\r\n    WHERE A.SourceSystemCode NOT IN ('CCD','DEP','LNS','TRU','TRY')\r\n)\r\n\r\n, PRODUCT_SK\r\nAS(\r\nSELECT ISNULL(MAX(ProductSK),0) RN FROM DW.Dimproduct\r\n)\r\n\r\nSELECT \r\n     ROW_NUMBER() OVER(ORDER BY (SELECT NULL)) + (SELECT RN FROM Product_SK) AS ProductSK,* \r\n     INTO DW.PRODUCT_OTH\r\n     FROM(\r\n        SELECT DISTINCT\r\n    BFP.FinancialProductId AS ProductID\r\n    ,BFP.FinancialProductName AS ProductName\r\n    ,BFPG.ProductGrouping AS ProductGroup\r\n    ,NULL AS ProductDescription\r\n    ,BFPA.FcbsApplicationId AS FcbsApplication\r\n    ,DB.BankSk AS BankSK\r\n    ,Null AS BranchSK\r\n    ,1 AS CurrentIndicator\r\n    ,@DatetoProcessed AS ValidStartDate\r\n    ,'9999-12-31' AS ValidEndDate\r\n    ,BFP.SourceSystemCode AS SourceSystemCode \r\n    ,0 AS WorkFlowId\r\n    ,0 AS TaskRunId\r\n    ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS datetime) AS InsertDttm\r\n\r\nFROM BNKM.FinancialProduct BFP\r\nLEFT JOIN BNKM.FINANCIALPRODUCTGROUPING BFPG ON BFP.FINANCIALPRODUCTID = BFPG.FINANCIALPRODUCTID AND BFP.FinancialInstitutionId = BFPG.FinancialInstitutionId AND BFP.SourceSystemCode = BFPG.SourceCode\r\nLEFT JOIN FINANCIALPRODUCTAPPLICATION BFPA ON BFP.FINANCIALPRODUCTID = BFPA.FINANCIALPRODUCTID AND BFP.FinancialInstitutionId = BFPA.FinancialInstitutionId AND BFPA.SourceSystemCode = BFP.SourceSystemCode\r\nLEFT JOIN DW.DIMBANK DB ON BFP.FinancialInstitutionId = DB.BANKID\r\nWHERE BFP.SourceSystemCode NOT IN ('CCD','DEP','LNS','TRU','TRY')\r\n)A"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_OTH_2",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_OTH",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nIF EXISTS(SELECT [name] FROM sys.tables WHERE [name] like 'TEMP_DW_DIMPRODUCT_DELTA_OTH') \r\nBEGIN\r\n   DROP TABLE DW.TEMP_DW_DIMPRODUCT_DELTA_OTH;\r\nEND;\r\n\r\nWITH\r\nTEMP_DW_DIMPRODUCT_SRC\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     convert(varchar,ProductID)\r\n    ,convert(varchar,ProductName)\r\n    ,convert(varchar,ProductGroup)\r\n    ,convert(varchar,ProductDescription)\r\n    ,convert(varchar,FcbsApplication)\r\n    ,convert(INT,BankSK)\r\n    ,convert(INT,BranchSK)\r\n    )) HASHROW, ProductID,BankSK ,SourceSystemCode\r\n    FROM DW.PRODUCT_OTH\r\n)\r\n,\r\nTEMP_DW_DIMPRODUCT_TGT\r\nAS(\r\n    SELECT HASHBYTES('MD5',CONCAT(\r\n     convert(varchar,ProductID)\r\n    ,convert(varchar,ProductName)\r\n    ,convert(varchar,ProductGroup)\r\n    ,convert(varchar,ProductDescription)\r\n    ,convert(varchar,FcbsApplication)\r\n    ,convert(INT,BankSK)\r\n    ,convert(INT,BranchSK)\r\n    )) HASHROW, ProductID,BankSK ,SourceSystemCode\r\n    FROM DW.Dimproduct WHERE CurrentIndicator = 1 AND SourceSystemCode NOT IN ('CCD','DEP','LNS','TRU','TRY')\r\n)\r\n\r\n    SELECT\t\r\n\tSRC.HASHROW AS SRC_HR\r\n\t,TGT.HASHROW AS TGT_HR\r\n    ,ISNULL(SRC.ProductID,TGT.ProductID) AS ProductID\r\n\t,ISNULL(SRC.BankSK,TGT.BankSK) AS BankSK\r\n\t,ISNULL(SRC.SourceSystemCode,TGT.SourceSystemCode) AS SourceSystemCode\r\n\t,CASE\r\n\t\tWHEN TGT.BankSK IS NULL AND TGT.ProductID IS NULL THEN 'INSERT'\r\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\r\n        ELSE NULL END AS RECORD_STATUS\r\nINTO DW.TEMP_DW_DIMPRODUCT_DELTA_OTH\t\r\nFROM TEMP_DW_DIMPRODUCT_SRC SRC\r\nLEFT JOIN TEMP_DW_DIMPRODUCT_TGT\tTGT\r\nON\tSRC.ProductID = TGT.ProductID\r\nAND SRC.BankSK = TGT.BankSK\r\nAND SRC.SourceSystemCode = TGT.SourceSystemCode\r\nWHERE SRC.HASHROW <> TGT.HASHROW OR (TGT.ProductID IS NULL AND TGT.BANKSK IS NULL)"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_OTH_3",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_OTH_2",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "DatetoProcessed",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.DatetoProcessed",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "NonQuery",
+							"text": "UPDATE TGT \r\nSET\r\n ValidEndDate = convert(date, DATEADD(day, -1, @DatetoProcessed))\r\n,CurrentIndicator = 0\r\nFROM DW.Dimproduct TGT\r\nJOIN DW.TEMP_DW_DIMPRODUCT_DELTA_OTH DELTA ON DELTA.ProductID = TGT.ProductID  AND DELTA.BankSK = TGT.BankSK AND DELTA.SourceSystemCode = TGT.SourceSystemCode AND  DELTA.RECORD_STATUS = 'UPDATE'\r\nJOIN DW.PRODUCT_OTH SRC ON SRC.ProductID = TGT.ProductID AND SRC.BankSK = TGT.BankSK AND SRC.SourceSystemCode = TGT.SourceSystemCode \r\nWHERE TGT.CurrentIndicator = 1 AND TGT.SourceSystemCode NOT IN ('CCD','DEP','LNS','TRU','TRY');"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "PRDT_OTH_4",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "PRDT_OTH_3",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "TestSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\r\nINSERT INTO DW.Dimproduct(\r\nProductSK\r\n,ProductID\r\n,ProductName\r\n,ProductGroup\r\n,ProductDescription\r\n,FcbsApplication\r\n,BankSK\r\n,BranchSK\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,SourceSystemCode \r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\n)\r\nSELECT\r\nProductSK\r\n,ProductID\r\n,ProductName\r\n,ProductGroup\r\n,ProductDescription\r\n,FcbsApplication\r\n,BankSK\r\n,BranchSK\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,SourceSystemCode \r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm FROM (\r\nSELECT ROW_NUMBER() OVER(PARTITION BY SRC.ProductID,SRC.BankSK,SRC.SourceSystemCode ORDER BY ValidEndDate DESC) RN\r\n,ProductSK\r\n,SRC.ProductID\r\n,ProductName\r\n,ProductGroup\r\n,ProductDescription\r\n,FcbsApplication\r\n,SRC.BankSK\r\n,BranchSK\r\n,CurrentIndicator\r\n,ValidStartDate\r\n,ValidEndDate\r\n,SRC.SourceSystemCode \r\n,WorkFlowId\r\n,TaskRunId\r\n,InsertDttm\r\nFROM DW.PRODUCT_OTH SRC\r\nJOIN DW.TEMP_DW_DIMPRODUCT_DELTA_OTH DELTA ON DELTA.ProductID = SRC.ProductID  AND DELTA.BankSK = SRC.BankSK AND DELTA.SourceSystemCode = SRC.SourceSystemCode AND  DELTA.RECORD_STATUS IN ('UPDATE','INSERT')\r\n)A WHERE RN = 1"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"parameters": {
+			"DatetoProcessed": {
+				"type": "string"
+			}
+		},
+		"folder": {
+			"name": "Deployed_asof_20240201"
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-03-25T07:47:02Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

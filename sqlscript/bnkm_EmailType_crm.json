@@ -1,0 +1,20 @@
+{
+	"name": "bnkm_EmailType_crm",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "CREATE PROCEDURE BNKM.SP_EmailType_CRM\nAS\nBEGIN\n--------------GET DELTA FROM BUSC\nWITH TEMP_BNKM_EmailType\nAS(\n    SELECT\n     BCC.[VALUE] AS EmailTypeId\n    ,BCC.DESCRIPTION  AS EmailTypeTypeName\n    ,BCC.BANK_ID AS FinancialInstitutionId\n    ,BCC.CATEGORYID AS CategoryId\n    ,'CRM' AS SourceSystemCode\n    ,BCCD.RECORD_STATUS\n    ,BCC.INSERT_DTTM AS InsertDttm\nFROM BUSC.CRM_CATEGORIES_DELTA BCCD\nLEFT JOIN BUSC.CRM_CATEGORIES BCC ON BCCD.CATEGORYID = BCC.CATEGORYID AND BCCD.BANK_ID = BCC.BANK_ID AND BCC.ISLATEST = 1 AND CATEGORYTYPE = 'EMAIL_TYPE'\n WHERE BCC.CATEGORYID IS NOT NULL\n)\n\nSELECT * INTO #TEMP_BNKM_EmailType FROM TEMP_BNKM_EmailType;\n\n-------------CHECK IF THERE IS DELTA \nWITH\nTEMP_BNKM_EmailType_SRC\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nEmailTypeId\n,EmailTypeTypeName\n,FinancialInstitutionId \n,CategoryId \n)) HASHROW, EmailTypeId,FinancialInstitutionId, RECORD_STATUS ,CATEGORYID\nFROM #TEMP_BNKM_EmailType WHERE RECORD_STATUS = 'UPDATE'\n)\n,\nTEMP_BNKM_EmailType_TGT\nAS\n(\nSELECT\nHASHBYTES('MD5',CONCAT(\nEmailTypeId\n,EmailTypeTypeName\n,FinancialInstitutionId \n,CategoryId \n)) HASHROW, EmailTypeId, FinancialInstitutionId ,CATEGORYID\nFROM BNKM.EmailType --WHERE SOURCE_CODE = 'CRM'\t\n)\n,\nTEMP_BNKM_EmailType_DELTA\nAS\n(\nSELECT\t\n\tSRC.HASHROW AS SRC_HR\n\t,TGT.HASHROW AS TGT_HR\n\t,ISNULL(SRC.EmailTypeId,TGT.EmailTypeId) AS EmailTypeId\n\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\n    ,ISNULL(SRC.CATEGORYID,TGT.CATEGORYID) AS CATEGORYID\n\t,CASE\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n\tELSE NULL END AS RECORD_STATUS\n\t\nFROM TEMP_BNKM_EmailType_SRC\tSRC\nFULL OUTER JOIN TEMP_BNKM_EmailType_TGT\tTGT\nON\tSRC.EmailTypeId = TGT.EmailTypeId\nAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\nAND SRC.CATEGORYID = TGT.CATEGORYID\nWHERE SRC.HASHROW <> TGT.HASHROW \n)\n\nSELECT * INTO #TEMP_BNKM_EmailType_DELTA FROM TEMP_BNKM_EmailType_DELTA;\n\nUPDATE TGT \nSET\n EmailTypeId  = SRC.EmailTypeId \n,EmailTypeTypeName  = SRC.EmailTypeTypeName \n,CategoryId  = SRC.CategoryId \nFROM BNKM.EmailType TGT\nJOIN #TEMP_BNKM_EmailType_DELTA DELTA ON DELTA.EmailTypeId = TGT.EmailTypeId AND DELTA.FinancialInstitutionId = TGT.FinancialInstitutionId AND DELTA.CATEGORYID = TGT.CATEGORYID AND DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_BNKM_EmailType SRC ON SRC.EmailTypeId = TGT.EmailTypeId AND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId AND SRC.CATEGORYID = TGT.CATEGORYID ;\n \n\n----INSERT TO BNKM\nINSERT INTO BNKM.EmailType\n([EmailTypeId]\n,[EmailTypeTypeName]\n,[EmailTypeDescription]\n,[FinancialInstitutionId]\n,[CategoryId]\n,[SourceSystemCode]\n,[WorkFlowId]\n,[TaskRunId]\n,[InsertDttm] )\n\nSELECT\n     EmailTypeId AS EmailTypeId\n    ,EmailTypeTypeName AS EmailTypeTypeName\n    ,NULL AS EmailTypeDescription\n    ,FinancialInstitutionId AS FinancialInstitutionId\n    ,CategoryId AS CategoryId\n    ,SourceSystemCode AS SourceSystemCode\n    ,0 AS WorkFlowId\n    ,0 AS TaskRunId\n    ,InsertDttm AS InsertDttm\nFROM #TEMP_BNKM_EmailType\nWHERE RECORD_STATUS = 'INSERT'\n\nDROP TABLE #TEMP_BNKM_EmailType;\nDROP TABLE #TEMP_BNKM_EmailType_DELTA;\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

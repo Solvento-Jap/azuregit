@@ -1,0 +1,1088 @@
+{
+	"name": "Workflow_EDS_TRU_NONUITFSEC_Manifest",
+	"properties": {
+		"activities": [
+			{
+				"name": "DaysToIterate",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "Cnt_DaystoIterate",
+					"value": {
+						"value": "@string(add(div(sub(ticks(variables('V_endDate')),ticks(variables('V_startDate'))),864000000000),1))\n",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Build Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "DaysToIterate",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@range(0,int(variables('Cnt_DaystoIterate')) )",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "Append Process Date",
+							"type": "AppendVariable",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "AppendDays",
+								"value": {
+									"value": "@string(addDays(\n    variables('V_startDate'), \n    mul(\n        item(),\n       \n            1\n        \n    )\n))",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Iterate Execution of Process Date Range",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Build Process Date Range",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@variables('AppendDays')",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "OM_SRC_CHECK",
+							"type": "SqlPoolStoredProcedure",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [
+								{
+									"activity": "Condition Success Count",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"sqlPool": {
+								"referenceName": "testSQLpool",
+								"type": "SqlPoolReference"
+							},
+							"typeProperties": {
+								"storedProcedureName": "[OM].[SP_SRC_CHECK]",
+								"storedProcedureParameters": {
+									"task_name": {
+										"value": {
+											"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+											"type": "Expression"
+										},
+										"type": "String"
+									},
+									"process_date": {
+										"value": {
+											"value": "@replace(substring(item(),0,10),'-','')",
+											"type": "Expression"
+										},
+										"type": "String"
+									}
+								}
+							}
+						},
+						{
+							"name": "Manifest_file",
+							"type": "ExecutePipeline",
+							"state": "Inactive",
+							"onInactiveMarkAs": "Succeeded",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"pipeline": {
+									"referenceName": "Workflow_Manifest",
+									"type": "PipelineReference"
+								},
+								"waitOnCompletion": true,
+								"parameters": {
+									"MaxPipelineCalls": 5,
+									"RetryInterval": 120,
+									"DatetoProcessed": {
+										"value": "@substring(item(),0,10)",
+										"type": "Expression"
+									},
+									"tables": {
+										"value": "@concat('''',pipeline().parameters.tables,'''')",
+										"type": "Expression"
+									},
+									"EndTime": "07:00",
+									"src_sys": {
+										"value": "@pipeline().parameters.src_sys",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "Get Success Count",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_STG_EDS_',pipeline().parameters.tables,''',''EDS_STG'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Manifest_file",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "END_TASK_STG_EDS_SUCCESSFUL",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_TRU_NONUITFSEC",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												},
+												"tablename": {
+													"value": {
+														"value": "@concat('D360.STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_STG_EDS_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_TRU_NONUITFSEC",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END_V2]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												},
+												"tablename": {
+													"value": {
+														"value": "@concat('D360.STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "START_TASK_STG_EDS",
+										"type": "SqlPoolStoredProcedure",
+										"state": "Inactive",
+										"onInactiveMarkAs": "Succeeded",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS_STG",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "Onprem",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_STG_EDS",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "OnPremToADLS_EDS_v2",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"DatetoProcessed": {
+													"value": "@replace(substring(item(),0,10),'-','')",
+													"type": "Expression"
+												},
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												},
+												"src_sys": {
+													"value": "@pipeline().parameters.src_sys",
+													"type": "Expression"
+												},
+												"Bank_ID": {
+													"value": "@pipeline().parameters.Bank_id",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "PGP Decrypt",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "Onprem",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "PGPDecrypt_EDS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												},
+												"src_sys": {
+													"value": "@pipeline().parameters.src_sys",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "DecToStg_TRU_NONUITFSEC",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "Truncate Staging",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "DecToStg_EDS_TRU_NONUITFSEC",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"DateToProcess": {
+													"value": "@replace(substring(item(),0,10),'-','')",
+													"type": "Expression"
+												},
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												},
+												"Bank_id": {
+													"value": "@pipeline().parameters.Bank_id",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "MovToArchive",
+										"type": "ExecutePipeline",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_TRU_NONUITFSEC",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "MovToArchive_EDS",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"tables": {
+													"value": "@pipeline().parameters.tables",
+													"type": "Expression"
+												},
+												"src_sys": {
+													"value": "@pipeline().parameters.src_sys",
+													"type": "Expression"
+												}
+											}
+										}
+									},
+									{
+										"name": "Truncate Staging",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "PGP Decrypt",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 3,
+											"retryIntervalInSeconds": 60,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "testSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"type": "NonQuery",
+													"text": {
+														"value": "@concat('TRUNCATE TABLE d360.STG_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													}
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									},
+									{
+										"name": "Hashlog_TRU_NONUITFSEC",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "DecToStg_TRU_NONUITFSEC",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "TestSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"parameters": [
+														{
+															"name": "HashLog_SQL",
+															"type": "String",
+															"value": {
+																"value": "@pipeline().parameters.HashLog_SQL",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														}
+													],
+													"type": "Query",
+													"text": "EXEC sp_executesql @HashLog_SQL;"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "Get Success Count EDS",
+							"type": "Lookup",
+							"dependsOn": [
+								{
+									"activity": "OM_SRC_CHECK",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('SELECT  * FROM [OM].[FUNC_CHECK_STATUS](''TSK_EDS_',pipeline().parameters.tables,''',''EDS'',''',substring(item(),0,10),''')')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_OM",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "TASK_RUN"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "Condition Success Count EDS",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Get Success Count EDS",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@greater(activity('Get Success Count EDS').output.firstrow.CNT_SUCCESSFUL,0)",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "START_TASK_EDS",
+										"type": "SqlPoolStoredProcedure",
+										"state": "Inactive",
+										"onInactiveMarkAs": "Succeeded",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_START]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"process_date": {
+													"value": {
+														"value": "@replace(substring(item(),0,10),'-','')",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_SUCCESSFUL",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_TRU_NONUITFSEC",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "SUCCESSFUL",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "END_TASK_EDS_FAILED",
+										"type": "SqlPoolStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "EDS_TRU_NONUITFSEC",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"sqlPool": {
+											"referenceName": "testSQLpool",
+											"type": "SqlPoolReference"
+										},
+										"typeProperties": {
+											"storedProcedureName": "[OM].[SP_TASK_END]",
+											"storedProcedureParameters": {
+												"task_name": {
+													"value": {
+														"value": "@concat('TSK_EDS_',pipeline().parameters.tables)",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"pipeline_runid": {
+													"value": {
+														"value": "@pipeline().RunId",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"data_layer": {
+													"value": "EDS",
+													"type": "String"
+												},
+												"status": {
+													"value": "FAILED",
+													"type": "String"
+												}
+											}
+										}
+									},
+									{
+										"name": "EDS_TRU_NONUITFSEC",
+										"type": "Script",
+										"dependsOn": [
+											{
+												"activity": "START_TASK_EDS",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"linkedServiceName": {
+											"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+											"type": "LinkedServiceReference",
+											"parameters": {
+												"DBName": "TestSQLPool"
+											}
+										},
+										"typeProperties": {
+											"scripts": [
+												{
+													"parameters": [
+														{
+															"name": "EDS_SQL",
+															"type": "String",
+															"value": {
+																"value": "@pipeline().parameters.EDS_SQL",
+																"type": "Expression"
+															},
+															"direction": "Input"
+														}
+													],
+													"type": "Query",
+													"text": "EXEC sp_executesql @EDS_SQL;"
+												}
+											],
+											"scriptBlockExecutionTimeout": "02:00:00"
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "@concat('select fulldate\nfrom \n    eds.eds_ctl ect\ninner join \n    eds.date_dim dd\n    on \n    ect.',pipeline().parameters.src_sys,'_DATE=dd.previous_business_day\n    and dd.business_day_flag=''Y''')",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"tables": {
+				"type": "string",
+				"defaultValue": "TRU_NONUITFSEC"
+			},
+			"src_sys": {
+				"type": "string",
+				"defaultValue": "TRU"
+			},
+			"Bank_id": {
+				"type": "string",
+				"defaultValue": "CBC01"
+			},
+			"HashLog_SQL": {
+				"type": "string",
+				"defaultValue": "WITH CTE1 AS ( \tSELECT TRY_CAST(COUNT(*) AS NUMERIC(25, 5)) COUNT_tgt \t\t,isnull(sum(FACE_VALUE),0)FACE_VALUE_tgt \t\t,isnull(sum(COUPON_RATE),0)COUPON_RATE_tgt \t\t,isnull(sum(MATURITY_VALUE),0)MATURITY_VALUE_tgt \t\t,isnull(sum(MULT_FAC_NBR),0)MULT_FAC_NBR_tgt \t\t,isnull(sum(UNDL_NO_OF_UNTS),0)UNDL_NO_OF_UNTS_tgt \t\t,isnull(sum(DIV_CASH_AMT),0)DIV_CASH_AMT_tgt \t\t,isnull(sum(DIV_STOCK_UNT),0)DIV_STOCK_UNT_tgt \t\t,isnull(sum(CALL_PRC_AMT),0)CALL_PRC_AMT_tgt \t\t,isnull(sum(OPT_PREM_AMT),0)OPT_PREM_AMT_tgt \t\t,isnull(sum(STRIKE_PRC_AMT),0)STRIKE_PRC_AMT_tgt \t\t,isnull(sum(CONV_PRC_AMT),0)CONV_PRC_AMT_tgt \t\t,isnull(sum(CONV_RATIO_CNT),0)CONV_RATIO_CNT_tgt \t\t,isnull(sum(VOLATILITY),0)VOLATILITY_tgt \t\t,isnull(sum(MINIMUM_INVEST_AMT),0)MINIMUM_INVEST_AMT_tgt \t\t,isnull(sum(MIN_PAYMENT_PER),0)MIN_PAYMENT_PER_tgt \t\t,isnull(sum(CASH_LIMIT),0)CASH_LIMIT_tgt \t\t,isnull(sum(TRADE_MULTIPLES),0)TRADE_MULTIPLES_tgt \t\t,isnull(sum(RED_SINK_FUND),0)RED_SINK_FUND_tgt \t\t,isnull(sum(LAST_DIVIDEND),0)LAST_DIVIDEND_tgt \t\t,isnull(sum(EXPECTED_DIV),0)EXPECTED_DIV_tgt \t\t,isnull(sum(PRICE_VARIATION),0)PRICE_VARIATION_tgt \t\t,isnull(sum(INITCONTRIB),0)INITCONTRIB_tgt \t\t,isnull(sum(MGTSHAREFACEVAL),0)MGTSHAREFACEVAL_tgt \t\t,isnull(sum(MGTSHARE),0)MGTSHARE_tgt \t\t,isnull(sum(MIN_INI_INV_AMT),0)MIN_INI_INV_AMT_tgt \t\t,isnull(sum(MIN_ADD_INV_AMT),0)MIN_ADD_INV_AMT_tgt \t\t,isnull(sum(PLACEMENT_FEE),0)PLACEMENT_FEE_tgt \t\t,isnull(sum(GST),0)GST_tgt \t\t,isnull(sum(UNITPREC),0)UNITPREC_tgt \t\t,isnull(sum(PENALTYPERC),0)PENALTYPERC_tgt \t\t,isnull(sum(COMPCONTRIB),0)COMPCONTRIB_tgt \t\t,isnull(sum(INIT_MARGIN_PER),0)INIT_MARGIN_PER_tgt \t\t,isnull(sum(PARTIAL_RED_PERC),0)PARTIAL_RED_PERC_tgt \t\t,isnull(sum(NAV_PRECISION),0)NAV_PRECISION_tgt \t\t,isnull(sum(MIN_INI_INV_UNITS),0)MIN_INI_INV_UNITS_tgt \t\t,isnull(sum(MIN_ADD_INV_UNITS),0)MIN_ADD_INV_UNITS_tgt \t\t,isnull(sum(VERSION),0)VERSION_tgt \t\t,isnull(sum(TRAIL_FEE),0)TRAIL_FEE_tgt \t\t,isnull(sum(UPFRONT_FEE),0)UPFRONT_FEE_tgt \t\t,isnull(sum(TICK_SIZE),0)TICK_SIZE_tgt \t\t,isnull(sum(PUP),0)PUP_tgt \t\t,isnull(sum(PAST_DUE),0)PAST_DUE_tgt \t\t,isnull(sum(NONPERF_LOAN),0)NONPERF_LOAN_tgt \t\t,isnull(sum(PENAL_INT_RATE),0)PENAL_INT_RATE_tgt \t\t,isnull(sum(PENAL_INT_OFFSET),0)PENAL_INT_OFFSET_tgt \t\t,isnull(sum(PRINC_PENAL_RATE),0)PRINC_PENAL_RATE_tgt \t\t,isnull(sum(PRINC_PAY_PER),0)PRINC_PAY_PER_tgt \t\t,isnull(sum(WITH_HLD_PER),0)WITH_HLD_PER_tgt \t\t,FILE_NAME \t\t,INSERT_DTTM \tFROM d360.STG_EDS_TRU_NONUITFSEC \tWHERE H = 'D' \tGROUP BY FILE_NAME \t\t,INSERT_DTTM \t) \t,CTE2 AS ( \tSELECT TRY_CAST(REPLACE(H, 'F-', '') AS NUMERIC(25, 5)) COUNT_src \t\t,TRY_CAST(FACE_VALUE AS NUMERIC(25,5))FACE_VALUE_src \t\t,TRY_CAST(COUPON_RATE AS NUMERIC(25,5))COUPON_RATE_src \t\t,TRY_CAST(MATURITY_VALUE AS NUMERIC(25,5))MATURITY_VALUE_src \t\t,TRY_CAST(MULT_FAC_NBR AS NUMERIC(25,5))MULT_FAC_NBR_src \t\t,TRY_CAST(UNDL_NO_OF_UNTS AS NUMERIC(25,5))UNDL_NO_OF_UNTS_src \t\t,TRY_CAST(DIV_CASH_AMT AS NUMERIC(25,5))DIV_CASH_AMT_src \t\t,TRY_CAST(DIV_STOCK_UNT AS NUMERIC(25,5))DIV_STOCK_UNT_src \t\t,TRY_CAST(CALL_PRC_AMT AS NUMERIC(25,5))CALL_PRC_AMT_src \t\t,TRY_CAST(OPT_PREM_AMT AS NUMERIC(25,5))OPT_PREM_AMT_src \t\t,TRY_CAST(STRIKE_PRC_AMT AS NUMERIC(25,5))STRIKE_PRC_AMT_src \t\t,TRY_CAST(CONV_PRC_AMT AS NUMERIC(25,5))CONV_PRC_AMT_src \t\t,TRY_CAST(CONV_RATIO_CNT AS NUMERIC(25,5))CONV_RATIO_CNT_src \t\t,TRY_CAST(VOLATILITY AS NUMERIC(25,5))VOLATILITY_src \t\t,TRY_CAST(MINIMUM_INVEST_AMT AS NUMERIC(25,5))MINIMUM_INVEST_AMT_src \t\t,TRY_CAST(MIN_PAYMENT_PER AS NUMERIC(25,5))MIN_PAYMENT_PER_src \t\t,TRY_CAST(CASH_LIMIT AS NUMERIC(25,5))CASH_LIMIT_src \t\t,TRY_CAST(TRADE_MULTIPLES AS NUMERIC(25,5))TRADE_MULTIPLES_src \t\t,TRY_CAST(RED_SINK_FUND AS NUMERIC(25,5))RED_SINK_FUND_src \t\t,TRY_CAST(LAST_DIVIDEND AS NUMERIC(25,5))LAST_DIVIDEND_src \t\t,TRY_CAST(EXPECTED_DIV AS NUMERIC(25,5))EXPECTED_DIV_src \t\t,TRY_CAST(PRICE_VARIATION AS NUMERIC(25,5))PRICE_VARIATION_src \t\t,TRY_CAST(INITCONTRIB AS NUMERIC(25,5))INITCONTRIB_src \t\t,TRY_CAST(MGTSHAREFACEVAL AS NUMERIC(25,5))MGTSHAREFACEVAL_src \t\t,TRY_CAST(MGTSHARE AS NUMERIC(25,5))MGTSHARE_src \t\t,TRY_CAST(MIN_INI_INV_AMT AS NUMERIC(25,5))MIN_INI_INV_AMT_src \t\t,TRY_CAST(MIN_ADD_INV_AMT AS NUMERIC(25,5))MIN_ADD_INV_AMT_src \t\t,TRY_CAST(PLACEMENT_FEE AS NUMERIC(25,5))PLACEMENT_FEE_src \t\t,TRY_CAST(GST AS NUMERIC(25,5))GST_src \t\t,TRY_CAST(UNITPREC AS NUMERIC(25,5))UNITPREC_src \t\t,TRY_CAST(PENALTYPERC AS NUMERIC(25,5))PENALTYPERC_src \t\t,TRY_CAST(COMPCONTRIB AS NUMERIC(25,5))COMPCONTRIB_src \t\t,TRY_CAST(INIT_MARGIN_PER AS NUMERIC(25,5))INIT_MARGIN_PER_src \t\t,TRY_CAST(PARTIAL_RED_PERC AS NUMERIC(25,5))PARTIAL_RED_PERC_src \t\t,TRY_CAST(NAV_PRECISION AS NUMERIC(25,5))NAV_PRECISION_src \t\t,TRY_CAST(MIN_INI_INV_UNITS AS NUMERIC(25,5))MIN_INI_INV_UNITS_src \t\t,TRY_CAST(MIN_ADD_INV_UNITS AS NUMERIC(25,5))MIN_ADD_INV_UNITS_src \t\t,TRY_CAST(VERSION AS NUMERIC(25,5))VERSION_src \t\t,TRY_CAST(TRAIL_FEE AS NUMERIC(25,5))TRAIL_FEE_src \t\t,TRY_CAST(UPFRONT_FEE AS NUMERIC(25,5))UPFRONT_FEE_src \t\t,TRY_CAST(TICK_SIZE AS NUMERIC(25,5))TICK_SIZE_src \t\t,TRY_CAST(PUP AS NUMERIC(25,5))PUP_src \t\t,TRY_CAST(PAST_DUE AS NUMERIC(25,5))PAST_DUE_src \t\t,TRY_CAST(NONPERF_LOAN AS NUMERIC(25,5))NONPERF_LOAN_src \t\t,TRY_CAST(PENAL_INT_RATE AS NUMERIC(25,5))PENAL_INT_RATE_src \t\t,TRY_CAST(PENAL_INT_OFFSET AS NUMERIC(25,5))PENAL_INT_OFFSET_src \t\t,TRY_CAST(PRINC_PENAL_RATE AS NUMERIC(25,5))PRINC_PENAL_RATE_src \t\t,TRY_CAST(PRINC_PAY_PER AS NUMERIC(25,5))PRINC_PAY_PER_src \t\t,TRY_CAST(WITH_HLD_PER AS NUMERIC(25,5))WITH_HLD_PER_src \t\t,FILE_NAME \t\t,INSERT_DTTM \tFROM d360.STG_EDS_TRU_NONUITFSEC \tWHERE H <> 'D' \t)  \t,CTE12 AS ( \tSELECT COUNT_SRC \t\t,COUNT_TGT \t\t,FACE_VALUE_tgt \t\t,COUPON_RATE_tgt \t\t,MATURITY_VALUE_tgt \t\t,MULT_FAC_NBR_tgt \t\t,UNDL_NO_OF_UNTS_tgt \t\t,DIV_CASH_AMT_tgt \t\t,DIV_STOCK_UNT_tgt \t\t,CALL_PRC_AMT_tgt \t\t,OPT_PREM_AMT_tgt \t\t,STRIKE_PRC_AMT_tgt \t\t,CONV_PRC_AMT_tgt \t\t,CONV_RATIO_CNT_tgt \t\t,VOLATILITY_tgt \t\t,MINIMUM_INVEST_AMT_tgt \t\t,MIN_PAYMENT_PER_tgt \t\t,CASH_LIMIT_tgt \t\t,TRADE_MULTIPLES_tgt \t\t,RED_SINK_FUND_tgt \t\t,LAST_DIVIDEND_tgt \t\t,EXPECTED_DIV_tgt \t\t,PRICE_VARIATION_tgt \t\t,INITCONTRIB_tgt \t\t,MGTSHAREFACEVAL_tgt \t\t,MGTSHARE_tgt \t\t,MIN_INI_INV_AMT_tgt \t\t,MIN_ADD_INV_AMT_tgt \t\t,PLACEMENT_FEE_tgt \t\t,GST_tgt \t\t,UNITPREC_tgt \t\t,PENALTYPERC_tgt \t\t,COMPCONTRIB_tgt \t\t,INIT_MARGIN_PER_tgt \t\t,PARTIAL_RED_PERC_tgt \t\t,NAV_PRECISION_tgt \t\t,MIN_INI_INV_UNITS_tgt \t\t,MIN_ADD_INV_UNITS_tgt \t\t,VERSION_tgt \t\t,TRAIL_FEE_tgt \t\t,UPFRONT_FEE_tgt \t\t,TICK_SIZE_tgt \t\t,PUP_tgt \t\t,PAST_DUE_tgt \t\t,NONPERF_LOAN_tgt \t\t,PENAL_INT_RATE_tgt \t\t,PENAL_INT_OFFSET_tgt \t\t,PRINC_PENAL_RATE_tgt \t\t,PRINC_PAY_PER_tgt \t\t,WITH_HLD_PER_tgt \t\t,FACE_VALUE_src \t\t,COUPON_RATE_src \t\t,MATURITY_VALUE_src \t\t,MULT_FAC_NBR_src \t\t,UNDL_NO_OF_UNTS_src \t\t,DIV_CASH_AMT_src \t\t,DIV_STOCK_UNT_src \t\t,CALL_PRC_AMT_src \t\t,OPT_PREM_AMT_src \t\t,STRIKE_PRC_AMT_src \t\t,CONV_PRC_AMT_src \t\t,CONV_RATIO_CNT_src \t\t,VOLATILITY_src \t\t,MINIMUM_INVEST_AMT_src \t\t,MIN_PAYMENT_PER_src \t\t,CASH_LIMIT_src \t\t,TRADE_MULTIPLES_src \t\t,RED_SINK_FUND_src \t\t,LAST_DIVIDEND_src \t\t,EXPECTED_DIV_src \t\t,PRICE_VARIATION_src \t\t,INITCONTRIB_src \t\t,MGTSHAREFACEVAL_src \t\t,MGTSHARE_src \t\t,MIN_INI_INV_AMT_src \t\t,MIN_ADD_INV_AMT_src \t\t,PLACEMENT_FEE_src \t\t,GST_src \t\t,UNITPREC_src \t\t,PENALTYPERC_src \t\t,COMPCONTRIB_src \t\t,INIT_MARGIN_PER_src \t\t,PARTIAL_RED_PERC_src \t\t,NAV_PRECISION_src \t\t,MIN_INI_INV_UNITS_src \t\t,MIN_ADD_INV_UNITS_src \t\t,VERSION_src \t\t,TRAIL_FEE_src \t\t,UPFRONT_FEE_src \t\t,TICK_SIZE_src \t\t,PUP_src \t\t,PAST_DUE_src \t\t,NONPERF_LOAN_src \t\t,PENAL_INT_RATE_src \t\t,PENAL_INT_OFFSET_src \t\t,PRINC_PENAL_RATE_src \t\t,PRINC_PAY_PER_src \t\t,WITH_HLD_PER_src \t\t,A.FILE_NAME \t\t,A.INSERT_DTTM \t\t,TRY_CAST((left(right(A.FILE_NAME, 12), 8)) AS DATE) DATE \tFROM CTE1 A \tJOIN CTE2 B ON A.FILE_NAME = B.FILE_NAME \t\tAND A.INSERT_DTTM = B.INSERT_DTTM \t) INSERT INTO [EDS].[EDS_HASH_LOG_TBL] SELECT FILE_NAME \t,DATE \t,insert_dttm \t,REPLACE(METRICS, '_SRC', '') METRICS \t,SRC \t,TGT FROM ( \tSELECT TRY_CAST(COUNT_SRC AS NUMERIC(25, 5)) COUNT_SRC \t\t,TRY_CAST(COUNT_TGT AS NUMERIC(25, 5)) COUNT_TGT \t\t,TRY_CAST(FACE_VALUE_tgt AS NUMERIC(25,5))FACE_VALUE_tgt \t\t,TRY_CAST(COUPON_RATE_tgt AS NUMERIC(25,5))COUPON_RATE_tgt \t\t,TRY_CAST(MATURITY_VALUE_tgt AS NUMERIC(25,5))MATURITY_VALUE_tgt \t\t,TRY_CAST(MULT_FAC_NBR_tgt AS NUMERIC(25,5))MULT_FAC_NBR_tgt \t\t,TRY_CAST(UNDL_NO_OF_UNTS_tgt AS NUMERIC(25,5))UNDL_NO_OF_UNTS_tgt \t\t,TRY_CAST(DIV_CASH_AMT_tgt AS NUMERIC(25,5))DIV_CASH_AMT_tgt \t\t,TRY_CAST(DIV_STOCK_UNT_tgt AS NUMERIC(25,5))DIV_STOCK_UNT_tgt \t\t,TRY_CAST(CALL_PRC_AMT_tgt AS NUMERIC(25,5))CALL_PRC_AMT_tgt \t\t,TRY_CAST(OPT_PREM_AMT_tgt AS NUMERIC(25,5))OPT_PREM_AMT_tgt \t\t,TRY_CAST(STRIKE_PRC_AMT_tgt AS NUMERIC(25,5))STRIKE_PRC_AMT_tgt \t\t,TRY_CAST(CONV_PRC_AMT_tgt AS NUMERIC(25,5))CONV_PRC_AMT_tgt \t\t,TRY_CAST(CONV_RATIO_CNT_tgt AS NUMERIC(25,5))CONV_RATIO_CNT_tgt \t\t,TRY_CAST(VOLATILITY_tgt AS NUMERIC(25,5))VOLATILITY_tgt \t\t,TRY_CAST(MINIMUM_INVEST_AMT_tgt AS NUMERIC(25,5))MINIMUM_INVEST_AMT_tgt \t\t,TRY_CAST(MIN_PAYMENT_PER_tgt AS NUMERIC(25,5))MIN_PAYMENT_PER_tgt \t\t,TRY_CAST(CASH_LIMIT_tgt AS NUMERIC(25,5))CASH_LIMIT_tgt \t\t,TRY_CAST(TRADE_MULTIPLES_tgt AS NUMERIC(25,5))TRADE_MULTIPLES_tgt \t\t,TRY_CAST(RED_SINK_FUND_tgt AS NUMERIC(25,5))RED_SINK_FUND_tgt \t\t,TRY_CAST(LAST_DIVIDEND_tgt AS NUMERIC(25,5))LAST_DIVIDEND_tgt \t\t,TRY_CAST(EXPECTED_DIV_tgt AS NUMERIC(25,5))EXPECTED_DIV_tgt \t\t,TRY_CAST(PRICE_VARIATION_tgt AS NUMERIC(25,5))PRICE_VARIATION_tgt \t\t,TRY_CAST(INITCONTRIB_tgt AS NUMERIC(25,5))INITCONTRIB_tgt \t\t,TRY_CAST(MGTSHAREFACEVAL_tgt AS NUMERIC(25,5))MGTSHAREFACEVAL_tgt \t\t,TRY_CAST(MGTSHARE_tgt AS NUMERIC(25,5))MGTSHARE_tgt \t\t,TRY_CAST(MIN_INI_INV_AMT_tgt AS NUMERIC(25,5))MIN_INI_INV_AMT_tgt \t\t,TRY_CAST(MIN_ADD_INV_AMT_tgt AS NUMERIC(25,5))MIN_ADD_INV_AMT_tgt \t\t,TRY_CAST(PLACEMENT_FEE_tgt AS NUMERIC(25,5))PLACEMENT_FEE_tgt \t\t,TRY_CAST(GST_tgt AS NUMERIC(25,5))GST_tgt \t\t,TRY_CAST(UNITPREC_tgt AS NUMERIC(25,5))UNITPREC_tgt \t\t,TRY_CAST(PENALTYPERC_tgt AS NUMERIC(25,5))PENALTYPERC_tgt \t\t,TRY_CAST(COMPCONTRIB_tgt AS NUMERIC(25,5))COMPCONTRIB_tgt \t\t,TRY_CAST(INIT_MARGIN_PER_tgt AS NUMERIC(25,5))INIT_MARGIN_PER_tgt \t\t,TRY_CAST(PARTIAL_RED_PERC_tgt AS NUMERIC(25,5))PARTIAL_RED_PERC_tgt \t\t,TRY_CAST(NAV_PRECISION_tgt AS NUMERIC(25,5))NAV_PRECISION_tgt \t\t,TRY_CAST(MIN_INI_INV_UNITS_tgt AS NUMERIC(25,5))MIN_INI_INV_UNITS_tgt \t\t,TRY_CAST(MIN_ADD_INV_UNITS_tgt AS NUMERIC(25,5))MIN_ADD_INV_UNITS_tgt \t\t,TRY_CAST(VERSION_tgt AS NUMERIC(25,5))VERSION_tgt \t\t,TRY_CAST(TRAIL_FEE_tgt AS NUMERIC(25,5))TRAIL_FEE_tgt \t\t,TRY_CAST(UPFRONT_FEE_tgt AS NUMERIC(25,5))UPFRONT_FEE_tgt \t\t,TRY_CAST(TICK_SIZE_tgt AS NUMERIC(25,5))TICK_SIZE_tgt \t\t,TRY_CAST(PUP_tgt AS NUMERIC(25,5))PUP_tgt \t\t,TRY_CAST(PAST_DUE_tgt AS NUMERIC(25,5))PAST_DUE_tgt \t\t,TRY_CAST(NONPERF_LOAN_tgt AS NUMERIC(25,5))NONPERF_LOAN_tgt \t\t,TRY_CAST(PENAL_INT_RATE_tgt AS NUMERIC(25,5))PENAL_INT_RATE_tgt \t\t,TRY_CAST(PENAL_INT_OFFSET_tgt AS NUMERIC(25,5))PENAL_INT_OFFSET_tgt \t\t,TRY_CAST(PRINC_PENAL_RATE_tgt AS NUMERIC(25,5))PRINC_PENAL_RATE_tgt \t\t,TRY_CAST(PRINC_PAY_PER_tgt AS NUMERIC(25,5))PRINC_PAY_PER_tgt \t\t,TRY_CAST(WITH_HLD_PER_tgt AS NUMERIC(25,5))WITH_HLD_PER_tgt \t\t,TRY_CAST(FACE_VALUE_src AS NUMERIC(25,5))FACE_VALUE_src \t\t,TRY_CAST(COUPON_RATE_src AS NUMERIC(25,5))COUPON_RATE_src \t\t,TRY_CAST(MATURITY_VALUE_src AS NUMERIC(25,5))MATURITY_VALUE_src \t\t,TRY_CAST(MULT_FAC_NBR_src AS NUMERIC(25,5))MULT_FAC_NBR_src \t\t,TRY_CAST(UNDL_NO_OF_UNTS_src AS NUMERIC(25,5))UNDL_NO_OF_UNTS_src \t\t,TRY_CAST(DIV_CASH_AMT_src AS NUMERIC(25,5))DIV_CASH_AMT_src \t\t,TRY_CAST(DIV_STOCK_UNT_src AS NUMERIC(25,5))DIV_STOCK_UNT_src \t\t,TRY_CAST(CALL_PRC_AMT_src AS NUMERIC(25,5))CALL_PRC_AMT_src \t\t,TRY_CAST(OPT_PREM_AMT_src AS NUMERIC(25,5))OPT_PREM_AMT_src \t\t,TRY_CAST(STRIKE_PRC_AMT_src AS NUMERIC(25,5))STRIKE_PRC_AMT_src \t\t,TRY_CAST(CONV_PRC_AMT_src AS NUMERIC(25,5))CONV_PRC_AMT_src \t\t,TRY_CAST(CONV_RATIO_CNT_src AS NUMERIC(25,5))CONV_RATIO_CNT_src \t\t,TRY_CAST(VOLATILITY_src AS NUMERIC(25,5))VOLATILITY_src \t\t,TRY_CAST(MINIMUM_INVEST_AMT_src AS NUMERIC(25,5))MINIMUM_INVEST_AMT_src \t\t,TRY_CAST(MIN_PAYMENT_PER_src AS NUMERIC(25,5))MIN_PAYMENT_PER_src \t\t,TRY_CAST(CASH_LIMIT_src AS NUMERIC(25,5))CASH_LIMIT_src \t\t,TRY_CAST(TRADE_MULTIPLES_src AS NUMERIC(25,5))TRADE_MULTIPLES_src \t\t,TRY_CAST(RED_SINK_FUND_src AS NUMERIC(25,5))RED_SINK_FUND_src \t\t,TRY_CAST(LAST_DIVIDEND_src AS NUMERIC(25,5))LAST_DIVIDEND_src \t\t,TRY_CAST(EXPECTED_DIV_src AS NUMERIC(25,5))EXPECTED_DIV_src \t\t,TRY_CAST(PRICE_VARIATION_src AS NUMERIC(25,5))PRICE_VARIATION_src \t\t,TRY_CAST(INITCONTRIB_src AS NUMERIC(25,5))INITCONTRIB_src \t\t,TRY_CAST(MGTSHAREFACEVAL_src AS NUMERIC(25,5))MGTSHAREFACEVAL_src \t\t,TRY_CAST(MGTSHARE_src AS NUMERIC(25,5))MGTSHARE_src \t\t,TRY_CAST(MIN_INI_INV_AMT_src AS NUMERIC(25,5))MIN_INI_INV_AMT_src \t\t,TRY_CAST(MIN_ADD_INV_AMT_src AS NUMERIC(25,5))MIN_ADD_INV_AMT_src \t\t,TRY_CAST(PLACEMENT_FEE_src AS NUMERIC(25,5))PLACEMENT_FEE_src \t\t,TRY_CAST(GST_src AS NUMERIC(25,5))GST_src \t\t,TRY_CAST(UNITPREC_src AS NUMERIC(25,5))UNITPREC_src \t\t,TRY_CAST(PENALTYPERC_src AS NUMERIC(25,5))PENALTYPERC_src \t\t,TRY_CAST(COMPCONTRIB_src AS NUMERIC(25,5))COMPCONTRIB_src \t\t,TRY_CAST(INIT_MARGIN_PER_src AS NUMERIC(25,5))INIT_MARGIN_PER_src \t\t,TRY_CAST(PARTIAL_RED_PERC_src AS NUMERIC(25,5))PARTIAL_RED_PERC_src \t\t,TRY_CAST(NAV_PRECISION_src AS NUMERIC(25,5))NAV_PRECISION_src \t\t,TRY_CAST(MIN_INI_INV_UNITS_src AS NUMERIC(25,5))MIN_INI_INV_UNITS_src \t\t,TRY_CAST(MIN_ADD_INV_UNITS_src AS NUMERIC(25,5))MIN_ADD_INV_UNITS_src \t\t,TRY_CAST(VERSION_src AS NUMERIC(25,5))VERSION_src \t\t,TRY_CAST(TRAIL_FEE_src AS NUMERIC(25,5))TRAIL_FEE_src \t\t,TRY_CAST(UPFRONT_FEE_src AS NUMERIC(25,5))UPFRONT_FEE_src \t\t,TRY_CAST(TICK_SIZE_src AS NUMERIC(25,5))TICK_SIZE_src \t\t,TRY_CAST(PUP_src AS NUMERIC(25,5))PUP_src \t\t,TRY_CAST(PAST_DUE_src AS NUMERIC(25,5))PAST_DUE_src \t\t,TRY_CAST(NONPERF_LOAN_src AS NUMERIC(25,5))NONPERF_LOAN_src \t\t,TRY_CAST(PENAL_INT_RATE_src AS NUMERIC(25,5))PENAL_INT_RATE_src \t\t,TRY_CAST(PENAL_INT_OFFSET_src AS NUMERIC(25,5))PENAL_INT_OFFSET_src \t\t,TRY_CAST(PRINC_PENAL_RATE_src AS NUMERIC(25,5))PRINC_PENAL_RATE_src \t\t,TRY_CAST(PRINC_PAY_PER_src AS NUMERIC(25,5))PRINC_PAY_PER_src \t\t,TRY_CAST(WITH_HLD_PER_src AS NUMERIC(25,5))WITH_HLD_PER_src \t\t,FILE_NAME \t\t,INSERT_DTTM \t\t,[DATE] \tFROM CTE12 \t) pvt UNPIVOT(SRC FOR METRICS IN ( \t\tCOUNT_SRC \t\t,FACE_VALUE_src \t\t,COUPON_RATE_src \t\t,MATURITY_VALUE_src \t\t,MULT_FAC_NBR_src \t\t,UNDL_NO_OF_UNTS_src \t\t,DIV_CASH_AMT_src \t\t,DIV_STOCK_UNT_src \t\t,CALL_PRC_AMT_src \t\t,OPT_PREM_AMT_src \t\t,STRIKE_PRC_AMT_src \t\t,CONV_PRC_AMT_src \t\t,CONV_RATIO_CNT_src \t\t,VOLATILITY_src \t\t,MINIMUM_INVEST_AMT_src \t\t,MIN_PAYMENT_PER_src \t\t,CASH_LIMIT_src \t\t,TRADE_MULTIPLES_src \t\t,RED_SINK_FUND_src \t\t,LAST_DIVIDEND_src \t\t,EXPECTED_DIV_src \t\t,PRICE_VARIATION_src \t\t,INITCONTRIB_src \t\t,MGTSHAREFACEVAL_src \t\t,MGTSHARE_src \t\t,MIN_INI_INV_AMT_src \t\t,MIN_ADD_INV_AMT_src \t\t,PLACEMENT_FEE_src \t\t,GST_src \t\t,UNITPREC_src \t\t,PENALTYPERC_src \t\t,COMPCONTRIB_src \t\t,INIT_MARGIN_PER_src \t\t,PARTIAL_RED_PERC_src \t\t,NAV_PRECISION_src \t\t,MIN_INI_INV_UNITS_src \t\t,MIN_ADD_INV_UNITS_src \t\t,VERSION_src \t\t,TRAIL_FEE_src \t\t,UPFRONT_FEE_src \t\t,TICK_SIZE_src \t\t,PUP_src \t\t,PAST_DUE_src \t\t,NONPERF_LOAN_src \t\t,PENAL_INT_RATE_src \t\t,PENAL_INT_OFFSET_src \t\t,PRINC_PENAL_RATE_src \t\t,PRINC_PAY_PER_src \t\t,WITH_HLD_PER_src \t\t\t)) pvt1 UNPIVOT(TGT FOR METRICS2 IN ( \t\tCOUNT_TGT \t\t,FACE_VALUE_tgt \t\t,COUPON_RATE_tgt \t\t,MATURITY_VALUE_tgt \t\t,MULT_FAC_NBR_tgt \t\t,UNDL_NO_OF_UNTS_tgt \t\t,DIV_CASH_AMT_tgt \t\t,DIV_STOCK_UNT_tgt \t\t,CALL_PRC_AMT_tgt \t\t,OPT_PREM_AMT_tgt \t\t,STRIKE_PRC_AMT_tgt \t\t,CONV_PRC_AMT_tgt \t\t,CONV_RATIO_CNT_tgt \t\t,VOLATILITY_tgt \t\t,MINIMUM_INVEST_AMT_tgt \t\t,MIN_PAYMENT_PER_tgt \t\t,CASH_LIMIT_tgt \t\t,TRADE_MULTIPLES_tgt \t\t,RED_SINK_FUND_tgt \t\t,LAST_DIVIDEND_tgt \t\t,EXPECTED_DIV_tgt \t\t,PRICE_VARIATION_tgt \t\t,INITCONTRIB_tgt \t\t,MGTSHAREFACEVAL_tgt \t\t,MGTSHARE_tgt \t\t,MIN_INI_INV_AMT_tgt \t\t,MIN_ADD_INV_AMT_tgt \t\t,PLACEMENT_FEE_tgt \t\t,GST_tgt \t\t,UNITPREC_tgt \t\t,PENALTYPERC_tgt \t\t,COMPCONTRIB_tgt \t\t,INIT_MARGIN_PER_tgt \t\t,PARTIAL_RED_PERC_tgt \t\t,NAV_PRECISION_tgt \t\t,MIN_INI_INV_UNITS_tgt \t\t,MIN_ADD_INV_UNITS_tgt \t\t,VERSION_tgt \t\t,TRAIL_FEE_tgt \t\t,UPFRONT_FEE_tgt \t\t,TICK_SIZE_tgt \t\t,PUP_tgt \t\t,PAST_DUE_tgt \t\t,NONPERF_LOAN_tgt \t\t,PENAL_INT_RATE_tgt \t\t,PENAL_INT_OFFSET_tgt \t\t,PRINC_PENAL_RATE_tgt \t\t,PRINC_PAY_PER_tgt \t\t,WITH_HLD_PER_tgt \t\t\t)) pvt2 WHERE REPLACE(METRICS, '_SRC', '') = REPLACE(METRICS2, '_TGT', '');"
+			},
+			"EDS_SQL": {
+				"type": "string",
+				"defaultValue": "BEGIN TRY \tUPDATE EDS.TRU_NONUITFSEC \tSET [ISLATEST] = 0 \t\t,[SCD_END_DATE] = ( \t\t\tSELECT PREVIOUS_BUSINESS_DAY \t\t\tFROM EDS.DATE_DIM \t\t\tINNER JOIN ( \t\t\t\tSELECT TOP 1 CAST(LEFT(RIGHT(FILE_NAME, 12), 8) AS INTEGER) MX_DT \t\t\t\tFROM D360.STG_EDS_TRU_NONUITFSEC \t\t\t\t) MX_DT_TBL ON DATESK = MX_DT \t\t\t) \tFROM EDS.TRU_NONUITFSEC tgt \tLEFT JOIN D360.STG_EDS_TRU_NONUITFSEC src  \t\tON src.[SEC_IDENTIFIER] COLLATE Latin1_General_CS_AS = tgt.[SEC_IDENTIFIER] COLLATE Latin1_General_CS_AS \t\tAND src.[BR_CD] = tgt.[BR_CD] \t\tAND src.[H] = 'D' \tWHERE tgt.[ISLATEST] = 1 \t\tAND HASHBYTES('SHA2_256', CONCAT_WS(N'|', \t\tsrc.[SUB_ASSET_CD], \t\tsrc.[SUB_PROD_CD], \t\tsrc.[SUB_SECTOR_CD], \t\tsrc.[SEC_IDENTIFIER], \t\tsrc.[SEC_NAME], \t\tsrc.[ISSUER], \t\tsrc.[FACE_VALUE], \t\tsrc.[CCY_CD], \t\tformat(src.[MATURITY_DATE],'yyyy-MM-dd HH:mm:ss'), \t\tsrc.[REMARKS], \t\tsrc.[COUPON_RATE], \t\tsrc.[STATUS], \t\tsrc.[MAKER_ID], \t\tformat(src.[MAKER_DT],'yyyy-MM-dd HH:mm:ss'), \t\tsrc.[AUTH_ID], \t\tformat(src.[AUTH_DT],'yyyy-MM-dd HH:mm:ss'), \t\tsrc.[SEC_SEQ], \t\tsrc.[BR_CD], \t\tsrc.[PROD_CATEGORY_CODE], \t\tsrc.[MKT_SERIES], \t\tsrc.[SEC_RISK], \t\tsrc.[MATURITY_VALUE], \t\tsrc.[RECMND_ASSET], \t\tsrc.[FIN_INSTR_ID_TYPE_CD], \t\tsrc.[INDS_CLAS_CD], \t\tsrc.[MULT_FAC_NBR], \t\tsrc.[MKT_PRC_SRC_CD], \t\tsrc.[FIN_INSTR_STA_CD], \t\tsrc.[OPT_PUT_CALL_IND], \t\tsrc.[OPT_TYPE_CD], \t\tsrc.[UNDL_FIN_INSTR_ID], \t\tsrc.[UNDL_NO_OF_UNTS], \t\tsrc.[DIV_CASH_AMT], \t\tsrc.[DIV_CCY_CD], \t\tsrc.[DIV_FED_TAX_EXMP_IND], \t\tsrc.[DIV_STOCK_UNT], \t\tsrc.[DIV_TYPE_CD], \t\tsrc.[MOODYS_RTNG_CD], \t\tsrc.[SNP_RTNG_CD], \t\tsrc.[FIN_INSTR_ISIN_ID], \t\tsrc.[FIN_INSTR_SEDOL_ID], \t\tsrc.[FIN_INSTR_CUSIP_ID], \t\tsrc.[FIN_INSTR_TLKRS_ID], \t\tsrc.[CALL_PRC_AMT], \t\tsrc.[OPT_PREM_AMT], \t\tsrc.[STRIKE_PRC_AMT], \t\tsrc.[CONV_PRC_AMT], \t\tsrc.[CONV_PRC_CCY_CD], \t\tformat(src.[NEXT_CONV_DT],'yyyy-MM-dd HH:mm:ss'), \t\tsrc.[CONV_RATIO_CNT], \t\tformat(src.[MKT_PRC_TS],'yyyy-MM-dd HH:mm:ss'), \t\tformat(src.[NEXT_INT_PYMT_DT],'yyyy-MM-dd HH:mm:ss'), \t\tformat(src.[LAST_INT_PYMT_DT],'yyyy-MM-dd HH:mm:ss'), \t\tformat(src.[DIV_PAID_DT],'yyyy-MM-dd HH:mm:ss'), \t\tformat(src.[DIV_RECORD_DT],'yyyy-MM-dd HH:mm:ss'), \t\tformat(src.[CALL_DT],'yyyy-MM-dd HH:mm:ss'), \t\tformat(src.[FIN_INSTR_EXPR_DT],'yyyy-MM-dd HH:mm:ss'), \t\tsrc.[DMCL_CTRY_CD], \t\tsrc.[ISS_CTRY_CD], \t\tsrc.[INT_PYMT_FREQ_DESC], \t\tformat(src.[LAST_ISSUED_DT],'yyyy-MM-dd HH:mm:ss'), \t\tformat(src.[INT_PYMT_STRT_DT],'yyyy-MM-dd HH:mm:ss'), \t\tsrc.[INT_PYMT_CALC_METH_CD], \t\tsrc.[FIN_INSTR_SHORT_DESC], \t\tsrc.[FREEFLOAT], \t\tsrc.[VOLATILITY], \t\tsrc.[VOLUME], \t\tsrc.[MARKETCAP], \t\tsrc.[COUPON_FREQ], \t\tsrc.[EXT_SOURCE], \t\tformat(src.[COUPON_DATE],'yyyy-MM-dd HH:mm:ss'), \t\tsrc.[MEASUREMENT], \t\tsrc.[MKT_SYMBOL], \t\tsrc.[MARKET], \t\tsrc.[MARKET_GROUP], \t\tsrc.[RISK_PROFILE], \t\tsrc.[MINIMUM_INVEST_AMT], \t\tformat(src.[ISSUE_DATE],'yyyy-MM-dd HH:mm:ss'), \t\tsrc.[EXTERNAL_IDENTIFIER], \t\tsrc.[MIN_PAYMENT_PER], \t\tsrc.[CASH_LIMIT], \t\tsrc.[TRADE_MULTIPLES], \t\tsrc.[RED_SINK_FUND], \t\tsrc.[RES_MATURITY], \t\tsrc.[ISSUER_TYPE], \t\tsrc.[COLLATERAL_TYPE], \t\tsrc.[CONVERTABLE], \t\tsrc.[CONVER_SEC], \t\tsrc.[EMBD_OPTION], \t\tsrc.[FLOAT_TYPE], \t\tsrc.[MAT_FEATURE], \t\tsrc.[PRICE_CONV], \t\tsrc.[PRIORITY], \t\tsrc.[RED_TYPE], \t\tsrc.[SHAR_COMP], \t\tsrc.[SHAR_BOARD_APPR], \t\tsrc.[AMORTIZABLE], \t\tsrc.[AMORTIZ_MTHD], \t\tsrc.[SECTOR], \t\tsrc.[BDAY_CONV], \t\tformat(src.[REDMPT_SCHDUL],'yyyy-MM-dd HH:mm:ss'), \t\tsrc.[PAYMNT_PRIRTY], \t\tsrc.[TERM_PLAN_TYPE], \t\tsrc.[BLOOM_TICR], \t\tsrc.[COMMON_CD], \t\tsrc.[EPIC_CD], \t\tsrc.[FIT_RTNG_CD], \t\tsrc.[ICRA_RTNG_CD], \t\tsrc.[CRISIL_RTNG_CD], \t\tsrc.[COUPON_TYPE], \t\tsrc.[INT_TYPE], \t\tsrc.[LAST_DIVIDEND], \t\tsrc.[EXPECTED_DIV], \t\tformat(src.[LAST_DIV_DT],'yyyy-MM-dd HH:mm:ss'), \t\tsrc.[PRICE_VARIATION], \t\tsrc.[SHARECLASS], \t\tsrc.[FUNDSUBCAT], \t\tsrc.[FUNDSTATUS], \t\tsrc.[DISTTYPE], \t\tsrc.[TRUNCFLAG], \t\tsrc.[FUNDCUTOFFIST], \t\tsrc.[FUNDCUTOFF], \t\tsrc.[BUSCALFLAG], \t\tsrc.[INITCONTRIB], \t\tsrc.[MGTSHAREISSSTAT], \t\tsrc.[MGTSHAREFACEVAL], \t\tsrc.[MGTSHAREAMTPERC], \t\tsrc.[MGTSHARE], \t\tsrc.[CORRBANKNAME], \t\tsrc.[CUSTODIAN], \t\tsrc.[DIST_CAPITAL], \t\tsrc.[INVEST_PROFILE], \t\tsrc.[MIN_INI_INV_AMT], \t\tsrc.[MIN_ADD_INV_AMT], \t\tsrc.[PLACEMENT_FEE], \t\tsrc.[GST], \t\tsrc.[UNITPREC], \t\tsrc.[TRADEDBY], \t\tsrc.[SEC_SHORT_NAME], \t\tsrc.[CORRBANKSWIFT], \t\tsrc.[CORRBANKACNO], \t\tsrc.[CORRBANKCLCD], \t\tsrc.[FUNDHOUSECD], \t\tsrc.[PENALTYPERC], \t\tformat(src.[CUSTPAYBYDT],'yyyy-MM-dd HH:mm:ss'), \t\tformat(src.[FUNDHDUEDT],'yyyy-MM-dd HH:mm:ss'), \t\tsrc.[DAYCCONV], \t\tsrc.[COMPCONTRIB], \t\tsrc.[UNDER_SECY], \t\tformat(src.[EXP_DATE],'yyyy-MM-dd HH:mm:ss'), \t\tsrc.[INIT_MARGIN_PER], \t\tsrc.[CONTRACT_SIZE], \t\tsrc.[ISLAMIC], \t\tsrc.[EXT_ID], \t\tsrc.[PRIN_PROTECT], \t\tsrc.[PRIN_PROTECT_LVL], \t\tsrc.[REDEMPTION_TERMS], \t\tsrc.[PARTIAL_RED_PERC], \t\tformat(src.[DATE_PARTIAL_RED],'yyyy-MM-dd HH:mm:ss'), \t\tsrc.[FUND_CATEGORY], \t\tsrc.[NAV_PRECISION], \t\tsrc.[MIN_INI_INV_UNITS], \t\tsrc.[MIN_ADD_INV_UNITS], \t\tsrc.[NAV_UPLOAD_FREQ], \t\tsrc.[CUSTODIAN_AC_NO], \t\tsrc.[VERSION], \t\tsrc.[IS_FUND], \t\tsrc.[TRAIL_FEE], \t\tsrc.[UPFRONT_FEE], \t\tsrc.[SWCHALLWD], \t\tsrc.[RETMF], \t\tsrc.[FUNDFAMILY], \t\tsrc.[PURITY], \t\tsrc.[PROPRIETARY_FUND], \t\tsrc.[NAV_DAY], \t\tsrc.[EXT_SEC_PARTY_CD], \t\tsrc.[TICK_SIZE], \t\tsrc.[PUP], \t\tsrc.[PAST_DUE], \t\tsrc.[NONPERF_LOAN], \t\tsrc.[PROVISION], \t\tsrc.[PN_STATUS], \t\tsrc.[PENAL_INT_RATE], \t\tsrc.[PENAL_INT_OFFSET], \t\tsrc.[PRINCPAY_FREQ], \t\tsrc.[PRINCPAY_TYPE], \t\tsrc.[COMPOUND_FREQ], \t\tsrc.[PRINC_PENAL_RATE], \t\tsrc.[PRINC_PAY_PER], \t\tsrc.[WITH_HLD_PER], \t\tsrc.[PAY_STATUS], \t\tsrc.[TAX_WITHHLD_BY], \t\tsrc.[LOAN_PURPOSE], \t\tsrc.[UNDER_LITIGATION])) \t\t<>  \t\tHASHBYTES('SHA2_256', CONCAT_WS(N'|', \t\ttgt.[SUB_ASSET_CD], \t\ttgt.[SUB_PROD_CD], \t\ttgt.[SUB_SECTOR_CD], \t\ttgt.[SEC_IDENTIFIER], \t\ttgt.[SEC_NAME], \t\ttgt.[ISSUER], \t\ttgt.[FACE_VALUE], \t\ttgt.[CCY_CD], \t\tformat(tgt.[MATURITY_DATE],'yyyy-MM-dd HH:mm:ss'), \t\ttgt.[REMARKS], \t\ttgt.[COUPON_RATE], \t\ttgt.[STATUS], \t\ttgt.[MAKER_ID], \t\tformat(tgt.[MAKER_DT],'yyyy-MM-dd HH:mm:ss'), \t\ttgt.[AUTH_ID], \t\tformat(tgt.[AUTH_DT],'yyyy-MM-dd HH:mm:ss'), \t\ttgt.[SEC_SEQ], \t\ttgt.[BR_CD], \t\ttgt.[PROD_CATEGORY_CODE], \t\ttgt.[MKT_SERIES], \t\ttgt.[SEC_RISK], \t\ttgt.[MATURITY_VALUE], \t\ttgt.[RECMND_ASSET], \t\ttgt.[FIN_INSTR_ID_TYPE_CD], \t\ttgt.[INDS_CLAS_CD], \t\ttgt.[MULT_FAC_NBR], \t\ttgt.[MKT_PRC_SRC_CD], \t\ttgt.[FIN_INSTR_STA_CD], \t\ttgt.[OPT_PUT_CALL_IND], \t\ttgt.[OPT_TYPE_CD], \t\ttgt.[UNDL_FIN_INSTR_ID], \t\ttgt.[UNDL_NO_OF_UNTS], \t\ttgt.[DIV_CASH_AMT], \t\ttgt.[DIV_CCY_CD], \t\ttgt.[DIV_FED_TAX_EXMP_IND], \t\ttgt.[DIV_STOCK_UNT], \t\ttgt.[DIV_TYPE_CD], \t\ttgt.[MOODYS_RTNG_CD], \t\ttgt.[SNP_RTNG_CD], \t\ttgt.[FIN_INSTR_ISIN_ID], \t\ttgt.[FIN_INSTR_SEDOL_ID], \t\ttgt.[FIN_INSTR_CUSIP_ID], \t\ttgt.[FIN_INSTR_TLKRS_ID], \t\ttgt.[CALL_PRC_AMT], \t\ttgt.[OPT_PREM_AMT], \t\ttgt.[STRIKE_PRC_AMT], \t\ttgt.[CONV_PRC_AMT], \t\ttgt.[CONV_PRC_CCY_CD], \t\tformat(tgt.[NEXT_CONV_DT],'yyyy-MM-dd HH:mm:ss'), \t\ttgt.[CONV_RATIO_CNT], \t\tformat(tgt.[MKT_PRC_TS],'yyyy-MM-dd HH:mm:ss'), \t\tformat(tgt.[NEXT_INT_PYMT_DT],'yyyy-MM-dd HH:mm:ss'), \t\tformat(tgt.[LAST_INT_PYMT_DT],'yyyy-MM-dd HH:mm:ss'), \t\tformat(tgt.[DIV_PAID_DT],'yyyy-MM-dd HH:mm:ss'), \t\tformat(tgt.[DIV_RECORD_DT],'yyyy-MM-dd HH:mm:ss'), \t\tformat(tgt.[CALL_DT],'yyyy-MM-dd HH:mm:ss'), \t\tformat(tgt.[FIN_INSTR_EXPR_DT],'yyyy-MM-dd HH:mm:ss'), \t\ttgt.[DMCL_CTRY_CD], \t\ttgt.[ISS_CTRY_CD], \t\ttgt.[INT_PYMT_FREQ_DESC], \t\tformat(tgt.[LAST_ISSUED_DT],'yyyy-MM-dd HH:mm:ss'), \t\tformat(tgt.[INT_PYMT_STRT_DT],'yyyy-MM-dd HH:mm:ss'), \t\ttgt.[INT_PYMT_CALC_METH_CD], \t\ttgt.[FIN_INSTR_SHORT_DESC], \t\ttgt.[FREEFLOAT], \t\ttgt.[VOLATILITY], \t\ttgt.[VOLUME], \t\ttgt.[MARKETCAP], \t\ttgt.[COUPON_FREQ], \t\ttgt.[EXT_SOURCE], \t\tformat(tgt.[COUPON_DATE],'yyyy-MM-dd HH:mm:ss'), \t\ttgt.[MEASUREMENT], \t\ttgt.[MKT_SYMBOL], \t\ttgt.[MARKET], \t\ttgt.[MARKET_GROUP], \t\ttgt.[RISK_PROFILE], \t\ttgt.[MINIMUM_INVEST_AMT], \t\tformat(tgt.[ISSUE_DATE],'yyyy-MM-dd HH:mm:ss'), \t\ttgt.[EXTERNAL_IDENTIFIER], \t\ttgt.[MIN_PAYMENT_PER], \t\ttgt.[CASH_LIMIT], \t\ttgt.[TRADE_MULTIPLES], \t\ttgt.[RED_SINK_FUND], \t\ttgt.[RES_MATURITY], \t\ttgt.[ISSUER_TYPE], \t\ttgt.[COLLATERAL_TYPE], \t\ttgt.[CONVERTABLE], \t\ttgt.[CONVER_SEC], \t\ttgt.[EMBD_OPTION], \t\ttgt.[FLOAT_TYPE], \t\ttgt.[MAT_FEATURE], \t\ttgt.[PRICE_CONV], \t\ttgt.[PRIORITY], \t\ttgt.[RED_TYPE], \t\ttgt.[SHAR_COMP], \t\ttgt.[SHAR_BOARD_APPR], \t\ttgt.[AMORTIZABLE], \t\ttgt.[AMORTIZ_MTHD], \t\ttgt.[SECTOR], \t\ttgt.[BDAY_CONV], \t\tformat(tgt.[REDMPT_SCHDUL],'yyyy-MM-dd HH:mm:ss'), \t\ttgt.[PAYMNT_PRIRTY], \t\ttgt.[TERM_PLAN_TYPE], \t\ttgt.[BLOOM_TICR], \t\ttgt.[COMMON_CD], \t\ttgt.[EPIC_CD], \t\ttgt.[FIT_RTNG_CD], \t\ttgt.[ICRA_RTNG_CD], \t\ttgt.[CRISIL_RTNG_CD], \t\ttgt.[COUPON_TYPE], \t\ttgt.[INT_TYPE], \t\ttgt.[LAST_DIVIDEND], \t\ttgt.[EXPECTED_DIV], \t\tformat(tgt.[LAST_DIV_DT],'yyyy-MM-dd HH:mm:ss'), \t\ttgt.[PRICE_VARIATION], \t\ttgt.[SHARECLASS], \t\ttgt.[FUNDSUBCAT], \t\ttgt.[FUNDSTATUS], \t\ttgt.[DISTTYPE], \t\ttgt.[TRUNCFLAG], \t\ttgt.[FUNDCUTOFFIST], \t\ttgt.[FUNDCUTOFF], \t\ttgt.[BUSCALFLAG], \t\ttgt.[INITCONTRIB], \t\ttgt.[MGTSHAREISSSTAT], \t\ttgt.[MGTSHAREFACEVAL], \t\ttgt.[MGTSHAREAMTPERC], \t\ttgt.[MGTSHARE], \t\ttgt.[CORRBANKNAME], \t\ttgt.[CUSTODIAN], \t\ttgt.[DIST_CAPITAL], \t\ttgt.[INVEST_PROFILE], \t\ttgt.[MIN_INI_INV_AMT], \t\ttgt.[MIN_ADD_INV_AMT], \t\ttgt.[PLACEMENT_FEE], \t\ttgt.[GST], \t\ttgt.[UNITPREC], \t\ttgt.[TRADEDBY], \t\ttgt.[SEC_SHORT_NAME], \t\ttgt.[CORRBANKSWIFT], \t\ttgt.[CORRBANKACNO], \t\ttgt.[CORRBANKCLCD], \t\ttgt.[FUNDHOUSECD], \t\ttgt.[PENALTYPERC], \t\tformat(tgt.[CUSTPAYBYDT],'yyyy-MM-dd HH:mm:ss'), \t\tformat(tgt.[FUNDHDUEDT],'yyyy-MM-dd HH:mm:ss'), \t\ttgt.[DAYCCONV], \t\ttgt.[COMPCONTRIB], \t\ttgt.[UNDER_SECY], \t\tformat(tgt.[EXP_DATE],'yyyy-MM-dd HH:mm:ss'), \t\ttgt.[INIT_MARGIN_PER], \t\ttgt.[CONTRACT_SIZE], \t\ttgt.[ISLAMIC], \t\ttgt.[EXT_ID], \t\ttgt.[PRIN_PROTECT], \t\ttgt.[PRIN_PROTECT_LVL], \t\ttgt.[REDEMPTION_TERMS], \t\ttgt.[PARTIAL_RED_PERC], \t\tformat(tgt.[DATE_PARTIAL_RED],'yyyy-MM-dd HH:mm:ss'), \t\ttgt.[FUND_CATEGORY], \t\ttgt.[NAV_PRECISION], \t\ttgt.[MIN_INI_INV_UNITS], \t\ttgt.[MIN_ADD_INV_UNITS], \t\ttgt.[NAV_UPLOAD_FREQ], \t\ttgt.[CUSTODIAN_AC_NO], \t\ttgt.[VERSION], \t\ttgt.[IS_FUND], \t\ttgt.[TRAIL_FEE], \t\ttgt.[UPFRONT_FEE], \t\ttgt.[SWCHALLWD], \t\ttgt.[RETMF], \t\ttgt.[FUNDFAMILY], \t\ttgt.[PURITY], \t\ttgt.[PROPRIETARY_FUND], \t\ttgt.[NAV_DAY], \t\ttgt.[EXT_SEC_PARTY_CD], \t\ttgt.[TICK_SIZE], \t\ttgt.[PUP], \t\ttgt.[PAST_DUE], \t\ttgt.[NONPERF_LOAN], \t\ttgt.[PROVISION], \t\ttgt.[PN_STATUS], \t\ttgt.[PENAL_INT_RATE], \t\ttgt.[PENAL_INT_OFFSET], \t\ttgt.[PRINCPAY_FREQ], \t\ttgt.[PRINCPAY_TYPE], \t\ttgt.[COMPOUND_FREQ], \t\ttgt.[PRINC_PENAL_RATE], \t\ttgt.[PRINC_PAY_PER], \t\ttgt.[WITH_HLD_PER], \t\ttgt.[PAY_STATUS], \t\ttgt.[TAX_WITHHLD_BY], \t\ttgt.[LOAN_PURPOSE], \t\ttgt.[UNDER_LITIGATION])); \t\t \tINSERT INTO EDS.TRU_NONUITFSEC( \t\t[SUB_ASSET_CD] \t\t,[SUB_PROD_CD] \t\t,[SUB_SECTOR_CD] \t\t,[SEC_IDENTIFIER] \t\t,[SEC_NAME] \t\t,[ISSUER] \t\t,[FACE_VALUE] \t\t,[CCY_CD] \t\t,[MATURITY_DATE] \t\t,[REMARKS] \t\t,[COUPON_RATE] \t\t,[STATUS] \t\t,[MAKER_ID] \t\t,[MAKER_DT] \t\t,[AUTH_ID] \t\t,[AUTH_DT] \t\t,[SEC_SEQ] \t\t,[BR_CD] \t\t,[PROD_CATEGORY_CODE] \t\t,[MKT_SERIES] \t\t,[SEC_RISK] \t\t,[MATURITY_VALUE] \t\t,[RECMND_ASSET] \t\t,[FIN_INSTR_ID_TYPE_CD] \t\t,[INDS_CLAS_CD] \t\t,[MULT_FAC_NBR] \t\t,[MKT_PRC_SRC_CD] \t\t,[FIN_INSTR_STA_CD] \t\t,[OPT_PUT_CALL_IND] \t\t,[OPT_TYPE_CD] \t\t,[UNDL_FIN_INSTR_ID] \t\t,[UNDL_NO_OF_UNTS] \t\t,[DIV_CASH_AMT] \t\t,[DIV_CCY_CD] \t\t,[DIV_FED_TAX_EXMP_IND] \t\t,[DIV_STOCK_UNT] \t\t,[DIV_TYPE_CD] \t\t,[MOODYS_RTNG_CD] \t\t,[SNP_RTNG_CD] \t\t,[FIN_INSTR_ISIN_ID] \t\t,[FIN_INSTR_SEDOL_ID] \t\t,[FIN_INSTR_CUSIP_ID] \t\t,[FIN_INSTR_TLKRS_ID] \t\t,[CALL_PRC_AMT] \t\t,[OPT_PREM_AMT] \t\t,[STRIKE_PRC_AMT] \t\t,[CONV_PRC_AMT] \t\t,[CONV_PRC_CCY_CD] \t\t,[NEXT_CONV_DT] \t\t,[CONV_RATIO_CNT] \t\t,[MKT_PRC_TS] \t\t,[NEXT_INT_PYMT_DT] \t\t,[LAST_INT_PYMT_DT] \t\t,[DIV_PAID_DT] \t\t,[DIV_RECORD_DT] \t\t,[CALL_DT] \t\t,[FIN_INSTR_EXPR_DT] \t\t,[DMCL_CTRY_CD] \t\t,[ISS_CTRY_CD] \t\t,[INT_PYMT_FREQ_DESC] \t\t,[LAST_ISSUED_DT] \t\t,[INT_PYMT_STRT_DT] \t\t,[INT_PYMT_CALC_METH_CD] \t\t,[FIN_INSTR_SHORT_DESC] \t\t,[FREEFLOAT] \t\t,[VOLATILITY] \t\t,[VOLUME] \t\t,[MARKETCAP] \t\t,[COUPON_FREQ] \t\t,[EXT_SOURCE] \t\t,[COUPON_DATE] \t\t,[MEASUREMENT] \t\t,[MKT_SYMBOL] \t\t,[MARKET] \t\t,[MARKET_GROUP] \t\t,[RISK_PROFILE] \t\t,[MINIMUM_INVEST_AMT] \t\t,[ISSUE_DATE] \t\t,[EXTERNAL_IDENTIFIER] \t\t,[MIN_PAYMENT_PER] \t\t,[CASH_LIMIT] \t\t,[TRADE_MULTIPLES] \t\t,[RED_SINK_FUND] \t\t,[RES_MATURITY] \t\t,[ISSUER_TYPE] \t\t,[COLLATERAL_TYPE] \t\t,[CONVERTABLE] \t\t,[CONVER_SEC] \t\t,[EMBD_OPTION] \t\t,[FLOAT_TYPE] \t\t,[MAT_FEATURE] \t\t,[PRICE_CONV] \t\t,[PRIORITY] \t\t,[RED_TYPE] \t\t,[SHAR_COMP] \t\t,[SHAR_BOARD_APPR] \t\t,[AMORTIZABLE] \t\t,[AMORTIZ_MTHD] \t\t,[SECTOR] \t\t,[BDAY_CONV] \t\t,[REDMPT_SCHDUL] \t\t,[PAYMNT_PRIRTY] \t\t,[TERM_PLAN_TYPE] \t\t,[BLOOM_TICR] \t\t,[COMMON_CD] \t\t,[EPIC_CD] \t\t,[FIT_RTNG_CD] \t\t,[ICRA_RTNG_CD] \t\t,[CRISIL_RTNG_CD] \t\t,[COUPON_TYPE] \t\t,[INT_TYPE] \t\t,[LAST_DIVIDEND] \t\t,[EXPECTED_DIV] \t\t,[LAST_DIV_DT] \t\t,[PRICE_VARIATION] \t\t,[SHARECLASS] \t\t,[FUNDSUBCAT] \t\t,[FUNDSTATUS] \t\t,[DISTTYPE] \t\t,[TRUNCFLAG] \t\t,[FUNDCUTOFFIST] \t\t,[FUNDCUTOFF] \t\t,[BUSCALFLAG] \t\t,[INITCONTRIB] \t\t,[MGTSHAREISSSTAT] \t\t,[MGTSHAREFACEVAL] \t\t,[MGTSHAREAMTPERC] \t\t,[MGTSHARE] \t\t,[CORRBANKNAME] \t\t,[CUSTODIAN] \t\t,[DIST_CAPITAL] \t\t,[INVEST_PROFILE] \t\t,[MIN_INI_INV_AMT] \t\t,[MIN_ADD_INV_AMT] \t\t,[PLACEMENT_FEE] \t\t,[GST] \t\t,[UNITPREC] \t\t,[TRADEDBY] \t\t,[SEC_SHORT_NAME] \t\t,[CORRBANKSWIFT] \t\t,[CORRBANKACNO] \t\t,[CORRBANKCLCD] \t\t,[FUNDHOUSECD] \t\t,[PENALTYPERC] \t\t,[CUSTPAYBYDT] \t\t,[FUNDHDUEDT] \t\t,[DAYCCONV] \t\t,[COMPCONTRIB] \t\t,[UNDER_SECY] \t\t,[EXP_DATE] \t\t,[INIT_MARGIN_PER] \t\t,[CONTRACT_SIZE] \t\t,[ISLAMIC] \t\t,[EXT_ID] \t\t,[PRIN_PROTECT] \t\t,[PRIN_PROTECT_LVL] \t\t,[REDEMPTION_TERMS] \t\t,[PARTIAL_RED_PERC] \t\t,[DATE_PARTIAL_RED] \t\t,[FUND_CATEGORY] \t\t,[NAV_PRECISION] \t\t,[MIN_INI_INV_UNITS] \t\t,[MIN_ADD_INV_UNITS] \t\t,[NAV_UPLOAD_FREQ] \t\t,[CUSTODIAN_AC_NO] \t\t,[VERSION] \t\t,[IS_FUND] \t\t,[TRAIL_FEE] \t\t,[UPFRONT_FEE] \t\t,[SWCHALLWD] \t\t,[RETMF] \t\t,[FUNDFAMILY] \t\t,[PURITY] \t\t,[PROPRIETARY_FUND] \t\t,[NAV_DAY] \t\t,[EXT_SEC_PARTY_CD] \t\t,[TICK_SIZE] \t\t,[PUP] \t\t,[PAST_DUE] \t\t,[NONPERF_LOAN] \t\t,[PROVISION] \t\t,[PN_STATUS] \t\t,[PENAL_INT_RATE] \t\t,[PENAL_INT_OFFSET] \t\t,[PRINCPAY_FREQ] \t\t,[PRINCPAY_TYPE] \t\t,[COMPOUND_FREQ] \t\t,[PRINC_PENAL_RATE] \t\t,[PRINC_PAY_PER] \t\t,[WITH_HLD_PER] \t\t,[PAY_STATUS] \t\t,[TAX_WITHHLD_BY] \t\t,[LOAN_PURPOSE] \t\t,[UNDER_LITIGATION] \t\t,[SCD_START_DATE] \t\t,[SCD_END_DATE] \t\t,[ISACTIVE] \t\t,[ISLATEST] \t\t,[BNK_CODE] \t\t,[SOURCE_CODE] \t\t,[FILE_NAME] \t\t,[INSERT_DTTM] \t) \tSELECT DISTINCT  \t\t[SUB_ASSET_CD] \t\t,[SUB_PROD_CD] \t\t,[SUB_SECTOR_CD] \t\t,[SEC_IDENTIFIER] \t\t,[SEC_NAME] \t\t,[ISSUER] \t\t,[FACE_VALUE] \t\t,[CCY_CD] \t\t,[MATURITY_DATE] \t\t,[REMARKS] \t\t,[COUPON_RATE] \t\t,[STATUS] \t\t,[MAKER_ID] \t\t,[MAKER_DT] \t\t,[AUTH_ID] \t\t,[AUTH_DT] \t\t,[SEC_SEQ] \t\t,[BR_CD] \t\t,[PROD_CATEGORY_CODE] \t\t,[MKT_SERIES] \t\t,[SEC_RISK] \t\t,[MATURITY_VALUE] \t\t,[RECMND_ASSET] \t\t,[FIN_INSTR_ID_TYPE_CD] \t\t,[INDS_CLAS_CD] \t\t,[MULT_FAC_NBR] \t\t,[MKT_PRC_SRC_CD] \t\t,[FIN_INSTR_STA_CD] \t\t,[OPT_PUT_CALL_IND] \t\t,[OPT_TYPE_CD] \t\t,[UNDL_FIN_INSTR_ID] \t\t,[UNDL_NO_OF_UNTS] \t\t,[DIV_CASH_AMT] \t\t,[DIV_CCY_CD] \t\t,[DIV_FED_TAX_EXMP_IND] \t\t,[DIV_STOCK_UNT] \t\t,[DIV_TYPE_CD] \t\t,[MOODYS_RTNG_CD] \t\t,[SNP_RTNG_CD] \t\t,[FIN_INSTR_ISIN_ID] \t\t,[FIN_INSTR_SEDOL_ID] \t\t,[FIN_INSTR_CUSIP_ID] \t\t,[FIN_INSTR_TLKRS_ID] \t\t,[CALL_PRC_AMT] \t\t,[OPT_PREM_AMT] \t\t,[STRIKE_PRC_AMT] \t\t,[CONV_PRC_AMT] \t\t,[CONV_PRC_CCY_CD] \t\t,[NEXT_CONV_DT] \t\t,[CONV_RATIO_CNT] \t\t,[MKT_PRC_TS] \t\t,[NEXT_INT_PYMT_DT] \t\t,[LAST_INT_PYMT_DT] \t\t,[DIV_PAID_DT] \t\t,[DIV_RECORD_DT] \t\t,[CALL_DT] \t\t,[FIN_INSTR_EXPR_DT] \t\t,[DMCL_CTRY_CD] \t\t,[ISS_CTRY_CD] \t\t,[INT_PYMT_FREQ_DESC] \t\t,[LAST_ISSUED_DT] \t\t,[INT_PYMT_STRT_DT] \t\t,[INT_PYMT_CALC_METH_CD] \t\t,[FIN_INSTR_SHORT_DESC] \t\t,[FREEFLOAT] \t\t,[VOLATILITY] \t\t,[VOLUME] \t\t,[MARKETCAP] \t\t,[COUPON_FREQ] \t\t,[EXT_SOURCE] \t\t,[COUPON_DATE] \t\t,[MEASUREMENT] \t\t,[MKT_SYMBOL] \t\t,[MARKET] \t\t,[MARKET_GROUP] \t\t,[RISK_PROFILE] \t\t,[MINIMUM_INVEST_AMT] \t\t,[ISSUE_DATE] \t\t,[EXTERNAL_IDENTIFIER] \t\t,[MIN_PAYMENT_PER] \t\t,[CASH_LIMIT] \t\t,[TRADE_MULTIPLES] \t\t,[RED_SINK_FUND] \t\t,[RES_MATURITY] \t\t,[ISSUER_TYPE] \t\t,[COLLATERAL_TYPE] \t\t,[CONVERTABLE] \t\t,[CONVER_SEC] \t\t,[EMBD_OPTION] \t\t,[FLOAT_TYPE] \t\t,[MAT_FEATURE] \t\t,[PRICE_CONV] \t\t,[PRIORITY] \t\t,[RED_TYPE] \t\t,[SHAR_COMP] \t\t,[SHAR_BOARD_APPR] \t\t,[AMORTIZABLE] \t\t,[AMORTIZ_MTHD] \t\t,[SECTOR] \t\t,[BDAY_CONV] \t\t,[REDMPT_SCHDUL] \t\t,[PAYMNT_PRIRTY] \t\t,[TERM_PLAN_TYPE] \t\t,[BLOOM_TICR] \t\t,[COMMON_CD] \t\t,[EPIC_CD] \t\t,[FIT_RTNG_CD] \t\t,[ICRA_RTNG_CD] \t\t,[CRISIL_RTNG_CD] \t\t,[COUPON_TYPE] \t\t,[INT_TYPE] \t\t,[LAST_DIVIDEND] \t\t,[EXPECTED_DIV] \t\t,[LAST_DIV_DT] \t\t,[PRICE_VARIATION] \t\t,[SHARECLASS] \t\t,[FUNDSUBCAT] \t\t,[FUNDSTATUS] \t\t,[DISTTYPE] \t\t,[TRUNCFLAG] \t\t,[FUNDCUTOFFIST] \t\t,[FUNDCUTOFF] \t\t,[BUSCALFLAG] \t\t,[INITCONTRIB] \t\t,[MGTSHAREISSSTAT] \t\t,[MGTSHAREFACEVAL] \t\t,[MGTSHAREAMTPERC] \t\t,[MGTSHARE] \t\t,[CORRBANKNAME] \t\t,[CUSTODIAN] \t\t,[DIST_CAPITAL] \t\t,[INVEST_PROFILE] \t\t,[MIN_INI_INV_AMT] \t\t,[MIN_ADD_INV_AMT] \t\t,[PLACEMENT_FEE] \t\t,[GST] \t\t,[UNITPREC] \t\t,[TRADEDBY] \t\t,[SEC_SHORT_NAME] \t\t,[CORRBANKSWIFT] \t\t,[CORRBANKACNO] \t\t,[CORRBANKCLCD] \t\t,[FUNDHOUSECD] \t\t,[PENALTYPERC] \t\t,[CUSTPAYBYDT] \t\t,[FUNDHDUEDT] \t\t,[DAYCCONV] \t\t,[COMPCONTRIB] \t\t,[UNDER_SECY] \t\t,[EXP_DATE] \t\t,[INIT_MARGIN_PER] \t\t,[CONTRACT_SIZE] \t\t,[ISLAMIC] \t\t,[EXT_ID] \t\t,[PRIN_PROTECT] \t\t,[PRIN_PROTECT_LVL] \t\t,[REDEMPTION_TERMS] \t\t,[PARTIAL_RED_PERC] \t\t,[DATE_PARTIAL_RED] \t\t,[FUND_CATEGORY] \t\t,[NAV_PRECISION] \t\t,[MIN_INI_INV_UNITS] \t\t,[MIN_ADD_INV_UNITS] \t\t,[NAV_UPLOAD_FREQ] \t\t,[CUSTODIAN_AC_NO] \t\t,[VERSION] \t\t,[IS_FUND] \t\t,[TRAIL_FEE] \t\t,[UPFRONT_FEE] \t\t,[SWCHALLWD] \t\t,[RETMF] \t\t,[FUNDFAMILY] \t\t,[PURITY] \t\t,[PROPRIETARY_FUND] \t\t,[NAV_DAY] \t\t,[EXT_SEC_PARTY_CD] \t\t,[TICK_SIZE] \t\t,[PUP] \t\t,[PAST_DUE] \t\t,[NONPERF_LOAN] \t\t,[PROVISION] \t\t,[PN_STATUS] \t\t,[PENAL_INT_RATE] \t\t,[PENAL_INT_OFFSET] \t\t,[PRINCPAY_FREQ] \t\t,[PRINCPAY_TYPE] \t\t,[COMPOUND_FREQ] \t\t,[PRINC_PENAL_RATE] \t\t,[PRINC_PAY_PER] \t\t,[WITH_HLD_PER] \t\t,[PAY_STATUS] \t\t,[TAX_WITHHLD_BY] \t\t,[LOAN_PURPOSE] \t\t,[UNDER_LITIGATION] \t\t,CAST(LEFT(RIGHT(FILE_NAME, 12), 8) AS DATE) AS [SCD_START_DATE] \t\t,CAST('9999-12-31' AS DATE) AS [SCD_END_DATE] \t\t,1 AS [ISACTIVE] \t\t,1 AS [ISLATEST] \t\t,LEFT(FILE_NAME, 5) AS [BNK_CODE] \t\t,'TRU' AS [SOURCE_CODE] \t\t,[FILE_NAME] \t\t,CURRENT_TIMESTAMP \tFROM D360.STG_EDS_TRU_NONUITFSEC src \tWHERE src.[H] = 'D' \t\tAND NOT EXISTS ( \t\t\tSELECT 1 \t\t\tFROM EDS.TRU_NONUITFSEC tgt \t\t\tWHERE src.[SEC_IDENTIFIER] COLLATE Latin1_General_CS_AS = tgt.[SEC_IDENTIFIER] COLLATE Latin1_General_CS_AS \t\t\tAND src.[BR_CD] = tgt.[BR_CD] \t\t\tAND HASHBYTES('SHA2_256', CONCAT_WS(N'|', \t\t\tsrc.[SUB_ASSET_CD], \t\t\tsrc.[SUB_PROD_CD], \t\t\tsrc.[SUB_SECTOR_CD], \t\t\tsrc.[SEC_IDENTIFIER], \t\t\tsrc.[SEC_NAME], \t\t\tsrc.[ISSUER], \t\t\tsrc.[FACE_VALUE], \t\t\tsrc.[CCY_CD], \t\t\tformat(src.[MATURITY_DATE],'yyyy-MM-dd HH:mm:ss'), \t\t\tsrc.[REMARKS], \t\t\tsrc.[COUPON_RATE], \t\t\tsrc.[STATUS], \t\t\tsrc.[MAKER_ID], \t\t\tformat(src.[MAKER_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\tsrc.[AUTH_ID], \t\t\tformat(src.[AUTH_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\tsrc.[SEC_SEQ], \t\t\tsrc.[BR_CD], \t\t\tsrc.[PROD_CATEGORY_CODE], \t\t\tsrc.[MKT_SERIES], \t\t\tsrc.[SEC_RISK], \t\t\tsrc.[MATURITY_VALUE], \t\t\tsrc.[RECMND_ASSET], \t\t\tsrc.[FIN_INSTR_ID_TYPE_CD], \t\t\tsrc.[INDS_CLAS_CD], \t\t\tsrc.[MULT_FAC_NBR], \t\t\tsrc.[MKT_PRC_SRC_CD], \t\t\tsrc.[FIN_INSTR_STA_CD], \t\t\tsrc.[OPT_PUT_CALL_IND], \t\t\tsrc.[OPT_TYPE_CD], \t\t\tsrc.[UNDL_FIN_INSTR_ID], \t\t\tsrc.[UNDL_NO_OF_UNTS], \t\t\tsrc.[DIV_CASH_AMT], \t\t\tsrc.[DIV_CCY_CD], \t\t\tsrc.[DIV_FED_TAX_EXMP_IND], \t\t\tsrc.[DIV_STOCK_UNT], \t\t\tsrc.[DIV_TYPE_CD], \t\t\tsrc.[MOODYS_RTNG_CD], \t\t\tsrc.[SNP_RTNG_CD], \t\t\tsrc.[FIN_INSTR_ISIN_ID], \t\t\tsrc.[FIN_INSTR_SEDOL_ID], \t\t\tsrc.[FIN_INSTR_CUSIP_ID], \t\t\tsrc.[FIN_INSTR_TLKRS_ID], \t\t\tsrc.[CALL_PRC_AMT], \t\t\tsrc.[OPT_PREM_AMT], \t\t\tsrc.[STRIKE_PRC_AMT], \t\t\tsrc.[CONV_PRC_AMT], \t\t\tsrc.[CONV_PRC_CCY_CD], \t\t\tformat(src.[NEXT_CONV_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\tsrc.[CONV_RATIO_CNT], \t\t\tformat(src.[MKT_PRC_TS],'yyyy-MM-dd HH:mm:ss'), \t\t\tformat(src.[NEXT_INT_PYMT_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\tformat(src.[LAST_INT_PYMT_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\tformat(src.[DIV_PAID_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\tformat(src.[DIV_RECORD_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\tformat(src.[CALL_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\tformat(src.[FIN_INSTR_EXPR_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\tsrc.[DMCL_CTRY_CD], \t\t\tsrc.[ISS_CTRY_CD], \t\t\tsrc.[INT_PYMT_FREQ_DESC], \t\t\tformat(src.[LAST_ISSUED_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\tformat(src.[INT_PYMT_STRT_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\tsrc.[INT_PYMT_CALC_METH_CD], \t\t\tsrc.[FIN_INSTR_SHORT_DESC], \t\t\tsrc.[FREEFLOAT], \t\t\tsrc.[VOLATILITY], \t\t\tsrc.[VOLUME], \t\t\tsrc.[MARKETCAP], \t\t\tsrc.[COUPON_FREQ], \t\t\tsrc.[EXT_SOURCE], \t\t\tformat(src.[COUPON_DATE],'yyyy-MM-dd HH:mm:ss'), \t\t\tsrc.[MEASUREMENT], \t\t\tsrc.[MKT_SYMBOL], \t\t\tsrc.[MARKET], \t\t\tsrc.[MARKET_GROUP], \t\t\tsrc.[RISK_PROFILE], \t\t\tsrc.[MINIMUM_INVEST_AMT], \t\t\tformat(src.[ISSUE_DATE],'yyyy-MM-dd HH:mm:ss'), \t\t\tsrc.[EXTERNAL_IDENTIFIER], \t\t\tsrc.[MIN_PAYMENT_PER], \t\t\tsrc.[CASH_LIMIT], \t\t\tsrc.[TRADE_MULTIPLES], \t\t\tsrc.[RED_SINK_FUND], \t\t\tsrc.[RES_MATURITY], \t\t\tsrc.[ISSUER_TYPE], \t\t\tsrc.[COLLATERAL_TYPE], \t\t\tsrc.[CONVERTABLE], \t\t\tsrc.[CONVER_SEC], \t\t\tsrc.[EMBD_OPTION], \t\t\tsrc.[FLOAT_TYPE], \t\t\tsrc.[MAT_FEATURE], \t\t\tsrc.[PRICE_CONV], \t\t\tsrc.[PRIORITY], \t\t\tsrc.[RED_TYPE], \t\t\tsrc.[SHAR_COMP], \t\t\tsrc.[SHAR_BOARD_APPR], \t\t\tsrc.[AMORTIZABLE], \t\t\tsrc.[AMORTIZ_MTHD], \t\t\tsrc.[SECTOR], \t\t\tsrc.[BDAY_CONV], \t\t\tformat(src.[REDMPT_SCHDUL],'yyyy-MM-dd HH:mm:ss'), \t\t\tsrc.[PAYMNT_PRIRTY], \t\t\tsrc.[TERM_PLAN_TYPE], \t\t\tsrc.[BLOOM_TICR], \t\t\tsrc.[COMMON_CD], \t\t\tsrc.[EPIC_CD], \t\t\tsrc.[FIT_RTNG_CD], \t\t\tsrc.[ICRA_RTNG_CD], \t\t\tsrc.[CRISIL_RTNG_CD], \t\t\tsrc.[COUPON_TYPE], \t\t\tsrc.[INT_TYPE], \t\t\tsrc.[LAST_DIVIDEND], \t\t\tsrc.[EXPECTED_DIV], \t\t\tformat(src.[LAST_DIV_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\tsrc.[PRICE_VARIATION], \t\t\tsrc.[SHARECLASS], \t\t\tsrc.[FUNDSUBCAT], \t\t\tsrc.[FUNDSTATUS], \t\t\tsrc.[DISTTYPE], \t\t\tsrc.[TRUNCFLAG], \t\t\tsrc.[FUNDCUTOFFIST], \t\t\tsrc.[FUNDCUTOFF], \t\t\tsrc.[BUSCALFLAG], \t\t\tsrc.[INITCONTRIB], \t\t\tsrc.[MGTSHAREISSSTAT], \t\t\tsrc.[MGTSHAREFACEVAL], \t\t\tsrc.[MGTSHAREAMTPERC], \t\t\tsrc.[MGTSHARE], \t\t\tsrc.[CORRBANKNAME], \t\t\tsrc.[CUSTODIAN], \t\t\tsrc.[DIST_CAPITAL], \t\t\tsrc.[INVEST_PROFILE], \t\t\tsrc.[MIN_INI_INV_AMT], \t\t\tsrc.[MIN_ADD_INV_AMT], \t\t\tsrc.[PLACEMENT_FEE], \t\t\tsrc.[GST], \t\t\tsrc.[UNITPREC], \t\t\tsrc.[TRADEDBY], \t\t\tsrc.[SEC_SHORT_NAME], \t\t\tsrc.[CORRBANKSWIFT], \t\t\tsrc.[CORRBANKACNO], \t\t\tsrc.[CORRBANKCLCD], \t\t\tsrc.[FUNDHOUSECD], \t\t\tsrc.[PENALTYPERC], \t\t\tformat(src.[CUSTPAYBYDT],'yyyy-MM-dd HH:mm:ss'), \t\t\tformat(src.[FUNDHDUEDT],'yyyy-MM-dd HH:mm:ss'), \t\t\tsrc.[DAYCCONV], \t\t\tsrc.[COMPCONTRIB], \t\t\tsrc.[UNDER_SECY], \t\t\tformat(src.[EXP_DATE],'yyyy-MM-dd HH:mm:ss'), \t\t\tsrc.[INIT_MARGIN_PER], \t\t\tsrc.[CONTRACT_SIZE], \t\t\tsrc.[ISLAMIC], \t\t\tsrc.[EXT_ID], \t\t\tsrc.[PRIN_PROTECT], \t\t\tsrc.[PRIN_PROTECT_LVL], \t\t\tsrc.[REDEMPTION_TERMS], \t\t\tsrc.[PARTIAL_RED_PERC], \t\t\tformat(src.[DATE_PARTIAL_RED],'yyyy-MM-dd HH:mm:ss'), \t\t\tsrc.[FUND_CATEGORY], \t\t\tsrc.[NAV_PRECISION], \t\t\tsrc.[MIN_INI_INV_UNITS], \t\t\tsrc.[MIN_ADD_INV_UNITS], \t\t\tsrc.[NAV_UPLOAD_FREQ], \t\t\tsrc.[CUSTODIAN_AC_NO], \t\t\tsrc.[VERSION], \t\t\tsrc.[IS_FUND], \t\t\tsrc.[TRAIL_FEE], \t\t\tsrc.[UPFRONT_FEE], \t\t\tsrc.[SWCHALLWD], \t\t\tsrc.[RETMF], \t\t\tsrc.[FUNDFAMILY], \t\t\tsrc.[PURITY], \t\t\tsrc.[PROPRIETARY_FUND], \t\t\tsrc.[NAV_DAY], \t\t\tsrc.[EXT_SEC_PARTY_CD], \t\t\tsrc.[TICK_SIZE], \t\t\tsrc.[PUP], \t\t\tsrc.[PAST_DUE], \t\t\tsrc.[NONPERF_LOAN], \t\t\tsrc.[PROVISION], \t\t\tsrc.[PN_STATUS], \t\t\tsrc.[PENAL_INT_RATE], \t\t\tsrc.[PENAL_INT_OFFSET], \t\t\tsrc.[PRINCPAY_FREQ], \t\t\tsrc.[PRINCPAY_TYPE], \t\t\tsrc.[COMPOUND_FREQ], \t\t\tsrc.[PRINC_PENAL_RATE], \t\t\tsrc.[PRINC_PAY_PER], \t\t\tsrc.[WITH_HLD_PER], \t\t\tsrc.[PAY_STATUS], \t\t\tsrc.[TAX_WITHHLD_BY], \t\t\tsrc.[LOAN_PURPOSE], \t\t\tsrc.[UNDER_LITIGATION])) \t\t\t= \t\t\tHASHBYTES('SHA2_256', CONCAT_WS(N'|', \t\t\ttgt.[SUB_ASSET_CD], \t\t\ttgt.[SUB_PROD_CD], \t\t\ttgt.[SUB_SECTOR_CD], \t\t\ttgt.[SEC_IDENTIFIER], \t\t\ttgt.[SEC_NAME], \t\t\ttgt.[ISSUER], \t\t\ttgt.[FACE_VALUE], \t\t\ttgt.[CCY_CD], \t\t\tformat(tgt.[MATURITY_DATE],'yyyy-MM-dd HH:mm:ss'), \t\t\ttgt.[REMARKS], \t\t\ttgt.[COUPON_RATE], \t\t\ttgt.[STATUS], \t\t\ttgt.[MAKER_ID], \t\t\tformat(tgt.[MAKER_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\ttgt.[AUTH_ID], \t\t\tformat(tgt.[AUTH_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\ttgt.[SEC_SEQ], \t\t\ttgt.[BR_CD], \t\t\ttgt.[PROD_CATEGORY_CODE], \t\t\ttgt.[MKT_SERIES], \t\t\ttgt.[SEC_RISK], \t\t\ttgt.[MATURITY_VALUE], \t\t\ttgt.[RECMND_ASSET], \t\t\ttgt.[FIN_INSTR_ID_TYPE_CD], \t\t\ttgt.[INDS_CLAS_CD], \t\t\ttgt.[MULT_FAC_NBR], \t\t\ttgt.[MKT_PRC_SRC_CD], \t\t\ttgt.[FIN_INSTR_STA_CD], \t\t\ttgt.[OPT_PUT_CALL_IND], \t\t\ttgt.[OPT_TYPE_CD], \t\t\ttgt.[UNDL_FIN_INSTR_ID], \t\t\ttgt.[UNDL_NO_OF_UNTS], \t\t\ttgt.[DIV_CASH_AMT], \t\t\ttgt.[DIV_CCY_CD], \t\t\ttgt.[DIV_FED_TAX_EXMP_IND], \t\t\ttgt.[DIV_STOCK_UNT], \t\t\ttgt.[DIV_TYPE_CD], \t\t\ttgt.[MOODYS_RTNG_CD], \t\t\ttgt.[SNP_RTNG_CD], \t\t\ttgt.[FIN_INSTR_ISIN_ID], \t\t\ttgt.[FIN_INSTR_SEDOL_ID], \t\t\ttgt.[FIN_INSTR_CUSIP_ID], \t\t\ttgt.[FIN_INSTR_TLKRS_ID], \t\t\ttgt.[CALL_PRC_AMT], \t\t\ttgt.[OPT_PREM_AMT], \t\t\ttgt.[STRIKE_PRC_AMT], \t\t\ttgt.[CONV_PRC_AMT], \t\t\ttgt.[CONV_PRC_CCY_CD], \t\t\tformat(tgt.[NEXT_CONV_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\ttgt.[CONV_RATIO_CNT], \t\t\tformat(tgt.[MKT_PRC_TS],'yyyy-MM-dd HH:mm:ss'), \t\t\tformat(tgt.[NEXT_INT_PYMT_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\tformat(tgt.[LAST_INT_PYMT_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\tformat(tgt.[DIV_PAID_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\tformat(tgt.[DIV_RECORD_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\tformat(tgt.[CALL_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\tformat(tgt.[FIN_INSTR_EXPR_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\ttgt.[DMCL_CTRY_CD], \t\t\ttgt.[ISS_CTRY_CD], \t\t\ttgt.[INT_PYMT_FREQ_DESC], \t\t\tformat(tgt.[LAST_ISSUED_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\tformat(tgt.[INT_PYMT_STRT_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\ttgt.[INT_PYMT_CALC_METH_CD], \t\t\ttgt.[FIN_INSTR_SHORT_DESC], \t\t\ttgt.[FREEFLOAT], \t\t\ttgt.[VOLATILITY], \t\t\ttgt.[VOLUME], \t\t\ttgt.[MARKETCAP], \t\t\ttgt.[COUPON_FREQ], \t\t\ttgt.[EXT_SOURCE], \t\t\tformat(tgt.[COUPON_DATE],'yyyy-MM-dd HH:mm:ss'), \t\t\ttgt.[MEASUREMENT], \t\t\ttgt.[MKT_SYMBOL], \t\t\ttgt.[MARKET], \t\t\ttgt.[MARKET_GROUP], \t\t\ttgt.[RISK_PROFILE], \t\t\ttgt.[MINIMUM_INVEST_AMT], \t\t\tformat(tgt.[ISSUE_DATE],'yyyy-MM-dd HH:mm:ss'), \t\t\ttgt.[EXTERNAL_IDENTIFIER], \t\t\ttgt.[MIN_PAYMENT_PER], \t\t\ttgt.[CASH_LIMIT], \t\t\ttgt.[TRADE_MULTIPLES], \t\t\ttgt.[RED_SINK_FUND], \t\t\ttgt.[RES_MATURITY], \t\t\ttgt.[ISSUER_TYPE], \t\t\ttgt.[COLLATERAL_TYPE], \t\t\ttgt.[CONVERTABLE], \t\t\ttgt.[CONVER_SEC], \t\t\ttgt.[EMBD_OPTION], \t\t\ttgt.[FLOAT_TYPE], \t\t\ttgt.[MAT_FEATURE], \t\t\ttgt.[PRICE_CONV], \t\t\ttgt.[PRIORITY], \t\t\ttgt.[RED_TYPE], \t\t\ttgt.[SHAR_COMP], \t\t\ttgt.[SHAR_BOARD_APPR], \t\t\ttgt.[AMORTIZABLE], \t\t\ttgt.[AMORTIZ_MTHD], \t\t\ttgt.[SECTOR], \t\t\ttgt.[BDAY_CONV], \t\t\tformat(tgt.[REDMPT_SCHDUL],'yyyy-MM-dd HH:mm:ss'), \t\t\ttgt.[PAYMNT_PRIRTY], \t\t\ttgt.[TERM_PLAN_TYPE], \t\t\ttgt.[BLOOM_TICR], \t\t\ttgt.[COMMON_CD], \t\t\ttgt.[EPIC_CD], \t\t\ttgt.[FIT_RTNG_CD], \t\t\ttgt.[ICRA_RTNG_CD], \t\t\ttgt.[CRISIL_RTNG_CD], \t\t\ttgt.[COUPON_TYPE], \t\t\ttgt.[INT_TYPE], \t\t\ttgt.[LAST_DIVIDEND], \t\t\ttgt.[EXPECTED_DIV], \t\t\tformat(tgt.[LAST_DIV_DT],'yyyy-MM-dd HH:mm:ss'), \t\t\ttgt.[PRICE_VARIATION], \t\t\ttgt.[SHARECLASS], \t\t\ttgt.[FUNDSUBCAT], \t\t\ttgt.[FUNDSTATUS], \t\t\ttgt.[DISTTYPE], \t\t\ttgt.[TRUNCFLAG], \t\t\ttgt.[FUNDCUTOFFIST], \t\t\ttgt.[FUNDCUTOFF], \t\t\ttgt.[BUSCALFLAG], \t\t\ttgt.[INITCONTRIB], \t\t\ttgt.[MGTSHAREISSSTAT], \t\t\ttgt.[MGTSHAREFACEVAL], \t\t\ttgt.[MGTSHAREAMTPERC], \t\t\ttgt.[MGTSHARE], \t\t\ttgt.[CORRBANKNAME], \t\t\ttgt.[CUSTODIAN], \t\t\ttgt.[DIST_CAPITAL], \t\t\ttgt.[INVEST_PROFILE], \t\t\ttgt.[MIN_INI_INV_AMT], \t\t\ttgt.[MIN_ADD_INV_AMT], \t\t\ttgt.[PLACEMENT_FEE], \t\t\ttgt.[GST], \t\t\ttgt.[UNITPREC], \t\t\ttgt.[TRADEDBY], \t\t\ttgt.[SEC_SHORT_NAME], \t\t\ttgt.[CORRBANKSWIFT], \t\t\ttgt.[CORRBANKACNO], \t\t\ttgt.[CORRBANKCLCD], \t\t\ttgt.[FUNDHOUSECD], \t\t\ttgt.[PENALTYPERC], \t\t\tformat(tgt.[CUSTPAYBYDT],'yyyy-MM-dd HH:mm:ss'), \t\t\tformat(tgt.[FUNDHDUEDT],'yyyy-MM-dd HH:mm:ss'), \t\t\ttgt.[DAYCCONV], \t\t\ttgt.[COMPCONTRIB], \t\t\ttgt.[UNDER_SECY], \t\t\tformat(tgt.[EXP_DATE],'yyyy-MM-dd HH:mm:ss'), \t\t\ttgt.[INIT_MARGIN_PER], \t\t\ttgt.[CONTRACT_SIZE], \t\t\ttgt.[ISLAMIC], \t\t\ttgt.[EXT_ID], \t\t\ttgt.[PRIN_PROTECT], \t\t\ttgt.[PRIN_PROTECT_LVL], \t\t\ttgt.[REDEMPTION_TERMS], \t\t\ttgt.[PARTIAL_RED_PERC], \t\t\tformat(tgt.[DATE_PARTIAL_RED],'yyyy-MM-dd HH:mm:ss'), \t\t\ttgt.[FUND_CATEGORY], \t\t\ttgt.[NAV_PRECISION], \t\t\ttgt.[MIN_INI_INV_UNITS], \t\t\ttgt.[MIN_ADD_INV_UNITS], \t\t\ttgt.[NAV_UPLOAD_FREQ], \t\t\ttgt.[CUSTODIAN_AC_NO], \t\t\ttgt.[VERSION], \t\t\ttgt.[IS_FUND], \t\t\ttgt.[TRAIL_FEE], \t\t\ttgt.[UPFRONT_FEE], \t\t\ttgt.[SWCHALLWD], \t\t\ttgt.[RETMF], \t\t\ttgt.[FUNDFAMILY], \t\t\ttgt.[PURITY], \t\t\ttgt.[PROPRIETARY_FUND], \t\t\ttgt.[NAV_DAY], \t\t\ttgt.[EXT_SEC_PARTY_CD], \t\t\ttgt.[TICK_SIZE], \t\t\ttgt.[PUP], \t\t\ttgt.[PAST_DUE], \t\t\ttgt.[NONPERF_LOAN], \t\t\ttgt.[PROVISION], \t\t\ttgt.[PN_STATUS], \t\t\ttgt.[PENAL_INT_RATE], \t\t\ttgt.[PENAL_INT_OFFSET], \t\t\ttgt.[PRINCPAY_FREQ], \t\t\ttgt.[PRINCPAY_TYPE], \t\t\ttgt.[COMPOUND_FREQ], \t\t\ttgt.[PRINC_PENAL_RATE], \t\t\ttgt.[PRINC_PAY_PER], \t\t\ttgt.[WITH_HLD_PER], \t\t\ttgt.[PAY_STATUS], \t\t\ttgt.[TAX_WITHHLD_BY], \t\t\ttgt.[LOAN_PURPOSE], \t\t\ttgt.[UNDER_LITIGATION])) \t\t\t\tAND tgt.[ISLATEST] = 1 \t\t\t); END TRY  BEGIN CATCH \t\t\t  \tDECLARE @msg NVARCHAR(2048) = ERROR_MESSAGE();  \t\t\t THROW 51000 \t\t,@msg \t\t,1; END CATCH"
+			}
+		},
+		"variables": {
+			"Cnt_DaystoIterate": {
+				"type": "String"
+			},
+			"AppendDays": {
+				"type": "Array"
+			},
+			"CheckFEstatus": {
+				"type": "String",
+				"defaultValue": "True"
+			},
+			"Source": {
+				"type": "String",
+				"defaultValue": "TRU"
+			},
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-12-11T08:46:04Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

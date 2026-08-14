@@ -1,0 +1,20 @@
+{
+	"name": "bnkm_RiskRatingType_crm",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "CREATE PROCEDURE BNKM.SP_RISKRATINGTYPE_CRM\nAS\nBEGIN\n\nWITH TEMP_BNKM_RiskRatingType AS \n(SELECT\n        BCC.[VALUE] AS RiskRatingTypeId\n        ,BCC.DESCRIPTION AS RiskRatingTypeName\n\t\t,NULL AS RiskRatingTypeDescription\n        ,BCC.BANK_ID AS FinancialInstitutionId\n        ,BCC.CATEGORYID AS CategoryId\n        ,BCCD.RECORD_STATUS\n        ,'CRM' AS SourceSystemCode\n\t\t,0 AS WorkFlowId\n\t\t,0 AS TaskRunId\n        ,insert_dttm as InsertDttm\n    FROM BUSC.CRM_CATEGORIES_DELTA BCCD\n    LEFT JOIN BUSC.CRM_CATEGORIES BCC\n        ON BCCD.BANK_ID = BCC.BANK_ID\n        AND BCCD.CATEGORYID =  BCC.CATEGORYID\n        AND BCC.isLatest = '1'\n    WHERE BCC.CATEGORYTYPE = 'CBC_RATING_TYPE'\n)\n\nSELECT * INTO #TEMP_BNKM_RiskRatingType FROM TEMP_BNKM_RiskRatingType;\n\n\nWITH\nTEMP_BNKM_RiskRatingType_SRC AS\n(SELECT \n\t\tHASHBYTES('MD5',CONCAT(RiskRatingTypeId,RiskRatingTypeName,FinancialInstitutionId,CategoryId)) HASHROW\n\t\t,RiskRatingTypeId\n\t\t,FinancialInstitutionId\n\t\t,CategoryId\n\t\t,RECORD_STATUS\n\tFROM #TEMP_BNKM_RiskRatingType\n\tWHERE RECORD_STATUS = 'UPDATE'),\n\nTEMP_BNKM_RiskRatingType_TGT AS\n(\tSELECT\n\t\tHASHBYTES('MD5',CONCAT(RiskRatingTypeId,RiskRatingTypeName,FinancialInstitutionId,CategoryId)) HASHROW\n\t\t,RiskRatingTypeId\n\t\t,FinancialInstitutionId\n\t\t,CategoryId\n\t FROM BNKM.RiskRatingType\n\t WHERE SourceSystemCode = 'CRM'),\n\nTEMP_BNKM_RiskRatingType_DELTA AS \n(\tSELECT\n\t\tSRC.HASHROW AS SRC_HR\n\t\t,TGT.HASHROW AS TGT_HR\n\t\t,ISNULL(SRC.FinancialInstitutionId,TGT.FinancialInstitutionId) AS FinancialInstitutionId\n\t\t,ISNULL(SRC.RiskRatingTypeId,TGT.RiskRatingTypeId) AS RiskRatingTypeId\n\t\t,CASE WHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE' ELSE NULL END AS RECORD_STATUS\n\tFROM TEMP_BNKM_RiskRatingType_SRC SRC\n\tFULL OUTER JOIN TEMP_BNKM_RiskRatingType_TGT TGT\n\t\tON SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\n\t\tAND SRC.CategoryId = TGT.CategoryId\n    WHERE SRC.HASHROW <> TGT.HASHROW)\n\nSELECT * INTO #TEMP_BNKM_RiskRatingType_DELTA FROM TEMP_BNKM_RiskRatingType_DELTA;\n\n----UPDATE Record in BNKM\nUPDATE TGT\nSET\n\tRiskRatingTypeId = SRC.RiskRatingTypeId\n\t,RiskRatingTypeName = SRC.RiskRatingTypeName\n\t,FinancialInstitutionId = SRC.FinancialInstitutionId\n\t,CategoryId = SRC.CategoryId\nFROM BNKM.RiskRatingType TGT\nLEFT JOIN #TEMP_BNKM_RiskRatingType_DELTA DELTA\n\tON TGT.RiskRatingTypeId = DELTA.RiskRatingTypeId\n\tAND TGT.FinancialInstitutionId = DELTA.FinancialInstitutionId\nLEFT JOIN #TEMP_BNKM_RiskRatingType SRC \n\tON SRC.RiskRatingTypeId = TGT.RiskRatingTypeId\n\tAND SRC.FinancialInstitutionId = TGT.FinancialInstitutionId\n\n\n\n----INSERT New Record\nINSERT INTO BNKM.RiskRatingType (RiskRatingTypeId ,RiskRatingTypeName ,FinancialInstitutionId ,CategoryId ,SourceSystemCode ,WorkFlowId ,TaskRunId ,InsertDttm)\nSELECT  \n\tRiskRatingTypeId\n\t,RiskRatingTypeName\n\t,FinancialInstitutionId\n\t,CategoryId\n    ,SourceSystemCode\n\t,WorkFlowId\n\t,TaskRunId\n    ,InsertDttm\nFROM    #TEMP_BNKM_RiskRatingType\nWHERE   RECORD_STATUS = 'INSERT'\n\n\nDROP TABLE #TEMP_BNKM_RiskRatingType;\nDROP TABLE #TEMP_BNKM_RiskRatingType_DELTA;\n\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

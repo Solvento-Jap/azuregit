@@ -1,0 +1,670 @@
+{
+	"name": "Workflow_EDS_CUST_L1_L2_SEGMENT",
+	"properties": {
+		"activities": [
+			{
+				"name": "TSK_EDS_CUSTOMER_SEGMENT_PARAM",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "swf_EDS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"startDate": {
+							"value": "@variables('V_startDate')",
+							"type": "Expression"
+						},
+						"endDate": {
+							"value": "@variables('V_endDate')",
+							"type": "Expression"
+						},
+						"tables": "CUSTOMER_SEGMENT_PARAM",
+						"EDS_SQL": "BEGIN TRY UPDATE EDS.CUSTOMER_SEGMENT_PARAM SET [ISLATEST] = 0 ,[SCD_END_DATE] = ( SELECT PREVIOUS_BUSINESS_DAY FROM EDS.DATE_DIM WHERE FULLDATE = CAST('${PROCESS_DATE}' AS DATE) ) FROM EDS.CUSTOMER_SEGMENT_PARAM tgt INNER JOIN D360.L1_CUSTOMER_SEGMENT_PARAM src ON src.[BANK_ID] = tgt.[BANK_ID] AND src.[PARAM_ID] = tgt.[PARAM_ID] AND src.AS_OF_DATE = CAST('${PROCESS_DATE}' AS DATE) WHERE tgt.[ISLATEST] = 1 AND HASHBYTES('SHA2_256', CONCAT_WS(N'|', src.[PARAM_DESC], src.[FROM_VALUE], src.[TO_VALUE])) <> HASHBYTES('SHA2_256', CONCAT_WS(N'|', tgt.[PARAM_DESC], tgt.[FROM_VALUE], tgt.[TO_VALUE])); INSERT INTO EDS.CUSTOMER_SEGMENT_PARAM ( AS_OF_DATE ,BANK_ID ,PARAM_TYPE ,PARAM_ID ,PARAM_DESC ,FROM_VALUE ,TO_VALUE ,LAST_UPDATED_DATE ,LAST_UPDATE_BY ,ISLATEST ,ISACTIVE ,SCD_START_DATE ,SCD_END_DATE ) SELECT DISTINCT AS_OF_DATE ,BANK_ID ,PARAM_TYPE ,PARAM_ID ,PARAM_DESC ,FROM_VALUE ,TO_VALUE ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATE) AS LAST_UPDATED_DATE ,'EDS_ETLUSER' AS LAST_UPDATE_BY ,1 AS [ISLATEST] ,1 AS [ISACTIVE] ,AS_OF_DATE AS SCD_START_DATE ,CAST('9999-12-31' AS DATE) AS [SCD_END_DATE] FROM D360.L1_CUSTOMER_SEGMENT_PARAM src WHERE src.AS_OF_DATE = CAST('${PROCESS_DATE}' AS DATE) AND NOT EXISTS ( SELECT 1 FROM EDS.CUSTOMER_SEGMENT_PARAM tgt WHERE src.[BANK_ID] = tgt.[BANK_ID] AND src.[PARAM_ID] = tgt.[PARAM_ID] AND HASHBYTES('SHA2_256', CONCAT_WS(N'|', src.[PARAM_DESC], src.[FROM_VALUE], src.[TO_VALUE])) = HASHBYTES('SHA2_256', CONCAT_WS(N'|', tgt.[PARAM_DESC], tgt.[FROM_VALUE], tgt.[TO_VALUE])) AND tgt.[ISLATEST] = 1 ); END TRY BEGIN CATCH DECLARE @msg NVARCHAR(2048) = ERROR_MESSAGE(); THROW 51000 ,@msg ,1; END CATCH "
+					}
+				}
+			},
+			{
+				"name": "TSK_EDS_CUSTOMER_SEGMENT_DIM",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "TSK_EDS_CUSTOMER_SEGMENT_PARAM",
+						"dependencyConditions": [
+							"Completed"
+						]
+					},
+					{
+						"activity": "TSK_EDS_DSD_CUSTOMER_SEGMENT_DIM",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "swf_EDS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"startDate": {
+							"value": "@variables('V_startDate')",
+							"type": "Expression"
+						},
+						"endDate": {
+							"value": "@variables('V_endDate')",
+							"type": "Expression"
+						},
+						"tables": "CUSTOMER_SEGMENT_DIM",
+						"EDS_SQL": "BEGIN TRY UPDATE EDS.CUSTOMER_SEGMENT_DIM SET [ISLATEST] = 0 ,[SCD_END_DATE] = ( SELECT PREVIOUS_BUSINESS_DAY FROM EDS.DATE_DIM WHERE FULLDATE = CAST('${PROCESS_DATE}' AS DATE) ) FROM EDS.CUSTOMER_SEGMENT_DIM tgt INNER JOIN EDS.CUSTOMER_SEGMENT_PARAM src ON src.[BANK_ID] = tgt.[BANK_ID] AND src.[PARAM_ID] = tgt.[SEGMENT_ID] AND 'L1' = tgt.[SEGMENT_TYPE] AND CAST('${PROCESS_DATE}' AS DATE) between src.SCD_START_DATE AND src.SCD_END_DATE WHERE tgt.[ISLATEST] = 1 AND HASHBYTES('SHA2_256', CONCAT_WS(N'|', src.[PARAM_DESC], '|')) <> HASHBYTES('SHA2_256', CONCAT_WS(N'|', tgt.[SEGMENT_DESC], '|')); INSERT INTO EDS.CUSTOMER_SEGMENT_DIM ( BANK_ID, SEGMENT_ID, SEGMENT_TYPE, SEGMENT_DESC, LAST_UPDATE_DATE, LAST_UPDATE_BY, ISLATEST, ISACTIVE, SCD_START_DATE, SCD_END_DATE ) SELECT DISTINCT SRC.BANK_ID, SRC.PARAM_ID AS SEGMENT_ID, 'L1' AS SEGMENT_TYPE, SRC.PARAM_DESC AS SEGMENT_DESC, CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS Date) AS LAST_UPDATE_DATE, 'EDS_ETLUSER' AS LAST_UPDATE_BY, 1 AS [ISLATEST], 1 AS [ISACTIVE], AS_OF_DATE AS SCD_START_DATE, CAST('9999-12-31' AS DATE) AS [SCD_END_DATE] FROM EDS.CUSTOMER_SEGMENT_PARAM src WHERE CAST('${PROCESS_DATE}' AS DATE) between src.SCD_START_DATE AND src.SCD_END_DATE AND NOT EXISTS ( SELECT 1 FROM EDS.CUSTOMER_SEGMENT_DIM tgt WHERE src.[BANK_ID] = tgt.[BANK_ID] AND src.[PARAM_ID] = tgt.[SEGMENT_ID] AND 'L1' = tgt.[SEGMENT_TYPE] AND HASHBYTES('SHA2_256', CONCAT_WS(N'|', src.[PARAM_DESC], '|')) = HASHBYTES('SHA2_256', CONCAT_WS(N'|', tgt.[SEGMENT_DESC], '|')) AND tgt.[ISLATEST] = 1 ); END TRY BEGIN CATCH DECLARE @msg NVARCHAR(2048) = ERROR_MESSAGE(); THROW 51000 ,@msg ,1; END CATCH "
+					}
+				}
+			},
+			{
+				"name": "TSK_EDS_CUSTOMER_SEGMENT",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "TSK_EDS_CUSTOMER_TOTAL_REL",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "swf_EDS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"startDate": {
+							"value": "@variables('V_startDate')",
+							"type": "Expression"
+						},
+						"endDate": {
+							"value": "@variables('V_endDate')",
+							"type": "Expression"
+						},
+						"tables": "CUSTOMER_SEGMENT",
+						"EDS_SQL": "BEGIN TRY CREATE TABLE #SRC_CUSTOMER_SEGMENT WITH ( DISTRIBUTION = HASH(CIF) ) AS SELECT ECD.BANK_ID AS BANK_ID, ECD.ORGKEY  AS CIF, CTR.CUST_SEGMENT_ID AS L1_SEGMENT_ID, CSP.PARAM_DESC AS L1_SEGMENT_DESC, DPMS.L2_SEGMENT_ID AS L2_SEGMENT_ID, DPMS.L2_SEGMENT_DESC AS L2_SEGMENT_DESC, CTR_PM.L1_SEGMENT_ID AS PREV_L1_SEGMENT_ID, CTR_PM.L2_SEGMENT_ID AS PREV_L2_SEGMENT_ID FROM EDS.CUSTOMER_DIM ECD LEFT JOIN EDS.CUSTOMER_TOTAL_REL CTR ON ECD.ORGKEY = CTR.CIF AND ECD.BANK_ID = CTR.BANK_ID AND CTR.AS_OF_DATE = CAST('${PROCESS_DATE}' AS DATE) LEFT JOIN EDS.CUSTOMER_SEGMENT_PARAM CSP ON CTR.CUST_SEGMENT_ID = CSP.PARAM_ID AND CTR.BANK_ID = CSP.BANK_ID AND CTR.AS_OF_DATE BETWEEN CSP.SCD_START_DATE AND CSP.SCD_END_DATE LEFT JOIN EDS.DSD_PROD_MODEL_SCORES DPMS ON DPMS.CIF_ID = ECD.ORGKEY AND DPMS.AS_OF_DATE = CAST('${PROCESS_DATE}' AS DATE) LEFT JOIN EDS.DATE_DIM DD ON DD.FULLDATE = CAST('${PROCESS_DATE}' AS DATE) LEFT JOIN EDS.CUSTOMER_SEGMENT CTR_PM ON CTR_PM.SCD_START_DATE = DD.PREVIOUS_MONTH_LAST_BUS_DAY AND ECD.ORGKEY = CTR_PM.CIF AND ECD.BANK_ID = CTR_PM.BANK_ID WHERE CAST('${PROCESS_DATE}' AS DATE) BETWEEN ECD.SCD_START_DATE AND ECD.SCD_END_DATE UPDATE EDS.CUSTOMER_SEGMENT SET [ISLATEST] = 0 ,[SCD_END_DATE] = ( SELECT PREVIOUS_BUSINESS_DAY FROM EDS.DATE_DIM WHERE FULLDATE = CAST('${PROCESS_DATE}' AS DATE) ) FROM EDS.CUSTOMER_SEGMENT tgt INNER JOIN #SRC_CUSTOMER_SEGMENT src ON src.[BANK_ID] = tgt.[BANK_ID] AND src.[CIF] = tgt.[CIF] WHERE tgt.[ISLATEST] = 1 AND HASHBYTES('SHA2_256', CONCAT_WS(N'|', src.[L1_SEGMENT_ID], src.[L1_SEGMENT_DESC], src.[L2_SEGMENT_ID], src.[L2_SEGMENT_DESC])) <> HASHBYTES('SHA2_256', CONCAT_WS(N'|', tgt.[L1_SEGMENT_ID], tgt.[L1_SEGMENT_DESC], tgt.[L2_SEGMENT_ID], tgt.[L2_SEGMENT_DESC])); INSERT INTO EDS.CUSTOMER_SEGMENT ( BANK_ID, CIF, L1_SEGMENT_ID, L1_SEGMENT_DESC, L1_PROMOTION_DATE, L1_DEMOTION_DATE, L1_PROMOTION_BY, L1_DEMOTION_BY, L2_SEGMENT_ID, L2_SEGMENT_DESC, L2_PROMOTION_DATE, L2_DEMOTION_DATE, LAST_UPDATED_DATE, LAST_UPDATE_BY, ISLATEST, ISACTIVE, SCD_START_DATE, SCD_END_DATE ) SELECT DISTINCT BANK_ID, CIF, L1_SEGMENT_ID, L1_SEGMENT_DESC, (CASE WHEN CAST(L1_SEGMENT_ID AS NUMERIC(38,0)) < CAST(PREV_L1_SEGMENT_ID AS NUMERIC(38,0)) THEN CAST('${PROCESS_DATE}' AS DATE) ELSE NULL END) AS L1_PROMOTION_DATE, (CASE WHEN CAST(L1_SEGMENT_ID AS NUMERIC(38,0)) > CAST(PREV_L1_SEGMENT_ID AS NUMERIC(38,0)) THEN CAST('${PROCESS_DATE}' AS DATE) ELSE NULL END) AS L1_DEMOTION_DATE, (CASE WHEN CAST(L1_SEGMENT_ID AS NUMERIC(38,0)) < CAST(PREV_L1_SEGMENT_ID AS NUMERIC(38,0)) THEN 'EDS_ETLUSER' ELSE NULL END) AS L1_PROMOTION_BY, (CASE WHEN CAST(L1_SEGMENT_ID AS NUMERIC(38,0)) > CAST(PREV_L1_SEGMENT_ID AS NUMERIC(38,0)) THEN 'EDS_ETLUSER' ELSE NULL END) AS L1_DEMOTION_BY, L2_SEGMENT_ID, L2_SEGMENT_DESC, (CASE WHEN CAST(L2_SEGMENT_ID AS NUMERIC(38,0)) < CAST(PREV_L2_SEGMENT_ID AS NUMERIC(38,0)) THEN CAST('${PROCESS_DATE}' AS DATE) ELSE NULL END) AS L2_PROMOTION_DATE, (CASE WHEN CAST(L2_SEGMENT_ID AS NUMERIC(38,0)) > CAST(PREV_L2_SEGMENT_ID AS NUMERIC(38,0)) THEN CAST('${PROCESS_DATE}' AS DATE) ELSE NULL END) AS L2_DEMOTION_DATE, CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS Date) AS LAST_UPDATED_DATE, 'EDS_ETLUSER' AS LAST_UPDATE_BY, 1 AS [ISLATEST], 1 AS [ISACTIVE], CAST('${PROCESS_DATE}' AS DATE) AS SCD_START_DATE, CAST('9999-12-31' AS DATE) AS [SCD_END_DATE] FROM #SRC_CUSTOMER_SEGMENT src WHERE NOT EXISTS ( SELECT 1 FROM EDS.CUSTOMER_SEGMENT tgt WHERE src.[BANK_ID] = tgt.[BANK_ID] AND src.[CIF] = tgt.[CIF] AND HASHBYTES('SHA2_256', CONCAT_WS(N'|', src.[L1_SEGMENT_ID], src.[L1_SEGMENT_DESC], src.[L2_SEGMENT_ID], src.[L2_SEGMENT_DESC])) = HASHBYTES('SHA2_256', CONCAT_WS(N'|', tgt.[L1_SEGMENT_ID], tgt.[L1_SEGMENT_DESC], tgt.[L2_SEGMENT_ID], tgt.[L2_SEGMENT_DESC])) AND tgt.[ISLATEST] = 1 ); END TRY BEGIN CATCH DECLARE @msg NVARCHAR(2048) = ERROR_MESSAGE(); THROW 51000 ,@msg ,1; END CATCH "
+					}
+				}
+			},
+			{
+				"name": "TSK_EDS_CUSTOMER_TOTAL_REL",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "TSK_EDS_CUSTOMER_SEGMENT_DIM",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "swf_EDS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"startDate": {
+							"value": "@variables('V_startDate')",
+							"type": "Expression"
+						},
+						"endDate": {
+							"value": "@variables('V_endDate')",
+							"type": "Expression"
+						},
+						"tables": "CUSTOMER_TOTAL_REL",
+						"EDS_SQL": "IF EXISTS ( SELECT 1 CNT FROM OM.OM_TASK_RUN WHERE TASK_NAME = 'TSK_EDS_CUSTOMER_TOTAL_REL' AND PROCESS_DATE = CAST('${PROCESS_DATE}' AS DATE) ) BEGIN DELETE FROM EDS.CUSTOMER_TOTAL_REL WHERE AS_OF_DATE = CAST('${PROCESS_DATE}' AS DATE); END; WITH CUST_TOT_REL_DEP AS ( SELECT EDA.AS_OF_DATE AS_OF_DATE ,EDA.BANK_ID BANK_ID ,ECD.ORGKEY CIF ,SUM(COALESCE(YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP, 0)) TRB_DEPOSITS ,NULL TOTAL_RELATIONSHIP ,NULL TRB_BANCA ,NULL TRB_SECURITIES ,NULL TRE_LOANS ,NULL TRE_CARDS FROM EDS.DEP_ACCOUNTRELATIONSHIP EDA LEFT JOIN EDS.DEPOSIT_FACT EDF ON EDA.ACID = EDF.GAM_ACID AND EDA.BANK_ID = EDF.GAM_BANK_ID AND EDA.AS_OF_DATE = EDF.AS_OF_DATE LEFT JOIN EDS.CUSTOMER_DIM ECD ON EDA.CUST_ID = ECD.CORE_CUST_ID AND EDA.BANK_ID = ECD.BANK_ID AND EDA.AS_OF_DATE BETWEEN ECD.SCD_START_DATE AND ECD.SCD_END_DATE WHERE EDA.ACCT_POA_AS_REC_TYPE IN ( 'M' ,'J' ) AND EDA.BANK_ID = 'CBC01' AND LEFT(EDF.GAM_SCHM_CODE, 2) <> '09' AND EDF.GAM_BANK_ID = 'CBC01' AND EDF.DEP_ACCOUNT_STATUS <> 'C' AND EDF.DEL_FLG = 'N' AND EDA.DEL_FLG = 'N' AND ECD.CUSTOMER_TYPE = 'Retail' AND EDA.AS_OF_DATE = CAST('${PROCESS_DATE}' AS DATE) AND TRIM(EDA.CUST_ID) IS NOT NULL AND TRIM(EDA.CUST_ID) <> '' GROUP BY EDA.AS_OF_DATE ,EDA.BANK_ID ,ECD.ORGKEY ) ,CUST_TOT_REL_TRY AS ( SELECT TAH.AS_OF_DATE AS_OF_DATE ,TAH.BNK_CODE BANK_ID ,TAH.CIF_ID CIF ,SUM(COALESCE(TAH.PRINCIPAL_VALUE_PHP, 0)) TRB_TREASURY FROM EDS.TREASURY_ACCOUNT_HOLDER TAH WHERE TAH.AS_OF_DATE = CAST('${PROCESS_DATE}' AS DATE) AND TAH.FOR_EXCLUSION = 'N' AND TAH.IS_QUALIFIED = 'Y' AND TAH.PRODUCT_GROUP NOT IN ( 'FX Product' ,'Derivative Product' ) GROUP BY TAH.AS_OF_DATE ,TAH.BNK_CODE ,TAH.CIF_ID ) ,CUST_TOT_REL_TRU AS ( SELECT TAH.AS_OF_DATE AS_OF_DATE ,TAH.BNK_CODE BANK_ID ,TAH.CIF_ID CIF ,SUM(COALESCE(TAH.MARKET_VALUE_PHP, 0)) TRB_TRUST FROM EDS.TRUST_ACCOUNT_HOLDER TAH WHERE TAH.AS_OF_DATE = CAST('${PROCESS_DATE}' AS DATE) AND ( TAH.PRODUCT_GROUP = 'UITF' OR TAH.PRODUCT_CODE = 'AIMA' ) AND TAH.IS_QUALIFIED = 'Y' GROUP BY TAH.AS_OF_DATE ,TAH.BNK_CODE ,TAH.CIF_ID ) ,AGG_TRB AS ( SELECT DEP.AS_OF_DATE ,DEP.BANK_ID ,DEP.CIF ,TOTAL_RELATIONSHIP ,SUM(COALESCE(TRB_DEPOSITS, 0) + COALESCE(TRB_TREASURY, 0) + COALESCE(TRB_TRUST, 0) + COALESCE(TRB_BANCA, 0)) TRB ,SUM(COALESCE(TRB_DEPOSITS, 0)) TRB_DEPOSITS ,SUM(COALESCE(TRB_TREASURY, 0) + COALESCE(TRB_TRUST, 0)) TRB_INVEST ,SUM(COALESCE(TRB_TRUST, 0)) TRB_TRUST ,SUM(COALESCE(TRB_TREASURY, 0)) TRB_TREASURY ,TRB_BANCA ,TRB_SECURITIES ,SUM(COALESCE(TRE_LOANS, 0) + COALESCE(TRE_CARDS, 0)) TRE ,TRE_LOANS ,TRE_CARDS FROM CUST_TOT_REL_DEP DEP LEFT JOIN CUST_TOT_REL_TRY TRY ON DEP.CIF = TRY.CIF AND DEP.BANK_ID = TRY.BANK_ID AND DEP.AS_OF_DATE = TRY.AS_OF_DATE LEFT JOIN CUST_TOT_REL_TRU TRU ON DEP.CIF = TRU.CIF AND DEP.BANK_ID = TRU.BANK_ID AND DEP.AS_OF_DATE = TRU.AS_OF_DATE GROUP BY DEP.AS_OF_DATE ,DEP.BANK_ID ,DEP.CIF ,TOTAL_RELATIONSHIP ,TRB_BANCA ,TRB_SECURITIES ,TRE_LOANS ,TRE_CARDS ) INSERT INTO EDS.CUSTOMER_TOTAL_REL ( AS_OF_DATE ,BANK_ID ,CIF ,CUST_SEGMENT_ID ,TOTAL_RELATIONSHIP ,TRB ,TRB_DEPOSITS ,TRB_INVEST ,TRB_TRUST ,TRB_TREASURY ,TRB_BANCA ,TRB_SECURITIES ,TRE ,TRE_LOANS ,TRE_CARDS ) SELECT AGG_TRB.AS_OF_DATE AS AS_OF_DATE ,AGG_TRB.BANK_ID ,AGG_TRB.CIF ,COALESCE(CSP.PARAM_ID, '006') AS CUST_SEGMENT_ID ,AGG_TRB.TOTAL_RELATIONSHIP ,AGG_TRB.TRB ,AGG_TRB.TRB_DEPOSITS ,AGG_TRB.TRB_INVEST ,AGG_TRB.TRB_TRUST ,AGG_TRB.TRB_TREASURY ,AGG_TRB.TRB_BANCA ,AGG_TRB.TRB_SECURITIES ,AGG_TRB.TRE ,AGG_TRB.TRE_LOANS ,AGG_TRB.TRE_CARDS FROM AGG_TRB LEFT JOIN EDS.CUSTOMER_SEGMENT_PARAM CSP ON CSP.BANK_ID = AGG_TRB.BANK_ID AND COALESCE(TRB, 0) BETWEEN CAST(REPLACE(COALESCE(CSP.FROM_VALUE, '0'), ',', '') AS NUMERIC(38, 6)) AND CAST(REPLACE(COALESCE(CSP.TO_VALUE, '999,999,999,999,999'), ',', '') AS NUMERIC(38, 6)) AND AGG_TRB.AS_OF_DATE BETWEEN CSP.SCD_START_DATE AND CSP.SCD_END_DATE "
+					}
+				}
+			},
+			{
+				"name": "CHECK PROCESS DATE PARAM",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@and(equals(pipeline().parameters.startDate,'9999-12-31'),equals(pipeline().parameters.endDate,'9999-12-31'))",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "FALSE",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "SET_START_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								},
+								{
+									"activity": "SET_END_DATE_PARAM",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 1
+							}
+						},
+						{
+							"name": "SET_START_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@pipeline().parameters.startDate",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE_PARAM",
+							"type": "SetVariable",
+							"dependsOn": [],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@pipeline().parameters.endDate",
+									"type": "Expression"
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "GET_PROCESS_DATE",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlDWSource",
+									"sqlReaderQuery": {
+										"value": "SELECT\n\tPREVIOUS_MONTH_LAST_BUS_DAY fulldate\nFROM\n    EDS.DATE_DIM DD\nWHERE \n\tDD.DATESK=convert(varchar(8),GETDATE(),112)",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "SQLPool_EDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"table_name": "EDS_CTL"
+									}
+								},
+								"firstRowOnly": true
+							}
+						},
+						{
+							"name": "SET_START_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_startDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "SET_END_DATE",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "GET_PROCESS_DATE",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "V_endDate",
+								"value": {
+									"value": "@activity('GET_PROCESS_DATE').output.firstRow.fulldate\n",
+									"type": "Expression"
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Send_Email_Batch",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "TSK_EDS_CUSTOMER_SEGMENT",
+						"dependencyConditions": [
+							"Completed"
+						]
+					},
+					{
+						"activity": "TSK_EDS_L1_DEPOSIT_90D_ROLLING_AVG",
+						"dependencyConditions": [
+							"Completed"
+						]
+					},
+					{
+						"activity": "TSK_EDS_L1_TREASURY_90D_ROLLING_AVG",
+						"dependencyConditions": [
+							"Completed"
+						]
+					},
+					{
+						"activity": "EDS_L1_TRUST_90D_ROLLING_AVG",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Send_Email_Batch",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"PipelineName": {
+							"value": "@pipeline().Pipeline",
+							"type": "Expression"
+						},
+						"ProcessDate": {
+							"value": "@variables('V_startDate')",
+							"type": "Expression"
+						},
+						"RunDateTime": {
+							"value": "@addhours(pipeline().TriggerTime,8)",
+							"type": "Expression"
+						},
+						"Eml_Sender": {
+							"value": "@pipeline().parameters.eml_sender",
+							"type": "Expression"
+						},
+						"Eml_Recipient": {
+							"value": "@pipeline().parameters.eml_recipient",
+							"type": "Expression"
+						},
+						"Eml_Subject": {
+							"value": "@pipeline().parameters.eml_subject",
+							"type": "Expression"
+						},
+						"EndDateTime": {
+							"value": "@addhours(utcNow(),8)",
+							"type": "Expression"
+						},
+						"BatchNo": "88"
+					}
+				}
+			},
+			{
+				"name": "All pipelines success",
+				"type": "Wait",
+				"dependsOn": [
+					{
+						"activity": "Send_Email_Batch",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "TSK_EDS_CUSTOMER_SEGMENT_PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "TSK_EDS_CUSTOMER_SEGMENT",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "TSK_EDS_CUSTOMER_TOTAL_REL",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "TSK_EDS_CUSTOMER_SEGMENT_DIM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "TSK_EDS_DSD_CUSTOMER_SEGMENT_DIM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "TSK_EDS_DSD_PROD_MODEL_SCORES",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "TSK_EDS_L1_DEPOSIT_90D_ROLLING_AVG",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "TSK_EDS_L1_TREASURY_90D_ROLLING_AVG",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "EDS_L1_TRUST_90D_ROLLING_AVG",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"waitTimeInSeconds": 1
+				}
+			},
+			{
+				"name": "Pipeline fail",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "All pipelines success",
+						"dependencyConditions": [
+							"Skipped"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": "One or more pipelines failed",
+					"errorCode": "2001"
+				}
+			},
+			{
+				"name": "TSK_EDS_DSD_CUSTOMER_SEGMENT_DIM",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "TSK_EDS_DSD_PROD_MODEL_SCORES",
+						"dependencyConditions": [
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "swf_EDS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"startDate": {
+							"value": "@variables('V_startDate')",
+							"type": "Expression"
+						},
+						"endDate": {
+							"value": "@variables('V_endDate')",
+							"type": "Expression"
+						},
+						"tables": "DSD_CUSTOMER_SEGMENT_DIM",
+						"EDS_SQL": "BEGIN TRY  UPDATE    EDS.CUSTOMER_SEGMENT_DIM  SET    [ISLATEST] = 0,    [SCD_END_DATE] = (     SELECT        PREVIOUS_BUSINESS_DAY      FROM        EDS.DATE_DIM      WHERE        FULLDATE = CAST('${PROCESS_DATE}' AS DATE)   )  FROM    EDS.CUSTOMER_SEGMENT_DIM tgt    INNER JOIN EDS.DSD_PROD_MODEL_SCORES src ON 'CBC01' = tgt.[BANK_ID]    AND src.[L2_SEGMENT_ID] = tgt.[SEGMENT_ID]    AND 'L2' = tgt.[SEGMENT_TYPE]    AND CAST('${PROCESS_DATE}' AS DATE) = src.AS_OF_DATE WHERE    tgt.[ISLATEST] = 1    AND HASHBYTES(     'SHA2_256',      CONCAT_WS(N'|', src.[L2_SEGMENT_DESC], '|')   ) <> HASHBYTES(     'SHA2_256',      CONCAT_WS(N'|', tgt.[SEGMENT_DESC], '|')   ); INSERT INTO EDS.CUSTOMER_SEGMENT_DIM (   BANK_ID,    SEGMENT_ID,    SEGMENT_TYPE,    SEGMENT_DESC,    LAST_UPDATE_DATE,    LAST_UPDATE_BY,    ISLATEST,    ISACTIVE,    SCD_START_DATE,    SCD_END_DATE )  SELECT    DISTINCT 'CBC01' AS BANK_ID,    SRC.L2_SEGMENT_ID AS SEGMENT_ID,    'L2' AS SEGMENT_TYPE,    SRC.L2_SEGMENT_DESC AS SEGMENT_DESC,    CAST(     SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS Date   ) AS LAST_UPDATE_DATE,    'EDS_ETLUSER' AS LAST_UPDATE_BY,    1 AS [ISLATEST],    1 AS [ISACTIVE],    AS_OF_DATE AS SCD_START_DATE,    CAST('9999-12-31' AS DATE) AS [SCD_END_DATE]  FROM    EDS.DSD_PROD_MODEL_SCORES src  WHERE    CAST('${PROCESS_DATE}' AS DATE) = AS_OF_DATE   AND NOT EXISTS (     SELECT        1      FROM        EDS.CUSTOMER_SEGMENT_DIM tgt      WHERE        'CBC01' = tgt.[BANK_ID]        AND src.[L2_SEGMENT_ID] = tgt.[SEGMENT_ID]        AND 'L2' = tgt.[SEGMENT_TYPE]        AND HASHBYTES(         'SHA2_256',          CONCAT_WS(N'|', src.[L2_SEGMENT_DESC], '|')       ) = HASHBYTES(         'SHA2_256',          CONCAT_WS(N'|', tgt.[SEGMENT_DESC], '|')       )        AND tgt.[ISLATEST] = 1   ); END TRY BEGIN CATCH DECLARE @msg NVARCHAR(2048) = ERROR_MESSAGE(); THROW 51000,  @msg,  1; END CATCH"
+					}
+				}
+			},
+			{
+				"name": "TSK_EDS_DSD_PROD_MODEL_SCORES",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "Workflow_EDS_DSD_PROD_MODEL_SCORES",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"startDate": {
+							"value": "@variables('V_startDate')",
+							"type": "Expression"
+						},
+						"endDate": {
+							"value": "@variables('V_endDate')",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "TSK_EDS_L1_DEPOSIT_90D_ROLLING_AVG",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "swf_EDS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"startDate": {
+							"value": "@variables('V_startDate')",
+							"type": "Expression"
+						},
+						"endDate": {
+							"value": "@variables('V_endDate')",
+							"type": "Expression"
+						},
+						"tables": "L1_DEPOSIT_90D_ROLLING_AVG",
+						"EDS_SQL": "DELETE FROM EDS.L1_DEPOSIT_90D_ROLLING_AVG WHERE AS_OF_DATE = CAST('${PROCESS_DATE}' AS DATE); WITH DAT AS ( SELECT FULLDATE AS_OF_DATE FROM EDS.DATE_DIM DD WHERE DD.MONTH_END = 'Y' AND DD.FULLDATE > DATEFROMPARTS(YEAR(DATEADD(MONTH, - 2, CAST('${PROCESS_DATE}' AS DATE))), MONTH(DATEADD(MONTH, - 2, CAST('${PROCESS_DATE}' AS DATE))), 1) AND DD.FULLDATE <= CAST('${PROCESS_DATE}' AS DATE) ) INSERT INTO EDS.L1_DEPOSIT_90D_ROLLING_AVG ( AS_OF_DATE ,CUST_ID ,GAM_ACID ,GAM_BANK_ID ,AGG_DAY_NO ,LAST_3MTHS_AGG_BAL_ORIG_CURR ,LAST_3MTHS_AGG_BAL_PHP ,LAST_3MTHS_ADB_ORIG_CURR ,LAST_3MTHS_ADB_PHP ,BNK_CODE ,SOURCE_CODE ,INSERT_DTTM ) SELECT CAST('${PROCESS_DATE}' AS DATE) AS AS_OF_DATE ,DF.CUST_ID ,DF.GAM_ACID ,DF.GAM_BANK_ID ,SUM(DAY(EOMONTH(DF.AS_OF_DATE))) AS AGG_DAY_NO ,SUM(DF.MTD_AGG_BAL_ORIG_CURR) AS LAST_3MTHS_AGG_BAL_ORIG_CURR ,SUM(DF.MTD_AGG_BAL_PHP) AS LAST_3MTHS_AGG_BAL_PHP ,SUM(DF.MTD_AGG_BAL_ORIG_CURR) / SUM(DAY(EOMONTH(DF.AS_OF_DATE))) AS LAST_3MTHS_ADB_ORIG_CURR ,SUM(DF.MTD_AGG_BAL_PHP) / SUM(DAY(EOMONTH(DF.AS_OF_DATE))) AS LAST_3MTHS_ADB_PHP ,DF.GAM_BANK_ID AS [BNK_CODE] ,'DEP' AS [SOURCE_CODE] ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATETIME) FROM DAT INNER JOIN EDS.DEPOSIT_FACT DF ON DAT.AS_OF_DATE = DF.AS_OF_DATE GROUP BY DF.CUST_ID ,DF.GAM_ACID ,DF.GAM_BANK_ID"
+					}
+				}
+			},
+			{
+				"name": "TSK_EDS_L1_TREASURY_90D_ROLLING_AVG",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "swf_EDS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"startDate": {
+							"value": "@variables('V_startDate')",
+							"type": "Expression"
+						},
+						"endDate": {
+							"value": "@variables('V_endDate')",
+							"type": "Expression"
+						},
+						"tables": "L1_TREASURY_90D_ROLLING_AVG",
+						"EDS_SQL": "DELETE\nFROM EDS.L1_TREASURY_90D_ROLLING_AVG\nWHERE AS_OF_DATE = CAST('${PROCESS_DATE}' AS DATE);\n\nWITH DAT\nAS (\n\tSELECT FULLDATE AS_OF_DATE\n\tFROM EDS.DATE_DIM DD\n\tWHERE DD.MONTH_END = 'Y'\n\t\tAND DD.FULLDATE > DATEFROMPARTS(YEAR(DATEADD(MONTH, - 2, CAST('${PROCESS_DATE}' AS DATE))), MONTH(DATEADD(MONTH, - 2, CAST('${PROCESS_DATE}' AS DATE))), 1)\n\t\tAND DD.FULLDATE <= CAST('${PROCESS_DATE}' AS DATE)\n\t)\nINSERT INTO EDS.L1_TREASURY_90D_ROLLING_AVG (\n\t AS_OF_DATE\n\t,CIF_ID\n\t,PRIMARY_FLAG\n\t,LE_ID\n\t,PRODUCT_GROUP\n\t,PRODUCT_CODE\n\t,PRODUCT_CODE_FMS\n\t,ISIN\n\t,ACCT_ID\n\t,IS_QUALIFIED\n\t,BANK_ID\n\t,AGG_DAY_NO\n\t,LAST_3MTHS_AGG_BAL_ORIG_CURR\n\t,LAST_3MTHS_AGG_BAL_PHP\n\t,LAST_3MTHS_ADB_ORIG_CURR\n\t,LAST_3MTHS_ADB_PHP\n\t,BNK_CODE\n\t,SOURCE_CODE\n\t,INSERT_DTTM\n\t)\nSELECT CAST('${PROCESS_DATE}' AS DATE) AS AS_OF_DATE\n\t,TF.CIF_ID\n\t,TF.PRIMARY_FLAG\n\t,TF.LE_ID\n\t,TF.PRODUCT_GROUP\n\t,TF.PRODUCT_CODE\n\t,TF.PRODUCT_CODE_FMS\n\t,TF.ISIN\n\t,TF.ACCT_ID\n\t,TF.IS_QUALIFIED\n\t,TF.BANK_ID\n\t,SUM(DAY(EOMONTH(TF.AS_OF_DATE))) AS AGG_DAY_NO\n\t,SUM(TF.MTD_AGG_BAL_PRN_ORIG) AS LAST_3MTHS_AGG_BAL_ORIG_CURR\n\t,SUM(TF.MTD_AGG_BAL_PRN_PHP) AS LAST_3MTHS_AGG_BAL_PHP\n\t,SUM(TF.MTD_AGG_BAL_PRN_ORIG) / SUM(DAY(EOMONTH(TF.AS_OF_DATE))) AS LAST_3MTHS_ADB_ORIG_CURR\n\t,SUM(TF.MTD_AGG_BAL_PRN_PHP) / SUM(DAY(EOMONTH(TF.AS_OF_DATE))) AS LAST_3MTHS_ADB_PHP\n\t,TF.BNK_CODE\n\t,'TRY' AS [SOURCE_CODE]\n\t,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATETIME)\nFROM DAT\nINNER JOIN EDS.TREASURY_ACCOUNT_HOLDER TF ON DAT.AS_OF_DATE = TF.AS_OF_DATE\nGROUP BY \n\t TF.CIF_ID\n\t,TF.PRIMARY_FLAG\n\t,TF.LE_ID\n\t,TF.PRODUCT_GROUP\n\t,TF.PRODUCT_CODE\n\t,TF.PRODUCT_CODE_FMS\n\t,TF.ISIN\n\t,TF.ACCT_ID\n\t,TF.IS_QUALIFIED\n\t,TF.BANK_ID\n\t,TF.BNK_CODE\n"
+					}
+				}
+			},
+			{
+				"name": "EDS_L1_TRUST_90D_ROLLING_AVG",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "CHECK PROCESS DATE PARAM",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "swf_EDS",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"startDate": {
+							"value": "@variables('V_startDate')",
+							"type": "Expression"
+						},
+						"endDate": {
+							"value": "@variables('V_endDate')",
+							"type": "Expression"
+						},
+						"tables": "L1_TRUST_90D_ROLLING_AVG",
+						"EDS_SQL": "DELETE FROM EDS.L1_TRUST_90D_ROLLING_AVG WHERE AS_OF_DATE = CAST('${PROCESS_DATE}' AS DATE); WITH DAT AS ( SELECT FULLDATE AS_OF_DATE FROM EDS.DATE_DIM DD WHERE DD.MONTH_END = 'Y' AND DD.FULLDATE > DATEFROMPARTS(YEAR(DATEADD(MONTH, - 2, CAST('${PROCESS_DATE}' AS DATE))), MONTH(DATEADD(MONTH, - 2, CAST('${PROCESS_DATE}' AS DATE))), 1) AND DD.FULLDATE <= CAST('${PROCESS_DATE}' AS DATE) ) INSERT INTO EDS.L1_TRUST_90D_ROLLING_AVG ( AS_OF_DATE ,CIF_ID ,BASE_NO ,PRIMARY_FLAG ,PORTFOLIO_NO ,SUBSCRIPTION_ID ,PRODUCT_GROUP ,PRODUCT_CODE ,NONUITF_SCHEME_CODE ,NONUITF_AC_NO ,NONUITF_FOLIO_NO ,IS_QUALIFIED ,BASE_NO_UNMASKED ,PORTFOLIO_NO_UNMASKED ,AGG_DAY_NO ,LAST_3MTHS_AGG_BAL_ORIG_CURR ,LAST_3MTHS_AGG_BAL_PHP ,LAST_3MTHS_ADB_ORIG_CURR ,LAST_3MTHS_ADB_PHP ,BNK_CODE ,BANK_ID ,SOURCE_CODE ,INSERT_DTTM ) SELECT CAST('${PROCESS_DATE}' AS DATE) AS AS_OF_DATE ,TF.CIF_ID ,TF.BASE_NO ,TF.PRIMARY_FLAG ,TF.PORTFOLIO_NO ,TF.SUBSCRIPTION_ID ,TF.PRODUCT_GROUP ,TF.PRODUCT_CODE ,TF.NONUITF_SCHEME_CODE ,TF.NONUITF_AC_NO ,TF.NONUITF_FOLIO_NO ,TF.IS_QUALIFIED ,TF.BASE_NO_UNMASKED ,TF.PORTFOLIO_NO_UNMASKED ,SUM(DAY(EOMONTH(TF.AS_OF_DATE))) AS AGG_DAY_NO ,SUM(TF.MTD_AGG_BAL_MKT_ORIG) AS [LAST_3MTHS_AGG_BAL_ORIG_CURR] ,SUM(TF.MTD_AGG_BAL_MKT_PHP) AS [LAST_3MTHS_AGG_BAL_PHP] ,SUM(TF.MTD_AGG_BAL_MKT_ORIG) / SUM(DAY(EOMONTH(TF.AS_OF_DATE))) AS [LAST_3MTHS_ADB_ORIG_CURR] ,SUM(TF.MTD_AGG_BAL_MKT_PHP) / SUM(DAY(EOMONTH(TF.AS_OF_DATE))) AS [LAST_3MTHS_ADB_PHP] ,TF.BNK_CODE ,TF.BANK_ID ,'TRU' AS [SOURCE_CODE] ,CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Singapore Standard Time' AS DATETIME) FROM DAT INNER JOIN EDS.TRUST_ACCOUNT_HOLDER TF ON DAT.AS_OF_DATE = TF.AS_OF_DATE GROUP BY TF.CIF_ID ,TF.BASE_NO ,TF.PRIMARY_FLAG ,TF.PORTFOLIO_NO ,TF.SUBSCRIPTION_ID ,TF.PRODUCT_GROUP ,TF.PRODUCT_CODE ,TF.NONUITF_SCHEME_CODE ,TF.NONUITF_AC_NO ,TF.NONUITF_FOLIO_NO ,TF.IS_QUALIFIED ,TF.BASE_NO_UNMASKED ,TF.PORTFOLIO_NO_UNMASKED ,TF.BNK_CODE ,TF.BANK_ID "
+					}
+				}
+			}
+		],
+		"parameters": {
+			"startDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"endDate": {
+				"type": "string",
+				"defaultValue": "9999-12-31"
+			},
+			"eml_sender": {
+				"type": "string",
+				"defaultValue": "donotreply@advisory.chinabank.ph"
+			},
+			"eml_recipient": {
+				"type": "string",
+				"defaultValue": "maproque@chinabank.ph,egmpaiton@chinabank.ph,mgrdeocampo@chinabank.ph,mafarcon@chinabank.ph,wobautista@chinabank.ph,maccortez@chinabank.ph,gmtflores@chinabank.ph,jmmamangon@chinabank.ph,rsblabay@chinabank.ph,jayar.gavina@solventoph.com,arland.bindoy@solventoph.com,japeth.hernandez@solventoph.com,jccgomez@chinabank.ph,mrcdizon@chinabank.ph,japescultura@chinabank.ph,jolenizo@chinabank.ph,KJMPALO@chinabank.ph,JJSKAK@chinabank.ph,KRBRIVERA@chinabank.ph,JJPSALIPANDE@chinabank.ph,MEPIQUERO@chinabank.ph,RSDELAMBOTIQUE@chinabank.ph,MJMBANARIA@chinabank.ph,AEAGELI@chinabank.ph,JMSIBAG@chinabank.ph,JRFVIZCARRA@chinabank.ph,LDPBUNANIG@chinabank.ph,CECANONG@chinabank.ph,NSTALBINO@chinabank.ph,LQDEOGRACIAS@chinabank.ph"
+			},
+			"eml_subject": {
+				"type": "string",
+				"defaultValue": "Execution Details for"
+			}
+		},
+		"variables": {
+			"V_startDate": {
+				"type": "String"
+			},
+			"V_endDate": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-07-14T09:00:15Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,102 @@
+{
+	"name": "HashLog_GENERAL_LEDGER_FACT",
+	"properties": {
+		"description": "GAM_EAB",
+		"activities": [
+			{
+				"name": "EAB PROCESS",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@contains(pipeline().parameters.tables,'GLD_EODACCTBALTABLE')",
+						"type": "Expression"
+					},
+					"ifTrueActivities": [
+						{
+							"name": "HashLog_GENERAL_LEDGER_Fact_EAB",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testsqlpool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"type": "NonQuery",
+										"text": "\r\n-------------------------GLD_EODACCTBALTABLE----------------------------------\r\nWITH CTE1 \r\nAS(\r\nSELECT COUNT(*) COUNT_tgt\r\n, FILE_NAME, INSERT_DTTM \r\nFROM d360.STG_EDS_GLD_EODACCTBALTABLE WHERE H = 'D'\r\nGROUP BY FILE_NAME, INSERT_DTTM\r\n\r\n)\r\n,\r\nCTE2 AS (\r\nSELECT REPLACE(H,'F-','') COUNT_src\r\n, FILE_NAME, INSERT_DTTM FROM d360.STG_EDS_GLD_EODACCTBALTABLE WHERE H <> 'D'\r\n)\r\n,\r\nCTE12 as (\r\nSELECT COUNT_SRC, COUNT_TGT\r\n, A.FILE_NAME, A.INSERT_DTTM, CONVERT(DATE,(left(right(A.FILE_NAME, 12),8))) DATE FROM CTE1 A\r\nJOIN CTE2 B ON A.FILE_NAME = B.FILE_NAME AND A.INSERT_DTTM = B.INSERT_DTTM\r\n)\r\n\r\nINSERT INTO [EDS].[EDS_HASH_LOG_TBL]\r\nSELECT \r\nFILE_NAME\r\n,DATE\r\n,insert_dttm\r\n,REPLACE(METRICS,'_SRC','') METRICS\r\n,SRC\r\n,TGT \r\n\r\nFROM\r\n(\r\nSELECT COUNT_SRC COUNT_SRC\r\n,COUNT_TGT COUNT_TGT\r\n,FILE_NAME\r\n,INSERT_DTTM\r\n,[DATE]\r\nFROM CTE12\r\n) pvt\r\n\r\nUNPIVOT\r\n(\r\nSRC FOR METRICS IN (COUNT_SRC\r\n )\r\n) pvt1\r\n\r\nUNPIVOT\r\n(\r\nTGT For METRICS2 IN (COUNT_TGT\r\n )\r\n) pvt2\r\n \r\nWHERE REPLACE(METRICS,'_SRC','') = REPLACE(METRICS2,'_TGT','');"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "GAM PROCESS",
+				"type": "IfCondition",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@contains(pipeline().parameters.tables,'GLD_GENACCTMASTTABLE')",
+						"type": "Expression"
+					},
+					"ifTrueActivities": [
+						{
+							"name": "HashLog_GENERAL_LEDGER_Fact_GAM",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testsqlpool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"type": "NonQuery",
+										"text": "\r\n-------------------------GLD_GENACCTMASTTABLE----------------------------------\r\nWITH CTE1 \r\nAS(\r\nSELECT COUNT(*) COUNT_tgt\r\n, FILE_NAME, INSERT_DTTM \r\nFROM d360.STG_EDS_GLD_GENACCTMASTTABLE WHERE H = 'D'\r\nGROUP BY FILE_NAME, INSERT_DTTM\r\n\r\n)\r\n,\r\nCTE2 AS (\r\nSELECT REPLACE(H,'F-','') COUNT_src\r\n, FILE_NAME, INSERT_DTTM FROM d360.STG_EDS_GLD_GENACCTMASTTABLE WHERE H <> 'D'\r\n)\r\n,\r\nCTE12 as (\r\nSELECT COUNT_SRC, COUNT_TGT\r\n, A.FILE_NAME, A.INSERT_DTTM, CONVERT(DATE,(left(right(A.FILE_NAME, 12),8))) DATE FROM CTE1 A\r\nJOIN CTE2 B ON A.FILE_NAME = B.FILE_NAME AND A.INSERT_DTTM = B.INSERT_DTTM\r\n)\r\n\r\nINSERT INTO [EDS].[EDS_HASH_LOG_TBL]\r\nSELECT \r\nFILE_NAME\r\n,DATE\r\n,insert_dttm\r\n,REPLACE(METRICS,'_SRC','') METRICS\r\n,SRC\r\n,TGT \r\n\r\nFROM\r\n(\r\nSELECT COUNT_SRC COUNT_SRC\r\n,COUNT_TGT COUNT_TGT\r\n,FILE_NAME\r\n,INSERT_DTTM\r\n,[DATE]\r\nFROM CTE12\r\n) pvt\r\n\r\nUNPIVOT\r\n(\r\nSRC FOR METRICS IN (COUNT_SRC\r\n )\r\n) pvt1\r\n\r\nUNPIVOT\r\n(\r\nTGT For METRICS2 IN (COUNT_TGT\r\n )\r\n) pvt2\r\n \r\nWHERE REPLACE(METRICS,'_SRC','') = REPLACE(METRICS2,'_TGT','');"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"tables": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-10-18T08:41:05Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

@@ -1,0 +1,155 @@
+{
+	"name": "EDS_CUSTOMER_TOTAL_REL",
+	"properties": {
+		"activities": [
+			{
+				"name": "If Condition2",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Get_Curdate_Status_Run",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('Get_Curdate_Status_Run').output.firstrow.CNT,0)",
+						"type": "Expression"
+					},
+					"ifTrueActivities": [
+						{
+							"name": "DELETE CUSTOMER_TOTAL_REL CURRENT",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "testsqlpool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"parameters": [
+											{
+												"name": "Datetoprocess",
+												"type": "Datetime",
+												"value": {
+													"value": "@pipeline().parameters.Datetoprocess",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											}
+										],
+										"type": "NonQuery",
+										"text": "DELETE\r\nFROM EDS.CUSTOMER_TOTAL_REL\r\nWHERE AS_OF_DATE = CAST(@Datetoprocess AS DATE);"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Get_Curdate_Status_Run",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlDWSource",
+						"sqlReaderQuery": {
+							"value": "@CONCAT('SELECT COUNT(*) CNT FROM OM.OM_TASK_RUN WHERE TASK_NAME=''TSK_EDS_CUSTOMER_TOTAL_REL'' AND PROCESS_DATE=CAST(''',pipeline().parameters.Datetoprocess,''' AS DATE)')",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SQLPool_OM",
+						"type": "DatasetReference",
+						"parameters": {
+							"table_name": "OM_TASK_RUN"
+						}
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "LOAD CUSTOMER_TOTAL_REL",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "If Condition2",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"parameters": [
+								{
+									"name": "Datetoprocess",
+									"type": "Datetime",
+									"value": {
+										"value": "@pipeline().parameters.Datetoprocess",
+										"type": "Expression"
+									},
+									"direction": "Input"
+								}
+							],
+							"type": "NonQuery",
+							"text": "WITH CUST_TOT_REL \r\nAS\r\n(\r\n\tSELECT \r\n\t\t EDA.AS_OF_DATE AS_OF_DATE\r\n\t\t,EDA.BANK_ID BANK_ID\r\n\t\t,ECD.ORGKEY CIF\r\n\t\t,CS.L1_SEGMENT_ID CUST_SEGMENT_ID\r\n\t\t,NULL TOTAL_RELATIONSHIP\r\n\t\t--,SUM(TRB_DEPOSITS + TRB_INVEST + TRB_BANCA) TRB\r\n\t\t,YEAR_TO_DATE_AVERAGE_DAILY_BALANCE_PHP TRB_DEPOSITS\r\n\t\t--,SUM(COALESCE(TRB_TREASURY,0) + COALESCE(TRB_TRUST,0))\tTRB_INVEST\r\n\t\t,NULL\tTRB_TREASURY\r\n\t\t,NULL\tTRB_TRUST\r\n\t\t,NULL\tTRB_BANCA\r\n\t\t,NULL\tTRB_SECURITIES\r\n\t\t--,SUM(COALESCE(TRE_LOANS,0) + COALESCE(TRE_CARDS,0)) TRE\r\n\t\t,NULL\tTRE_LOANS\r\n\t\t,NULL\tTRE_CARDS\r\n\r\n\tFROM \r\n\t\tEDS.DEP_ACCOUNTRELATIONSHIP EDA --- round_robin\r\n\tLEFT JOIN EDS.DEPOSIT_FACT EDF --- gam_acid\r\n\t\tON EDA.ACID = EDF.GAM_ACID\r\n\t\tAND EDA.BANK_ID = EDF.GAM_BANK_ID\r\n\t\tAND EDA.AS_OF_DATE = EDF.AS_OF_DATE\r\n\tLEFT JOIN EDS.CUSTOMER_DIM ECD --- orgkey\r\n\t\tON EDA.CUST_ID = ECD.CORE_CUST_ID\r\n\t\tAND EDA.BANK_ID = ECD.BANK_ID\r\n\t\tAND EDA.AS_OF_DATE BETWEEN ECD.SCD_START_DATE AND ECD.SCD_END_DATE\r\n\tLEFT JOIN EDS.CUSTOMER_SEGMENT CS\r\n\t\tON CS.CIF = ECD.ORGKEY\r\n\t\tAND CS.BANK_ID = ECD.BANK_ID\r\n\t\tAND EDA.AS_OF_DATE BETWEEN ECD.SCD_START_DATE AND ECD.SCD_END_DATE\r\n\tWHERE\r\n\t\tEDA.ACCT_POA_AS_REC_TYPE IN  ('M', 'J')\r\n\t\tAND EDA.BANK_ID = 'CBC01'\r\n\t\tAND LEFT(EDF.GAM_SCHM_CODE,2)  <> '09'\r\n\t\tAND EDF.GAM_BANK_ID = 'CBC01'\r\n\t\tAND EDF.DEP_ACCOUNT_STATUS <> 'C'  \r\n\t\tAND EDF.DEL_FLG = 'N'\r\n\t\tAND EDA.AS_OF_DATE = CAST(@Datetoprocess AS DATE)\r\n)\r\n\r\nINSERT INTO EDS.CUSTOMER_TOTAL_REL\r\n(\r\n     AS_OF_DATE         \r\n    ,BANK_ID            \r\n    ,CIF                \r\n    ,CUST_SEGMENT_ID    \r\n    ,TOTAL_RELATIONSHIP \r\n    ,TRB                \r\n    ,TRB_DEPOSITS       \r\n    ,TRB_INVEST         \r\n    ,TRB_TRUST          \r\n    ,TRB_TREASURY       \r\n    ,TRB_BANCA          \r\n    ,TRB_SECURITIES     \r\n    ,TRE\t\t           \r\n    ,TRE_LOANS          \r\n    ,TRE_CARDS          \r\n)\r\n\r\nSELECT \r\n\t AS_OF_DATE\r\n\t,BANK_ID\r\n\t,CIF\r\n\t,CUST_SEGMENT_ID\r\n\t,TOTAL_RELATIONSHIP\r\n\t,SUM(COALESCE(TRB_DEPOSITS,0) + COALESCE(TRB_TREASURY,0) + COALESCE(TRB_TRUST,0) + COALESCE(TRB_BANCA,0)) TRB\r\n\t,SUM(COALESCE(TRB_DEPOSITS,0)) TRB_DEPOSITS\r\n\t,SUM(COALESCE(TRB_TREASURY,0) + COALESCE(TRB_TRUST,0))\tTRB_INVEST\r\n\t,TRB_TRUST\r\n\t,TRB_TREASURY\r\n\t,TRB_BANCA\r\n\t,TRB_SECURITIES\r\n\t,SUM(COALESCE(TRE_LOANS,0) + COALESCE(TRE_CARDS,0)) TRE\r\n\t,TRE_LOANS\r\n\t,TRE_CARDS\r\nFROM CUST_TOT_REL\r\nGROUP BY \r\n\t AS_OF_DATE\r\n\t,BANK_ID\r\n\t,CIF\r\n\t,CUST_SEGMENT_ID\r\n\t,TOTAL_RELATIONSHIP\t\r\n\t,TRB_TREASURY\r\n\t,TRB_TRUST\r\n\t,TRB_BANCA\r\n\t,TRB_SECURITIES\r\n\t,TRE_LOANS\r\n\t,TRE_CARDS"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"parameters": {
+			"Datetoprocess": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2025-11-18T08:34:40Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

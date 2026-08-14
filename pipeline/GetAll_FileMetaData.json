@@ -1,0 +1,157 @@
+{
+	"name": "GetAll_FileMetaData",
+	"properties": {
+		"activities": [
+			{
+				"name": "ForEach1",
+				"type": "ForEach",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@pipeline().parameters.FileNames",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "Get Metadata",
+							"type": "GetMetadata",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "ADLS_TXNbackup",
+									"type": "DatasetReference",
+									"parameters": {
+										"FolderPath": {
+											"value": "@pipeline().parameters.FilePaths",
+											"type": "Expression"
+										},
+										"FileName": {
+											"value": "@item().name",
+											"type": "Expression"
+										}
+									}
+								},
+								"fieldList": [
+									"itemName",
+									"itemType",
+									"size",
+									"lastModified"
+								],
+								"storeSettings": {
+									"type": "AzureBlobFSReadSettings",
+									"recursive": true,
+									"enablePartitionDiscovery": false
+								},
+								"formatSettings": {
+									"type": "DelimitedTextReadSettings"
+								}
+							}
+						},
+						{
+							"name": "INSERT Data",
+							"type": "Script",
+							"dependsOn": [
+								{
+									"activity": "Get Metadata",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+								"type": "LinkedServiceReference",
+								"parameters": {
+									"DBName": "TestSQLPool"
+								}
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"parameters": [
+											{
+												"name": "Name",
+												"type": "String",
+												"value": {
+													"value": "@activity('Get Metadata').output.itemName",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											},
+											{
+												"name": "Type",
+												"type": "String",
+												"value": {
+													"value": "@activity('Get Metadata').output.itemType",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											},
+											{
+												"name": "Size",
+												"type": "String",
+												"value": {
+													"value": "@activity('Get Metadata').output.size",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											},
+											{
+												"name": "Date",
+												"type": "String",
+												"value": {
+													"value": "@activity('Get Metadata').output.lastModified",
+													"type": "Expression"
+												},
+												"direction": "Input"
+											}
+										],
+										"type": "Query",
+										"text": "Insert Into D360.ADLS_AllFileList (FileName, FileType, FileSize, LastModified)\nSelect @Name, @Type, @Size, @Date;"
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"FilePaths": {
+				"type": "string"
+			},
+			"FileNames": {
+				"type": "array"
+			}
+		},
+		"variables": {
+			"csvPath": {
+				"type": "String"
+			},
+			"output": {
+				"type": "Array"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2024-04-16T06:30:07Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

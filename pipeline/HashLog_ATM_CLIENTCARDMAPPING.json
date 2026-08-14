@@ -1,0 +1,39 @@
+{
+	"name": "HashLog_ATM_CLIENTCARDMAPPING",
+	"properties": {
+		"activities": [
+			{
+				"name": "ATM_CLIENTCARDMAPPING",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testSQLPool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "WITH CTE1 \nAS(\nSELECT COUNT(*) COUNT_TGT, FILE_NAME, INSERT_DTTM FROM d360.STG_EDS_ATM_CLIENTCARDMAPPING WHERE H = 'D'\nGROUP BY FILE_NAME, INSERT_DTTM\n)\n,\nCTE2 AS (\nSELECT REPLACE(H,'F-','') COUNT_SRC, FILE_NAME, INSERT_DTTM FROM d360.STG_EDS_ATM_CLIENTCARDMAPPING WHERE H <> 'D'\n)\n,\nCTE12 as (\nSELECT COUNT_SRC, COUNT_TGT, A.FILE_NAME, A.INSERT_DTTM, CONVERT(DATE,(left(right(A.FILE_NAME, 12),8))) DATE FROM CTE1 A\nJOIN CTE2 B ON A.FILE_NAME = B.FILE_NAME AND A.INSERT_DTTM = B.INSERT_DTTM\n)\n\nINSERT INTO [EDS].[EDS_HASH_LOG_TBL]\nSELECT \nFILE_NAME\n,DATE\n,insert_dttm\n,REPLACE(METRICS,'_SRC','') METRICS\n,SRC\n,TGT \n\nFROM\n(\nSELECT *\nFROM CTE12\n) src\n\nUNPIVOT\n(\nSRC FOR METRICS IN (COUNT_SRC )\n) pvt1\n\nUNPIVOT\n(\nTGT For METRICS2 IN (COUNT_TGT )\n) pvt2"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2024-07-08T05:49:02Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

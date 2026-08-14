@@ -1,0 +1,219 @@
+{
+	"name": "HIST_DW_FACTCARDSRELATIONSHIPEXPOSURE",
+	"properties": {
+		"activities": [
+			{
+				"name": "Script1",
+				"type": "Script",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "WITH Balance AS (\nSELECT \n CONVERT(VARCHAR,BPCS.PeriodStartDate,112) AS BusinessDateSK\n,DDB.BranchSK AS BranchSK\n,DDBK.BankSK AS BankSK\n,DDA.AccountSK AS AccountSK\n,DDA.AccountId AS AccountID\n,BPCS.TotalOutstandingBalanceAmount AS OutstandingBalanceAmount\n,BPCS.OutstandingInstallmentAmount AS OutstandingInstallmentAmount\n--,CASE WHEN BPCS.TotalOutstandingBalanceAmount > 0 AND BPCS.OutstandingInstallmentAmount > 0 THEN BPCS.TotalOutstandingBalanceAmount + BPCS.OutstandingInstallmentAmount\n--      WHEN BPCS.TotalOutstandingBalanceAmount > 0 AND BPCS.OutstandingInstallmentAmount <= 0 THEN BPCS.TotalOutstandingBalanceAmount\n--      WHEN BPCS.TotalOutstandingBalanceAmount <= 0 AND BPCS.OutstandingInstallmentAmount > 0 THEN BPCS.OutstandingInstallmentAmount\n--      WHEN BPCS.TotalOutstandingBalanceAmount < 0 AND BPCS.OutstandingInstallmentAmount < 0 THEN 0\n--      ELSE 0 END\n--      AS RelationshipExposure\n,SUM(Case WHEN TotalOutstandingBalanceAmount > 0 THEN TotalOutstandingBalanceAmount ELSE 0 END + \n    CASE WHEN OutstandingInstallmentAmount > 0 THEN OutstandingInstallmentAmount ELSE 0 END ) RelationshipExposure\n,BPCS.SourceSystemCode AS SourceSystemCode\n,0 AS WorkFlowId\n,0 AS TaskRunId\n,Getdate() AS InsertDttm\nFROM \n[BNKM].[PaymentCardStatementSummary]  BPCS\nLEFT JOIN [BNKM].[CustomerAccount] BCA ON BPCS.CustomerAccountId = BCA.CustomerAccountId\nLEFT JOIN [DW].[DimBranch] DDB ON BCA.BranchId = DDB.BranchID AND DDB.CurrentIndicator = 1\nLEFT JOIN [DW].[DimBank] DDBK ON BPCS.FinancialInstitutionId = DDBK.BankID\nLEFT JOIN [DW].[DimAccount] DDA ON BPCS.CustomerAccountId = DDA.AccountID AND DDA.CurrentIndicator = 1\nWHERE DDA.AccountSK IS NOT NULL \n)\n\nselect * into dw.factccdrelexp_Balance from Balance;\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script1_copy1",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "\nwith GetMinMaxDate AS (\nSELECT \n    BranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n    ,SourceSystemCode\n    ,convert(DATE, MIN(BusinessDateSK)) AS min_date\n    ,convert(DATE, MAX(BusinessDateSK)) AS max_date \n  FROM \n     dw.factccdrelexp_Balance\nWHERE (BranchSK IS NOT NULL\n    AND BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL)  AND BusinessDateSK between '20230626' and '20230703' \n\tGROUP BY BranchSK ,BankSK ,AccountSK ,AccountID ,SourceSystemCode\n)\n,FullDateBalance AS (\nSELECT \n\tBranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n\t,SourceSystemCode\n    ,CONVERT(VARCHAR,fulldate,112) AS fulldate2\n    ,a.FullDate\n    ,b.min_date \n    ,b.max_date \n  FROM \n    dw.dimdate a \n    LEFT JOIN GetMinMaxDate b\n\tON a.FullDate >= b.min_date \n    AND a.FullDate <= b.max_date \nWHERE (BranchSK IS NOT NULL\n    AND BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL)\n)\n,distinct_balance AS (\nSELECT DISTINCT \n    BranchSK, BankSK, AccountSK, AccountId, BusinessDateSK, OutstandingBalanceAmount, OutstandingInstallmentAmount, SourceSystemCode, WorkFlowId, TaskRunId, InsertDttm, RelationshipExposure\nFROM  dw.factccdrelexp_Balance b\nWHERE (BranchSK IS NOT NULL\n    AND BankSK IS NOT NULL\n    AND AccountSK IS NOT NULL\n    AND AccountID IS NOT NULL\n    AND SourceSystemCode IS NOT NULL)\n)\n, join_balance as (\nselect \n CONVERT(VARCHAR,ISNULL(b.BusinessDateSK, a.FullDate),112)  AS BusinessDateSK\n,ISNULL(b.BranchSK,a.BranchSK) AS BranchSK\n,ISNULL(b.BankSK,a.BankSK) AS BankSK\n,ISNULL(b.AccountSK,a.AccountSK) AS AccountSK\n,ISNULL(b.AccountId,a.AccountId) AS AccountId\n,ISNULL(b.SourceSystemCode,a.SourceSystemCode) AS SourceSystemCode\n,ISNULL(b.WorkFlowId,0) AS WorkFlowId\n,ISNULL(b.TaskRunId,0) AS TaskRunId\n,ISNULL(b.InsertDttm,getdate()) AS InsertDttm                           \n,OutstandingBalanceAmount\n,OutstandingInstallmentAmount\n,RelationshipExposure\n,ROW_NUMBER() OVER (PARTITION BY a.BankSK,a.AccountId ORDER BY a.FullDate ) AS Row#\n, case when [OutstandingBalanceAmount] is null and [OutstandingInstallmentAmount] is null then 0 else 1 end as ChangeIndicator\nFROM FullDateBalance a\nLEFT JOIN DISTINCT_BALANCE b\n    ON a.BranchSK = b.BranchSK\n    AND a.BankSK = b.BankSK\n    AND a.AccountSK = b.AccountSK\n    AND a.AccountID = b.AccountID\n    AND a.fulldate2 = b.BusinessDateSK\n    AND a.SourceSystemCode = b.SourceSystemCode\n\n)\nselect * into dw.factccdrelexp_join_balance from join_balance;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script1_copy1_copy1",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script1_copy1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "select *, Sum(ChangeIndicator) over (PARTITION BY BankSK, AccountId ORDER BY Row#) RowGroup into dw.factccdrelexp_rowgrp from dw.factccdrelexp_join_balance\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script1_copy1_copy1_copy1",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script1_copy1_copy1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "with final_balance as (\nselect \nBusinessDateSK\n,BranchSK\n,BankSK\n,AccountSK\n,AccountId\n,case when RelationshipExposure is not null then RelationshipExposure else first_value(RelationshipExposure) over (partition by RowGroup,AccountId,BankSK ORDER BY Row#) end RelationshipExposure\n,case when [OutstandingBalanceAmount] is not null then OutstandingBalanceAmount else first_value(OutstandingBalanceAmount) over (partition by RowGroup,AccountId,BankSK ORDER BY Row#) end OutstandingBalanceAmount\n,case when [OutstandingInstallmentAmount] is not null then OutstandingInstallmentAmount else first_value(OutstandingInstallmentAmount) over (partition by RowGroup,AccountId,BankSK ORDER BY Row#) end OutstandingInstallmentAmount\n,BCPB.SourceSystemCode\n,BCPB.WorkFlowId\n,BCPB.TaskRunId\n,BCPB.InsertDttm                           \nfrom dw.factccdrelexp_rowgrp BCPB)\n\nselect * into dw.factccdrelexp_final_balance from final_balance;"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script1_copy1_copy1_copy1_copy1",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script1_copy1_copy1_copy1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "with CurrencyConversion\nAS(\n    SELECT * FROM BNKM.CurrencyConversion_FillGapDates WHERE ConvertToCurrencyId = 'PHP' AND RateId = 'REV'\n)\n\nINSERT INTO DW.FactCardsRelationshipExposure\n(\n     BusinessDateSK\n    ,BranchSK\n    ,BankSK\n    ,AccountSK\n    ,AccountID\n    ,OutstandingBalanceAmount\n    ,OutstandingInstallmentAmount\n    ,RelationshipExposure\n    ,SourceSystemCode\n    ,WorkFlowId\n    ,TaskRunId\n    ,InsertDttm\n)\n\nselect \nCONVERT(VARCHAR,convert(date,BusinessDateSK),112) BusinessDateSK\n,BranchSK\n,BankSK\n,AccountSK\n,AccountId\n,OutstandingBalanceAmount\n,OutstandingInstallmentAmount\n,RelationshipExposure\n,BCPB.SourceSystemCode\n,BCPB.WorkFlowId\n,BCPB.TaskRunId\n,BCPB.InsertDttm  \nfrom  dw.factccdrelexp_final_balance   BCPB\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			},
+			{
+				"name": "Script1_copy1_copy1_copy1_copy1_copy1",
+				"type": "Script",
+				"dependsOn": [
+					{
+						"activity": "Script1_copy1_copy1_copy1_copy1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"linkedServiceName": {
+					"referenceName": "cbcd360devsynpssg-WorkspaceDefaultSqlServer",
+					"type": "LinkedServiceReference",
+					"parameters": {
+						"DBName": "testsqlpool"
+					}
+				},
+				"typeProperties": {
+					"scripts": [
+						{
+							"type": "NonQuery",
+							"text": "drop table dw.factccdrelexp_Balance\ndrop table dw.factccdrelexp_join_balance\ndrop table dw.factccdrelexp_rowgrp\ndrop table dw.factccdrelexp_final_balance\n"
+						}
+					],
+					"scriptBlockExecutionTimeout": "02:00:00"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-10-27T03:29:14Z"
+	},
+	"type": "Microsoft.Synapse/workspaces/pipelines"
+}

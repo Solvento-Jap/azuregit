@@ -1,0 +1,20 @@
+{
+	"name": "BNKM_FinancialProduct_DID",
+	"properties": {
+		"folder": {
+			"name": "BNKM"
+		},
+		"content": {
+			"query": "SET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\n\nALTER PROC [BNKM].[SP_FinancialProduct_DID] AS\nBEGIN\nWITH TEMP_BNKM_FinancialProduct AS\n(\n\tSELECT\n\t\tBDP.PRODUCT_TYPE AS FinancialProductId\n\t\t,BDP.PRODUCT_DESCRIPTION AS FinancialProductName\n\t\t,BDP.BANK_CODE AS FinancialInstitutionId\n\t\t,BDP.SOURCE_CODE AS SourceCode\n\t\t,BDP.PRODUCT_GROUP AS ProductGrouping\n\t\t,'CCD' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDP.insert_dttm AS InsertDttm\n\t\t--,'INSERT' RECORD_STATUS\n\tFROM  BUSC.DID_PRODUCTGROUPING BDP\n\tWHERE BDP.ISLATEST = 1 AND BDP.SOURCE_CODE IN ('CCD')\n\n    UNION ALL\n\n    \tSELECT\n\t\tBDP.PRODUCT_TYPE AS FinancialProductId\n\t\t,BDP.PRODUCT_DESCRIPTION AS FinancialProductName\n\t\t,BDP.BANK_CODE AS FinancialInstitutionId\n\t\t,BDP.SOURCE_CODE AS SourceCode\n\t\t,BDP.PRODUCT_GROUP AS ProductGrouping\n\t\t,'SEC' AS SourceSystemCode\n\t\t,0 AS TaskRunId\n\t\t,0 AS WorkFlowId\n\t\t,BDP.insert_dttm AS InsertDttm\n\t\t--,'INSERT' RECORD_STATUS\n\tFROM  BUSC.DID_PRODUCTGROUPING BDP\n\tWHERE BDP.ISLATEST = 1 AND BDP.SOURCE_CODE IN ('SEC')\n\n)\n\nSELECT * INTO #TEMP_BNKM_FinancialProduct FROM TEMP_BNKM_FinancialProduct;\n\nWITH TEMP_BNKM_FinancialProduct_SRC AS\n(\n\tSELECT\n\t\tHASHBYTES('MD5',CONCAT(\n\t\t\tFinancialProductId\n\t\t\t,FinancialProductName\n\t\t\t,FinancialInstitutionId\n\t\t\t,SourceCode\n\t\t\t,ProductGrouping)) AS HASHROW\n\t\t,FinancialProductId ,FinancialInstitutionId --,RECORD_STATUS\n\tFROM #TEMP_BNKM_FinancialProduct --WHERE RECORD_STATUS = 'UPDATE'\n),\n\nTEMP_BNKM_FinancialProduct_TGT AS\n(\n\tSELECT\n\t\tHASHBYTES('MD5',CONCAT(\n\t\t\tFinancialProductId\n\t\t\t,FinancialProductName\n\t\t\t,FinancialInstitutionId\n\t\t\t,SourceCode\n\t\t\t,ProductGrouping)) AS HASHROW\n\t\t,FinancialProductId \n\tFROM BNKM.FinancialProduct WHERE SourceSystemCode = 'DID'\n),\n\nTEMP_BNKM_FinancialProduct_DELTA AS\n(\n\tSELECT\t\n\t\tSRC.HASHROW AS SRC_HR\n\t\t,TGT.HASHROW AS TGT_HR\n\t\t,ISNULL(SRC.FinancialProductId,TGT.FinancialProductId) AS FinancialProductId\n\t\t,CASE\n\t\t\tWHEN TGT.FinancialProductId  IS NULL THEN 'INSERT'\n\t\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n\t\t\tELSE NULL \n\t\tEND AS RECORD_STATUS\n\tFROM TEMP_BNKM_FinancialProduct_SRC SRC\n\tLEFT JOIN TEMP_BNKM_FinancialProduct_TGT TGT\n\t ON SRC.FinancialProductId = TGT.FinancialProductId\n\tWHERE SRC.HASHROW <> TGT.HASHROW \n)\n\nSELECT * INTO #TEMP_BNKM_FinancialProduct_DELTA FROM TEMP_BNKM_FinancialProduct_DELTA;\n\nUPDATE TGT\nSET\n\tFinancialProductId = SRC.FinancialProductId\n\t,FinancialProductName = SRC.FinancialProductName\n\t,FinancialInstitutionId = SRC.FinancialInstitutionId\n\t,SourceCode = SRC.SourceCode\n\t,ProductGrouping = SRC.ProductGrouping\n\t,SourceSystemCode = SRC.SourceSystemCode\n\t,TaskRunId = SRC.TaskRunId\n\t,WorkFlowId = SRC.WorkFlowId\n\t,InsertDttm = SRC.InsertDttm\nFROM BNKM.FinancialProduct TGT\nJOIN #TEMP_BNKM_FinancialProduct_DELTA DELTA\n\tON DELTA.FinancialProductId = TGT.FinancialProductId\nJOIN #TEMP_BNKM_FinancialProduct SRC\n\tON SRC.FinancialProductId = TGT.FinancialProductId\n\nINSERT INTO BNKM.FinancialProduct \n\t(FinancialProductId\n\t,FinancialProductName\n\t,FinancialInstitutionId\n\t,SourceCode\n\t,ProductGrouping\n\t,SourceSystemCode\n\t,TaskRunId\n\t,WorkFlowId\n\t,InsertDttm)\nSELECT\n\tSRC.FinancialProductId\n\t,FinancialProductName\n\t,FinancialInstitutionId\n\t,SourceCode\n\t,ProductGrouping\n\t,SourceSystemCode\n\t,TaskRunId\n\t,WorkFlowId\n\t,InsertDttm\nFROM #TEMP_BNKM_FinancialProduct SRC\nJOIN #TEMP_BNKM_FinancialProduct_DELTA DELTA ON DELTA.FinancialProductId = SRC.FinancialProductId \nAND DELTA.RECORD_STATUS = 'INSERT'\nDROP TABLE #TEMP_BNKM_FinancialProduct;\nDROP TABLE #TEMP_BNKM_FinancialProduct_DELTA;\n\nEND\nGO",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

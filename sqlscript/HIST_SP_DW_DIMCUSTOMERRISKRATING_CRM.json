@@ -1,0 +1,20 @@
+{
+	"name": "HIST_SP_DW_DIMCUSTOMERRISKRATING_CRM",
+	"properties": {
+		"folder": {
+			"name": "Others"
+		},
+		"content": {
+			"query": "CREATE PROCEDURE DW.HIST_SP_DW_DIMCUSTOMERRISKRATING_CRM\nAS\nBEGIN\n\nWITH CustomerRiskRatingSK AS(SELECT ISNULL(MAX(CustomerRiskRatingSK),0) RN FROM DW.DimCustomerRiskRating)\n\n,TEMP_DW_DimCustomerRiskRating AS\n(\n    SELECT ROW_NUMBER() OVER(ORDER BY (SELECT NULL)) + (SELECT RN FROM CustomerRiskRatingSK) AS CustomerRiskRatingSK\n    ,* FROM (\nSELECT DISTINCT\n\tDC.CustomerSK AS CustomerSK\n\t,DC.CustomerID AS CustomerID\n\t,DRRT.RiskRatingTypeSK AS RiskRatingTypeSK\n\t,DRR.RiskRatingSK AS RiskRatingSK\n\t,1 AS CurrentIndicator\n\t,GETDATE() AS ValidStartDate\n\t,'9999-01-01' AS ValidEndDate\n\t,DC.SourceSystemCode AS SourceSystemCode\n\t,0 AS WorkFlowId\n\t,0 AS TaskRunId\n\t,GETDATE() AS InsertDttm                     \nFROM DW.DimCustomer DC\nLEFT JOIN DW.DimBank DB  ON DC.BankSK = DB.BankSK\nLEFT JOIN BNKM.CustomerOverallCreditRating BCOCR ON DC.CustomerID = BCOCR.CustomerId AND DB.BankID = BCOCR.FinancialInstitutionId\nLEFT JOIN DW.DimRiskRatingType DRRT ON BCOCR.RiskRatingTypeId = DRRT.RiskRatingTypeID AND DC.BankSK = DRRT.BankSK\nLEFT JOIN DW.DimRiskRating DRR ON BCOCR.CreditRiskId = DRR.RiskRatingID AND DC.BankSK = DRR.BankSK\nWHERE DC.SourceSystemCode = 'CRM' )A )\n\nSELECT * INTO #TEMP_DW_DimCustomerRiskRating FROM TEMP_DW_DimCustomerRiskRating;\n\n\nWITH\nTEMP_DW_DimCustomerRiskRating_SRC\nAS(\n    SELECT HASHBYTES('MD5',CONCAT(\n     CustomerSK\n    ,CustomerID\n    ,RiskRatingTypeSK\n    ,RiskRatingSK\n    )) HASHROW, CustomerID\n    FROM #TEMP_DW_DimCustomerRiskRating\n)\n,\nTEMP_DW_DimCustomerRiskRating_TGT\nAS(\n    SELECT HASHBYTES('MD5',CONCAT(\n     CustomerSK\n    ,CustomerID\n    ,RiskRatingTypeSK\n    ,RiskRatingSK\n    )) HASHROW,CustomerID\n    FROM DW.DimCustomerRiskRating WHERE CurrentIndicator = 1 AND SourceSystemCode = 'CRM'\n)\n,\nTEMP_DW_DimCustomerRiskRating_DELTA\nAS\n(\n    SELECT\t\n\tSRC.HASHROW AS SRC_HR\n\t,TGT.HASHROW AS TGT_HR\n\t,ISNULL(SRC.CustomerID,TGT.CustomerID) AS CustomerID\n\t,CASE\n\t\tWHEN SRC.HASHROW <> TGT.HASHROW THEN 'UPDATE'\n\t    WHEN TGT.CustomerID IS NULL THEN 'INSERT'\n        ELSE NULL END AS RECORD_STATUS\n\t\nFROM TEMP_DW_DimCustomerRiskRating_SRC SRC\nFULL OUTER JOIN TEMP_DW_DimCustomerRiskRating_TGT\tTGT\nON\tSRC.CustomerID = TGT.CustomerID\n\nWHERE SRC.HASHROW <> TGT.HASHROW OR (TGT.CUSTOMERID IS NULL)\n)\n\nSELECT * INTO #TEMP_DW_DimCustomerRiskRating_DELTA FROM TEMP_DW_DimCustomerRiskRating_DELTA;\n\n--UPDATE\nUPDATE TGT \nSET\nValidEndDate = GETDATE()\n,CurrentIndicator = 0\nFROM DW.DimCustomerRiskRating TGT\nJOIN #TEMP_DW_DimCustomerRiskRating_DELTA DELTA ON DELTA.CustomerId = TGT.CustomerId AND  DELTA.RECORD_STATUS = 'UPDATE'\nJOIN #TEMP_DW_DimCustomerRiskRating SRC ON SRC.CustomerId = TGT.CustomerId \nWHERE TGT.CurrentIndicator = 1 AND TGT.SourceSystemCode = 'CRM';\n\n\nINSERT INTO DW.DimCustomerRiskRating(\nCustomerRiskRatingSK\n,CustomerSK\n,CustomerID\n,RiskRatingTypeSK\n,RiskRatingSK\n,CurrentIndicator\n,ValidStartDate\n,ValidEndDate\n,SourceSystemCode\n,WorkFlowId\n,TaskRunId\n,InsertDttm                    \n)\nSELECT distinct\nCustomerRiskRatingSK\n,CustomerSK\n,SRC.CustomerID\n,RiskRatingTypeSK\n,RiskRatingSK\n,CurrentIndicator\n,ValidStartDate\n,ValidEndDate\n,SourceSystemCode\n,WorkFlowId\n,TaskRunId\n,InsertDttm   \nFROM #TEMP_DW_DimCustomerRiskRating SRC\nJOIN #TEMP_DW_DimCustomerRiskRating_DELTA DELTA ON DELTA.CustomerId = SRC.CustomerId  AND  DELTA.RECORD_STATUS IN ('UPDATE','INSERT')\nWHERE RiskRatingSK IS NOT NULL;\nEND",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "testSQLpool",
+				"poolName": "testSQLpool"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}
